@@ -1,7 +1,7 @@
 ---
-title: "Praxa MCP Tool Definitions Reference"
+title: "Praxa MCP Tools: Reference for All 11 Tool Definitions"
 sidebarTitle: "MCP Tools"
-description: "Reference for all 11 Praxa MCP tools. Each tool maps to a Praxa Integration Gateway operation with defined input schemas, required OAuth scopes, and idempotency behavior."
+description: "Reference for all 11 Praxa MCP tools: input schemas, OAuth scopes, HTTP paths, and idempotency behavior for the Praxa Integration Gateway."
 ---
 
 `PRAXA_MCP_TOOLS` is the complete, authoritative list of MCP tools exposed by the Praxa Integration Gateway. You import this array from `@praxa/mcp-contracts` and register its entries with your MCP host — no manual schema authoring required. Every tool definition includes a `name`, human-readable `description`, `inputSchema` (JSON Schema draft-07 compatible), the gateway `operationId`, HTTP `method` and `path`, a `requiredScope` for OAuth authorization, and an `idempotency` field indicating whether the tool mutates state.
@@ -26,28 +26,28 @@ type PraxaMcpTool = {
 
 | Tool Name | HTTP Method | Path | Required Scope | Idempotency |
 |---|---|---|---|---|
-| `aura_create_mission` | POST | `/v8/missions` | `missions:write` | Required |
-| `aura_get_mission` | GET | `/v8/missions/{runId}` | `missions:read` | None |
-| `aura_signal_mission` | POST | `/v8/missions/{runId}/signals` | `missions:write` | Required |
-| `aura_cancel_mission` | POST | `/v8/missions/{runId}/cancel` | `missions:write` | Required |
-| `aura_search_capabilities` | POST | `/v8/capabilities/search` | `capabilities:read` | None |
-| `aura_query_memory` | POST | `/v8/memory/query` | `memory:read` | None |
-| `aura_get_skill` | GET | `/v8/skills/{skillId}` | `skills:read` | None |
-| `aura_get_trace` | GET | `/v8/traces/{traceId}` | `traces:read` | None |
-| `aura_list_goals` | GET | `/v8/context-twin/goals` | `context:read` | None |
-| `aura_list_world_certificates` | GET | `/v8/world-model/certificates` | `world:read` | None |
-| `aura_get_coverage` | GET | `/v8/coverage` | `coverage:read` | None |
+| `aura_create_mission` | POST | `/v8/missions` | `missions:write` | `required` |
+| `aura_get_mission` | GET | `/v8/missions/{runId}` | `missions:read` | `safe-read` |
+| `aura_signal_mission` | POST | `/v8/missions/{runId}/signals` | `missions:write` | `required` |
+| `aura_cancel_mission` | POST | `/v8/missions/{runId}/cancel` | `missions:write` | `required` |
+| `aura_search_capabilities` | POST | `/v8/capabilities/search` | `capabilities:read` | `safe-read` |
+| `aura_query_memory` | POST | `/v8/memory/query` | `memory:read` | `safe-read` |
+| `aura_get_skill` | GET | `/v8/skills/{skillId}` | `skills:read` | `safe-read` |
+| `aura_get_trace` | GET | `/v8/traces/{traceId}` | `traces:read` | `safe-read` |
+| `aura_list_goals` | GET | `/v8/context-twin/goals` | `context:read` | `safe-read` |
+| `aura_list_world_certificates` | GET | `/v8/world-model/certificates` | `world:read` | `safe-read` |
+| `aura_get_coverage` | GET | `/v8/coverage` | `coverage:read` | `safe-read` |
 
-Tools with `idempotency: "required"` mutate gateway state and must receive a unique `idempotencyKey` field in their input on every call. Tools listed as `safe-read` are read-only and carry no idempotency requirement.
+Tools with `idempotency: "required"` mutate gateway state and must receive a unique `idempotencyKey` field in their input on every call. Tools with `idempotency: "safe-read"` are read-only and carry no idempotency requirement.
 
 Brief descriptions of what each tool does:
 
 - **`aura_create_mission`** — Submits a goal to Praxa policy and broker orchestration. Grants no action authority on its own.
 - **`aura_get_mission`** — Reads an authoritative mission projection for a given run ID.
 - **`aura_signal_mission`** — Records a mission signal for policy-controlled handling; does not directly commit a provider effect.
-- **`aura_cancel_mission`** — Requests durable mission cancellation through the Control Plane.
+- **`aura_cancel_mission`** — Requests durable cancellation of a running mission.
 - **`aura_search_capabilities`** — Searches policy-eligible capability manifests before semantic ranking.
-- **`aura_query_memory`** — Queries purpose-filtered memory through the private Control Plane.
+- **`aura_query_memory`** — Queries purpose-filtered memory for the given compartment and purpose.
 - **`aura_get_skill`** — Reads a versioned governed skill and its evidence state.
 - **`aura_get_trace`** — Reads a redacted causal trace.
 - **`aura_list_goals`** — Lists purpose- and compartment-filtered context goals.

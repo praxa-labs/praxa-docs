@@ -1,7 +1,7 @@
 ---
-title: "Resource Budgets: Control Agent Mission Scope"
+title: "Resource Budgets: Cap Steps, Time, and Parallelism"
 sidebarTitle: "Resource Budgets"
-description: "Resource budgets let you cap how many steps, tool calls, elapsed time, and parallel branches a Praxa mission can use. Learn how to set budgets and what happens when they are exceeded."
+description: "Resource budgets define hard limits on steps, tool calls, elapsed time, and parallelism. Every Praxa mission requires a budget enforced by the gateway."
 ---
 
 A **resource budget** is a set of hard limits that govern how much work a Praxa mission is allowed to perform. Every `CreateMissionRequest` must include a `resourceBudget`, and the Integration Gateway enforces those limits server-side throughout the lifetime of the run. Budgets give you predictable cost, latency, and risk profiles for every mission you submit — regardless of how ambitious the agent's reasoning might become.

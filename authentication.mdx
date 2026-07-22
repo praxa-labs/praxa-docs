@@ -1,5 +1,5 @@
 ---
-title: "Authenticate with the Praxa Integration Gateway"
+title: "Authenticate with the Praxa Integration Gateway API"
 sidebarTitle: "Authentication"
 description: "Praxa uses short-lived OAuth Bearer tokens scoped per operation. Learn how to acquire a token, pass it to the SDK or CLI, and handle auth errors."
 ---
@@ -18,16 +18,16 @@ Contact your Praxa deployment administrator or refer to your gateway's own docum
 
 ## Using Your Token with the SDK
 
-Pass your token through the `accessToken` option when constructing a `PraxaClient`. This option accepts either a string or a function that returns a string or a `Promise<string>`. Using an async function is strongly preferred in production because it lets your application refresh the token transparently without recreating the client.
+Pass your token through the `accessToken` option when constructing a `PraxaClient`. This option accepts a function that returns a string or a `Promise<string>`. Using an async function is strongly preferred in production because it lets your application refresh the token transparently without recreating the client.
 
-**For testing only — static string:**
+**For testing only — inline token function:**
 
 ```ts
 import { PraxaClient } from "@praxa/sdk";
 
 const client = new PraxaClient({
   baseUrl: "https://api.your-praxa-gateway.example",
-  accessToken: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...", // not for production
+  accessToken: () => "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...", // not for production
 });
 ```
 
@@ -49,7 +49,7 @@ const client = new PraxaClient({
 The async provider pattern means your client remains valid across token expiry boundaries. The SDK calls your provider function before each request, so returning a refreshed token automatically keeps the client authenticated.
 
 <Tip>
-  In production, always use an async token provider function rather than a static string. This lets you integrate with your platform's secret management or session layer and rotate tokens without restarting your application.
+  In production, always use an async token provider function that retrieves a fresh token from your session or secret store. This lets you integrate with your platform's secret management layer and rotate tokens without restarting your application.
 </Tip>
 
 ## Using Your Token with the CLI
@@ -73,7 +73,7 @@ Use `--base-url` to override `PRAXA_BASE_URL` for a single command without chang
 praxa doctor --base-url https://api.other-gateway.example
 ```
 
-The older `AURA_BASE_URL` and `AURA_ACCESS_TOKEN` environment variables remain supported as compatibility fallbacks, but `PRAXA_BASE_URL` and `PRAXA_ACCESS_TOKEN` are preferred for new integrations.
+`PRAXA_BASE_URL` and `PRAXA_ACCESS_TOKEN` are the standard environment variables for all Praxa integrations.
 
 ## OAuth Scopes
 

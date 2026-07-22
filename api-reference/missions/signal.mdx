@@ -1,7 +1,7 @@
 ---
 title: "POST /v8/missions/{runId}/signals — Send a Mission Signal"
 sidebarTitle: "Signal Mission"
-description: "POST /v8/missions/{runId}/signals sends a named signal with a JSON payload to a running Praxa mission, enabling mid-flight user input or workflow injection."
+description: "POST /v8/missions/{runId}/signals sends a named signal with a JSON payload to a Praxa mission, enabling mid-flight user input or workflow injection."
 ---
 
 The `POST /v8/missions/{runId}/signals` endpoint lets you inject information or instructions into a mission that is already running or waiting. Signals are the primary mechanism for mid-flight human-in-the-loop interactions — for example, responding to a clarification request, providing additional context, or triggering a branch of the agent's plan that depends on external data. The gateway durably records the signal and delivers it to the agent at its next observation cycle. Like mission creation, signal delivery is idempotent: re-sending the same `Idempotency-Key` with the same body is safe and produces no duplicate effects.

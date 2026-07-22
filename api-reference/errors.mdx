@@ -1,7 +1,7 @@
 ---
-title: "Praxa API Error Codes and Problem Details"
+title: "Praxa API Error Codes, Status Codes, and Problem Details"
 sidebarTitle: "Errors"
-description: "Praxa API errors follow RFC 9457 problem+json format. Learn what each HTTP status code means, how to read the problem detail, and how to recover from common errors."
+description: "Praxa API errors use RFC 9457 problem+json format. Learn what each HTTP status code means, how to read the problem detail, and how to recover from errors."
 ---
 
 The Praxa API returns errors in RFC 9457 `application/problem+json` format, providing structured machine-readable details alongside the HTTP status code. Every error response carries a stable `type` URI you can use to distinguish error kinds programmatically, a human-readable `detail` field for logging, and a `requestId` UUID you can share with support to trace exactly what happened on the server.
@@ -49,7 +49,10 @@ The table below covers every HTTP status code the Integration Gateway can return
 | `409` | Conflict | Idempotency key reused with a different payload | Use a new idempotency key or re-send the original payload unchanged |
 | `422` | Unprocessable Entity | Request body is valid JSON but semantically invalid | Check field constraints — for example, `maximumParallelism` must be between 1 and 64 |
 | `429` | Too Many Requests | Rate limit exceeded | Back off and retry after the number of seconds in the `Retry-After` response header |
-| `503` | Service Unavailable | Gateway temporarily unavailable | Retry with exponential backoff |
+| `500` | Internal Server Error | Transient gateway fault | The SDK retries automatically; if retries are exhausted, retry later with exponential backoff |
+| `502` | Bad Gateway | Upstream dependency unavailable | The SDK retries automatically; if retries are exhausted, retry later with exponential backoff |
+| `503` | Service Unavailable | Gateway temporarily unavailable or deploying | The SDK retries automatically; if retries are exhausted, retry later with exponential backoff |
+| `504` | Gateway Timeout | Upstream response timeout | The SDK retries automatically; if retries are exhausted, retry later with exponential backoff |
 
 ## Idempotency Conflicts (409)
 

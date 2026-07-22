@@ -1,7 +1,7 @@
 ---
-title: "Praxa SDK and Gateway Performance Characteristics"
+title: "Praxa SDK Performance Characteristics and Tuning Guide"
 sidebarTitle: "Performance"
-description: "Expected performance characteristics of the Praxa SDK, including mission creation latency, SSE streaming overhead, automatic retry behavior, and idempotency key handling."
+description: "Performance characteristics of the Praxa SDK: mission latency, SSE streaming overhead, automatic retry backoff, and concurrent mission fan-out patterns."
 ---
 
 Understanding the performance profile of the Praxa SDK helps you design your application's mission submission patterns and error handling strategy. The `PraxaClient` is a thin, stateless HTTP and SSE client — it adds no local queuing, no background threads, and no persistent connection pool of its own. Every performance characteristic described here flows directly from how your application configures the client, how quickly your `accessToken` function resolves, and the network path between your runtime and the Integration Gateway.

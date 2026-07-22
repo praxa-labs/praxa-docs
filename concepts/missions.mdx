@@ -1,7 +1,7 @@
 ---
 title: "Understanding Praxa Missions: Goals, Steps, and Lifecycle"
 sidebarTitle: "Missions"
-description: "A mission is a governed, goal-directed agent task in Praxa. Learn about mission structure, lifecycle states, steps, and how the Integration Gateway executes missions."
+description: "A mission is the core unit of work in Praxa: a governed, goal-directed agent task. Learn about mission structure, lifecycle states, and real-time events."
 ---
 
 A **mission** is the fundamental unit of work in Praxa. When you submit a mission, you hand the Integration Gateway a natural-language goal and a resource budget. The gateway validates your request against policy — checking tenant, principal, consent, purpose, scope, and idempotency — then orchestrates an AI agent to accomplish the goal entirely server-side. You never embed provider API keys in your code; Praxa's authority and execution plane handles all credential management on your behalf.
@@ -70,7 +70,7 @@ Once created, a mission moves through a set of status values that describe its c
 | `waiting` | The agent has paused, typically awaiting a human-in-the-loop signal or an external event. |
 | `succeeded` | The agent completed the goal within the resource budget. All steps finished cleanly. |
 | `failed` | The mission could not be completed. This may indicate a budget exceeded condition, an unrecoverable error, or a policy rejection during execution. |
-| `cancelled` | You (or your application) called `cancelMission()` and the cancellation was propagated by the Control Plane. |
+| `cancelled` | You (or your application) called `cancelMission()` and the gateway propagated the cancellation. |
 
 These values come directly from the `MissionProjection` type returned by the gateway:
 
@@ -144,7 +144,7 @@ for await (const event of client.missionEvents(mission.runId)) {
 }
 ```
 
-Each emitted `AuraSseEvent` carries an `id` (cursor), an `event` type string, and a `data` payload parsed from JSON. If your connection drops mid-stream, pass the last received `id` as `lastEventId` when you reconnect — the gateway replays events from your cursor position within its bounded durable replay window.
+Each emitted event carries an `id` (cursor), an `event` type string, and a `data` payload parsed from JSON. If your connection drops mid-stream, pass the last received `id` as `lastEventId` when you reconnect — the gateway replays events from your cursor position within its bounded durable replay window.
 
 ```typescript
 // Resume a dropped stream from the last seen event

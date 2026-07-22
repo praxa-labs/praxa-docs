@@ -1,7 +1,7 @@
 ---
-title: "Authenticate Praxa API Requests with OAuth Tokens"
+title: "Authenticating Praxa API Requests with OAuth Bearer Tokens"
 sidebarTitle: "Authentication"
-description: "The Praxa API uses OAuth 2.0 Bearer tokens. Pass your short-lived access token in the Authorization header on every request. Tokens are scoped per operation."
+description: "The Praxa API uses short-lived OAuth 2.0 Bearer tokens. Send your token in the Authorization header on every request. Each token covers one or more scopes."
 ---
 
 Every request to the Praxa Integration Gateway must include a valid OAuth 2.0 Bearer token in the `Authorization` header. Praxa uses short-lived Ed25519 delegated tokens — not long-lived API keys — so your integration must be capable of refreshing tokens transparently before they expire. Tokens are issued for a specific gateway audience, tenant, principal, and scope set, meaning a token granted for one operation cannot be used for another.

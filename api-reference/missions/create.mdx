@@ -1,7 +1,7 @@
 ---
-title: "POST /v8/missions — Create a New Agent Mission"
+title: "POST /v8/missions — Create a Governed Agent Mission"
 sidebarTitle: "Create Mission"
-description: "POST /v8/missions creates a new governed AI agent mission. Accepts a goal specification and resource budget. Requires missions:write scope and an Idempotency-Key header."
+description: "POST /v8/missions creates a governed AI agent mission. Accepts a goal specification and resource budget. Requires missions:write scope and Idempotency-Key."
 ---
 
 The `POST /v8/missions` endpoint is your entry point for every governed operation on the Praxa Integration Gateway. You submit a goal specification describing what you want the agent to accomplish alongside a resource budget that caps how much work it can do. The gateway records your intent durably, assigns a unique run ID, and hands the mission off to the private policy and broker plane for execution. Because the intake is idempotent, you can safely retry on network failure by re-sending the same `Idempotency-Key`.

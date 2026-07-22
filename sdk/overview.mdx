@@ -1,7 +1,7 @@
 ---
-title: "Praxa TypeScript SDK: @praxa/sdk Overview"
+title: "@praxa/sdk — Praxa TypeScript SDK Overview and Install"
 sidebarTitle: "Overview"
-description: "@praxa/sdk is the official TypeScript client for the Praxa Integration Gateway. Install it to submit missions, stream events, and query capabilities from any Node.js application."
+description: "@praxa/sdk is the official TypeScript client for the Praxa Integration Gateway. Submit missions, stream events, and query capabilities from Node.js."
 ---
 
 `@praxa/sdk` is the official TypeScript client for the Praxa Integration Gateway. It is credential-free by design: you supply a short-lived delegated OAuth access token at runtime, and the SDK contains no embedded secrets, no provider credentials, and no execution authority. With a single `PraxaClient` instance you can submit governed AI agent missions, stream their Server-Sent Event lifecycles in real time, search capabilities, query memory, and inspect traces and skills — all against the versioned `/v8` API surface.
@@ -45,7 +45,7 @@ pnpm add @praxa/sdk
 
 ## Exports
 
-Import the client and error class from the main entry point. For advanced introspection of route contracts, import from the `/contracts` sub-path:
+Import the client and error class from the main entry point. Version constants and route-contract metadata are also exported from the same `@praxa/sdk` package:
 
 ```typescript
 // Main SDK — client, error, and all generated types

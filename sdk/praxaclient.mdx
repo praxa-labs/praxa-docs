@@ -1,7 +1,7 @@
 ---
-title: "PraxaClient: Full SDK Reference"
+title: "PraxaClient SDK Reference — Methods, Options, and Examples"
 sidebarTitle: "PraxaClient"
-description: "Complete reference for PraxaClient — the main class in @praxa/sdk. Covers all constructor options, every method signature, and examples for missions, capabilities, memory, traces, and skills."
+description: "Full PraxaClient reference for @praxa/sdk. Covers constructor options, every method signature, and working examples for missions, capabilities, and memory."
 ---
 
 `PraxaClient` is the single entry point for all Praxa Integration Gateway interactions. You construct one instance per application — passing the gateway origin and an access-token provider — and then call its methods to create missions, stream their event lifecycles, search capabilities, query memory, and inspect skills, traces, and coverage. Every method returns a native `Promise` (or an `AsyncGenerator` for event streams), so you can use standard `async`/`await` patterns and `AbortSignal` cancellation throughout.
@@ -23,8 +23,8 @@ const client = new PraxaClient({
   The HTTPS origin of the Praxa Integration Gateway — for example, `"https://gateway.praxa.ai"`. Pass the origin only, not a path. URLs that use `http:`, contain a username, or contain a password are rejected at construction time.
 </ParamField>
 
-<ParamField path="accessToken" type="string | (() => string | Promise<string>)" required>
-  A short-lived delegated OAuth access token, or an async function that returns one. The SDK calls your provider before every request, so you can rotate tokens transparently. Tokens must be 1–16,384 characters and must not contain carriage-return or line-feed characters.
+<ParamField path="accessToken" type="() => string | Promise<string>" required>
+  A function that returns a short-lived delegated OAuth access token (or a `Promise` that resolves to one). The SDK calls your provider before every request, so you can rotate tokens transparently. Returned tokens must be 1–16,384 characters and must not contain carriage-return or line-feed characters.
 </ParamField>
 
 <ParamField path="fetch" type="typeof globalThis.fetch">

@@ -1,7 +1,7 @@
 ---
 title: "Praxa Benchmarks: Measuring Agentic Mission Performance"
 sidebarTitle: "Overview"
-description: "The Praxa benchmarks suite measures mission latency, event streaming throughput, SDK retry performance, and Integration Gateway reliability under various workloads."
+description: "The Praxa benchmarks suite measures mission latency, event streaming throughput, SDK retry performance, and gateway reliability under load."
 ---
 
 The praxa-benchmarks suite provides reproducible performance measurements for the Praxa platform, helping you understand expected latency and throughput characteristics before production deployment. Because Praxa operates as a credential-free agentic mission platform — with the Integration Gateway enforcing tenant, consent, and budget validation on every request — accurate performance data helps you size resource budgets, tune retry parameters, and design mission fan-out patterns with confidence. All benchmark scenarios run against a real Integration Gateway using the `@praxa/sdk` client, so results reflect the full end-to-end path including token acquisition, contract validation, and SSE stream delivery.
@@ -50,7 +50,7 @@ All benchmark scenarios follow a consistent methodology to ensure you can compar
 
 **Resource budget isolation.** Every benchmark scenario specifies a fixed `ResourceBudget` — identical `maximumSteps`, `maximumToolCalls`, `maximumElapsedMs`, and `maximumParallelism` values — so that budget validation overhead is constant across runs. Scenarios that explore budget effects vary exactly one parameter at a time.
 
-**Reproducibility constraints.** Because results depend on your gateway deployment, network path, and the complexity of each `goalSpec`, the benchmarks suite records the `PRAXA_BASE_URL`, SDK version (`PRAXA_OPENAPI_VERSION = "8.1.0"`), and contract fingerprint (`PRAXA_CONTRACT_VERSION = "aura-integration-gateway-v8.1"`) alongside every result file. Do not compare results across different contract versions or gateway deployments without accounting for those variables.
+**Reproducibility constraints.** Because results depend on your gateway deployment, network path, and the complexity of each `goalSpec`, the benchmarks suite records the `PRAXA_BASE_URL`, SDK version (`AURA_OPENAPI_VERSION = "8.1.0"`), and contract fingerprint (`AURA_CONTRACT_VERSION = "aura-integration-gateway-v8.1"`) alongside every result file. Do not compare results across different contract versions or gateway deployments without accounting for those variables.
 
 <Info>
   The praxa-benchmarks repository is under active development. Benchmark scenarios, harness configuration, and result schemas may change before the first stable release. Watch [praxa-labs/praxa-benchmarks](https://github.com/praxa-labs/praxa-benchmarks) on GitHub for release announcements.

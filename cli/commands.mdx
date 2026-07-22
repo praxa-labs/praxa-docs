@@ -1,7 +1,7 @@
 ---
-title: "Praxa CLI Command Reference"
+title: "Praxa CLI Commands: Flags, Env Vars, and Usage Examples"
 sidebarTitle: "Commands"
-description: "Full reference for all praxa CLI commands: version, doctor, mission get, mission create, and mission cancel. Includes flags, environment variables, and example output."
+description: "Full reference for praxa CLI commands: version, doctor, mission get, create, and cancel. Covers required flags, environment variables, and example output."
 ---
 
 This page covers every command available in `@praxa/cli`. Each section includes a description of what the command does, the full flag set, which environment variables it reads, and a runnable example. All commands write JSON to stdout and errors to stderr, exiting with code `1` on failure.
@@ -121,7 +121,7 @@ praxa mission get --run-id 550e8400-e29b-41d4-a716-446655440000 | jq '.status'
 
 ## `praxa mission create`
 
-Submits a new mission to the Praxa Integration Gateway by reading a JSON file from disk and posting it to the `/v8/missions` endpoint. The response contains the assigned run ID and the initial mission state.
+Submits a new mission to the Praxa Integration Gateway by reading a JSON file from disk. The response contains the assigned run ID and the initial mission state.
 
 **Syntax**
 
@@ -182,7 +182,7 @@ echo "Mission started: $RUN_ID"
 
 ## `praxa mission cancel`
 
-Requests durable cancellation of a running mission through the Control Plane. The reason string is recorded in the mission audit log. You must provide a unique idempotency key so the cancellation request is safely retryable in the event of a network failure.
+Requests durable cancellation of a running mission. The reason string is recorded in the mission audit log. You must provide a unique idempotency key so the cancellation request is safely retryable in the event of a network failure.
 
 **Syntax**
 

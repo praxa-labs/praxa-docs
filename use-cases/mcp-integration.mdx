@@ -1,7 +1,7 @@
 ---
-title: "Integrate Praxa with MCP-Compatible AI Agents"
+title: "Integrate Praxa Capabilities with MCP-Compatible Agents"
 sidebarTitle: "MCP Integration"
-description: "Use Praxa's MCP 2025-03-26 contracts to integrate with any MCP-compatible AI agent framework. The @praxa/mcp-contracts package provides ready-to-use tool definitions."
+description: "Add Praxa to any MCP-compatible agent with @praxa/mcp-contracts. Get typed tool definitions, input schemas, and OAuth scopes for all 11 Praxa operations."
 ---
 
 Praxa ships first-class MCP (Model Context Protocol) 2025-03-26 support via the `@praxa/mcp-contracts` package. The package exports the full set of typed tool definitions — names, input schemas, required scopes, and HTTP operation metadata — so you can register Praxa capabilities with any MCP-compatible server or agent framework in a few lines of code, without having to hand-craft JSON Schema or maintain route mappings yourself.
@@ -135,11 +135,11 @@ console.log(MCP_PROTOCOL_VERSION); // "2025-03-26"
 console.log(MCP_SERVER_NAME);      // "aura-agent-os"
 ```
 
-Pass `MCP_PROTOCOL_VERSION` to your server's handshake or capability advertisement to declare compatibility with the MCP 2025-03-26 specification. The `MCP_SERVER_NAME` value is the canonical wire-level identity for the Praxa gateway — use it when configuring client discovery or logging.
+Pass `MCP_PROTOCOL_VERSION` to your server's handshake or capability advertisement to declare compatibility with the MCP 2025-03-26 specification. Use `MCP_SERVER_NAME` when configuring client discovery or logging so that your server identifies itself consistently.
 
 <Note>
-  `MCP_SERVER_NAME` is `"aura-agent-os"` — Aura is the wire-level compatibility
-  identifier for the Praxa Integration Gateway. Both names refer to the same
-  service; Praxa is the public product name and Aura is the stable
-  contract-layer name.
+  `MCP_SERVER_NAME` (`"aura-agent-os"`) is the stable identifier the Praxa
+  gateway uses on the MCP protocol layer. Always reference this constant rather
+  than hard-coding the string, so your integration automatically picks up any
+  future updates.
 </Note>

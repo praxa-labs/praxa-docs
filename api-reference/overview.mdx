@@ -1,10 +1,10 @@
 ---
-title: "Praxa Integration Gateway REST API Reference"
+title: "Praxa Integration Gateway REST API v8.1.0 Reference"
 sidebarTitle: "Overview"
-description: "The Praxa Integration Gateway REST API (v8.1.0) lets you create, monitor, and control governed AI agent missions. All endpoints require OAuth Bearer authentication."
+description: "The Praxa Integration Gateway REST API v8.1.0 lets you submit and manage governed AI agent missions. All 14 endpoints require scoped OAuth Bearer tokens."
 ---
 
-The Praxa Integration Gateway exposes a REST API at version 8.1.0 (contract: `aura-integration-gateway-v8.1`) for submitting and managing governed AI agent missions. The public edge delegates every governed operation to a private deterministic policy, broker, and verifier plane — models, SDKs, CLIs, and MCP tools grant no action authority of their own. This reference covers all 14 endpoints available in v8.1.0.
+The Praxa Integration Gateway exposes a REST API at version 8.1.0 (contract: `aura-integration-gateway-v8.1`) for submitting and managing governed AI agent missions. Models, SDKs, CLIs, and MCP tools grant no action authority of their own — all effects are governed by the platform's policy and consent controls. This reference covers all 14 endpoints available in v8.1.0.
 
 ## Base URL
 
@@ -51,9 +51,10 @@ The table below lists every endpoint exposed by the Integration Gateway. Click a
 | `GET` | `/v8/world-model/certificates` | List world model certificates |
 | `GET` | `/v8/coverage` | Get reference coverage |
 | `POST` | `/mcp` | MCP protocol endpoint |
+| `GET` | `/mcp` | Returns `405 Method Not Allowed`; server-to-client SSE push is disabled |
 
 <Tip>
-  The `/mcp` endpoint sits outside the `/v8/` prefix because it implements the
+  The `/mcp` endpoints sit outside the `/v8/` prefix because they implement the
   MCP 2025-03-26 Streamable HTTP JSON-RPC protocol, which has its own
   versioning surface.
 </Tip>
