@@ -1,0 +1,179 @@
+---
+title: "Stream Mission Events with Praxa SSE"
+sidebarTitle: "Mission Events"
+description: "missionEvents() returns an async generator that streams Server-Sent Events from a running Praxa mission in real time. Learn how to consume, filter, and handle mission event streams."
+---
+
+`client.missionEvents()` opens a persistent HTTP connection to the `/v8/missions/{runId}/events` endpoint and returns a native `AsyncGenerator<AuraSseEvent>`. The gateway pushes Server-Sent Events over this stream as the mission progresses through its lifecycle — when steps start and complete, when the agent invokes tools, and when the mission reaches a terminal state. Because the generator is lazy, the connection is not opened until you enter the `for await` loop, and it is closed automatically when the generator finishes or when you break out of the loop.
+
+## Basic Usage
+
+Iterate over `missionEvents` with a standard `for await` loop. Each iteration yields one `AuraSseEvent` as soon as the gateway sends it:
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const mission = await client.createMission(
+  {
+    goalSpec: { task: "Prepare the weekly review" },
+    resourceBudget: {
+      maximumSteps: 12,
+      maximumToolCalls: 8,
+      maximumElapsedMs: 120_000,
+      maximumParallelism: 2,
+    },
+  },
+  crypto.randomUUID(),
+);
+
+console.log({ runId: mission.runId, status: mission.status });
+
+for await (const event of client.missionEvents(mission.runId)) {
+  console.log(event.id, event.event, event.data);
+}
+```
+
+## AuraSseEvent Structure
+
+Every yielded value is an `AuraSseEvent` — a plain object with three fields:
+
+```typescript
+type AuraSseEvent = Readonly<{
+  id: string;      // Opaque server-assigned event ID (1–256 printable ASCII characters)
+  event: string;   // Event type name, e.g. "mission.started"
+  data: JsonValue; // Parsed JSON payload — object, array, string, number, boolean, or null
+}>;
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | A server-assigned identifier for this event. Pass it as `lastEventId` when reconnecting to resume from a specific position in the stream. |
+| `event` | `string` | The event type name. Use this to distinguish mission lifecycle phases in a switch statement. |
+| `data` | `JsonValue` | The event payload, already parsed from JSON. Cast to a more specific type once you know the event type. |
+
+## Handling Specific Event Types
+
+Branch on `event.event` to react to individual lifecycle phases:
+
+```typescript
+import type { AuraSseEvent, JsonObject } from "@praxa/sdk";
+
+for await (const event of client.missionEvents(mission.runId)) {
+  switch (event.event) {
+    case "mission.started": {
+      console.log("Mission is running, runId:", (event.data as JsonObject)["runId"]);
+      break;
+    }
+
+    case "mission.step.started": {
+      const step = event.data as JsonObject;
+      console.log("Step started:", step["stepId"]);
+      break;
+    }
+
+    case "mission.step.completed": {
+      const step = event.data as JsonObject;
+      console.log("Step completed:", step["stepId"], "→", step["outcome"]);
+      break;
+    }
+
+    case "mission.completed": {
+      console.log("Mission succeeded:", event.data);
+      break;
+    }
+
+    case "mission.failed": {
+      const failure = event.data as JsonObject;
+      console.error("Mission failed:", failure["reason"]);
+      break;
+    }
+
+    case "mission.cancelled": {
+      console.warn("Mission was cancelled:", event.data);
+      break;
+    }
+
+    default: {
+      // Forward-compatible: ignore event types you don't recognise
+      console.log("Unhandled event:", event.event, event.data);
+    }
+  }
+}
+```
+
+<Note>
+  Always include a `default` branch (or equivalent) to handle event types you do not recognise. The gateway may emit additional event types in future contract versions without a breaking change.
+</Note>
+
+## Cancelling a Stream
+
+Pass an `AbortSignal` in the options object to cancel the stream from outside the loop. This is useful for enforcing a client-side timeout or for stopping the stream when your application shuts down:
+
+```typescript
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 30_000);
+
+try {
+  for await (const event of client.missionEvents(mission.runId, { signal: controller.signal })) {
+    console.log(event.id, event.event, event.data);
+  }
+} finally {
+  clearTimeout(timeout);
+}
+```
+
+When the signal fires, the SDK cancels the underlying `ReadableStream` reader and releases its lock. Any in-progress `yield` resolves with an abort rejection that propagates out of the `for await` loop as the signal's `reason`.
+
+## Collecting Final Results
+
+If you want to process all events after the stream closes — for example to extract the mission outcome — collect them into an array and inspect the terminal event:
+
+```typescript
+import type { AuraSseEvent, JsonObject } from "@praxa/sdk";
+
+const terminalEvents = new Set(["mission.completed", "mission.failed", "mission.cancelled"]);
+
+const events: AuraSseEvent[] = [];
+
+for await (const event of client.missionEvents(mission.runId)) {
+  events.push(event);
+}
+
+const terminal = events.find((e) => terminalEvents.has(e.event));
+
+if (terminal?.event === "mission.completed") {
+  console.log("Final result:", terminal.data);
+} else if (terminal?.event === "mission.failed") {
+  const failure = terminal.data as JsonObject;
+  console.error("Mission failed:", failure["reason"]);
+} else if (terminal?.event === "mission.cancelled") {
+  console.warn("Mission was cancelled.");
+} else {
+  console.warn("Stream closed without a recognised terminal event.");
+}
+```
+
+You can also resume a partially consumed stream by passing the `id` of the last event you received as `lastEventId`:
+
+```typescript
+// Store the last seen ID during consumption
+let lastEventId: string | undefined;
+
+for await (const event of client.missionEvents(mission.runId, { lastEventId })) {
+  lastEventId = event.id;
+  // ... process event
+}
+```
+
+<Note>
+  The SSE stream closes automatically when the mission reaches a terminal state: `succeeded`, `failed`, or `cancelled`. You do not need to poll `getMission` to detect completion — the stream ending is the signal.
+</Note>
+
+<Warning>
+  Do not rely on event ordering for side effects such as writing to a database or calling an external API. Always check `event.event` before acting, and treat each event as idempotent where possible. Network interruptions can cause the same event to be delivered more than once if you reconnect with `lastEventId`.
+</Warning>

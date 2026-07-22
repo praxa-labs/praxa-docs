@@ -1,0 +1,145 @@
+---
+title: "Integrate Praxa with MCP-Compatible AI Agents"
+sidebarTitle: "MCP Integration"
+description: "Use Praxa's MCP 2025-03-26 contracts to integrate with any MCP-compatible AI agent framework. The @praxa/mcp-contracts package provides ready-to-use tool definitions."
+---
+
+Praxa ships first-class MCP (Model Context Protocol) 2025-03-26 support via the `@praxa/mcp-contracts` package. The package exports the full set of typed tool definitions — names, input schemas, required scopes, and HTTP operation metadata — so you can register Praxa capabilities with any MCP-compatible server or agent framework in a few lines of code, without having to hand-craft JSON Schema or maintain route mappings yourself.
+
+<Info>
+  The `@praxa/mcp-contracts` package contains **protocol-only contracts**. It
+  defines what the tools look like and what they require; it does not include
+  server-side execution logic or provider credentials. Your application is
+  responsible for routing each tool invocation to a `PraxaClient` instance that
+  holds a valid access token.
+</Info>
+
+## Installing MCP Contracts
+
+```bash
+npm install @praxa/mcp-contracts
+```
+
+The package has no runtime dependencies and is safe to import in both Node.js and edge environments.
+
+## Available MCP Tools
+
+`PRAXA_MCP_TOOLS` exports an array of 11 tool definitions covering the full Praxa Integration Gateway surface. The table below lists each tool, the operation it maps to, and the OAuth scope your access token must carry for the call to be authorised.
+
+| Tool name | Operation | Required scope |
+|---|---|---|
+| `aura_create_mission` | Submit a new agent mission | `missions:write` |
+| `aura_get_mission` | Read a mission projection by `runId` | `missions:read` |
+| `aura_signal_mission` | Send a named signal to a running mission | `missions:write` |
+| `aura_cancel_mission` | Request durable mission cancellation | `missions:write` |
+| `aura_search_capabilities` | Search policy-eligible capability manifests | `capabilities:read` |
+| `aura_query_memory` | Query purpose-filtered memory | `memory:read` |
+| `aura_get_skill` | Read a versioned governed skill | `skills:read` |
+| `aura_get_trace` | Read a redacted causal trace | `traces:read` |
+| `aura_list_goals` | List context-twin goals | `context:read` |
+| `aura_list_world_certificates` | List signed model capability certificates | `world:read` |
+| `aura_get_coverage` | Read reference coverage evidence | `coverage:read` |
+
+Each entry in the array also carries `inputSchema` (a JSON Schema object), `operationId`, `method`, `path`, `idempotency`, and an optional `pathArgument` field that names the input key to interpolate into the URL path.
+
+## Registering Tools with Your MCP Server
+
+Pass `PRAXA_MCP_TOOLS` directly to your server's tool registration loop. The `inputSchema` field on each tool is a ready-to-use JSON Schema object — most MCP server libraries accept this directly.
+
+```typescript
+import { PRAXA_MCP_TOOLS, MCP_PROTOCOL_VERSION } from "@praxa/mcp-contracts";
+import { PraxaClient } from "@praxa/sdk";
+
+const praxaClient = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+// Register all Praxa tools with your MCP server
+for (const tool of PRAXA_MCP_TOOLS) {
+  mcpServer.registerTool(tool.name, tool.inputSchema, async (args) => {
+    // Route to PraxaClient based on operationId
+    switch (tool.operationId) {
+      case "createMission":
+        return praxaClient.createMission(
+          { goalSpec: args.goalSpec, resourceBudget: args.resourceBudget },
+          args.idempotencyKey,
+        );
+      case "getMission":
+        return praxaClient.getMission(args.runId);
+      case "signalMission":
+        return praxaClient.signalMission(args.runId, args.signal, args.payload, args.idempotencyKey);
+      case "cancelMission":
+        return praxaClient.cancelMission(args.runId, args.reason, args.idempotencyKey);
+      case "searchCapabilities":
+        return praxaClient.searchCapabilities({ actionFamily: args.actionFamily, purpose: args.purpose, targetType: args.targetType });
+      case "queryMemory":
+        return praxaClient.queryMemory(args);
+      case "getSkill":
+        return praxaClient.getSkill(args.skillId);
+      case "getTrace":
+        return praxaClient.getTrace(args.traceId);
+      case "listGoals":
+        return praxaClient.listGoals();
+      case "listWorldModelCertificates":
+        return praxaClient.listWorldModelCertificates();
+      case "getReferenceCoverage":
+        return praxaClient.getReferenceCoverage();
+      default:
+        throw new Error(`Unknown Praxa operation: ${tool.operationId}`);
+    }
+  });
+}
+
+console.log(`Registered ${PRAXA_MCP_TOOLS.length} Praxa tools (MCP ${MCP_PROTOCOL_VERSION})`);
+```
+
+<Tip>
+  You can narrow which tools you expose by filtering the array before iterating.
+  For example, to register only read-only tools in a restricted context:
+
+  ```typescript
+  const readOnlyTools = PRAXA_MCP_TOOLS.filter(
+    (tool) => tool.idempotency === "safe-read",
+  );
+  ```
+</Tip>
+
+## Looking Up a Single Tool
+
+Use `praxaMcpTool()` to retrieve the definition for a single tool by name. This is useful when you need to inspect the input schema or required scope for a specific operation without importing the full array.
+
+```typescript
+import { praxaMcpTool } from "@praxa/mcp-contracts";
+
+const createMissionTool = praxaMcpTool("aura_create_mission");
+
+if (createMissionTool) {
+  console.log("Tool name:", createMissionTool.name);
+  console.log("Required scope:", createMissionTool.requiredScope); // "missions:write"
+  console.log("Idempotency:", createMissionTool.idempotency);       // "required"
+  console.log("Input schema:", createMissionTool.inputSchema);
+}
+```
+
+`praxaMcpTool()` returns `undefined` if no tool with the given name exists, so it is safe to use in conditional registration logic.
+
+## Protocol Version
+
+The package exports two constants that identify the MCP server:
+
+```typescript
+import { MCP_PROTOCOL_VERSION, MCP_SERVER_NAME } from "@praxa/mcp-contracts";
+
+console.log(MCP_PROTOCOL_VERSION); // "2025-03-26"
+console.log(MCP_SERVER_NAME);      // "aura-agent-os"
+```
+
+Pass `MCP_PROTOCOL_VERSION` to your server's handshake or capability advertisement to declare compatibility with the MCP 2025-03-26 specification. The `MCP_SERVER_NAME` value is the canonical wire-level identity for the Praxa gateway — use it when configuring client discovery or logging.
+
+<Note>
+  `MCP_SERVER_NAME` is `"aura-agent-os"` — Aura is the wire-level compatibility
+  identifier for the Praxa Integration Gateway. Both names refer to the same
+  service; Praxa is the public product name and Aura is the stable
+  contract-layer name.
+</Note>

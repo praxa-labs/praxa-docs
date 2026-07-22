@@ -1,0 +1,150 @@
+---
+title: "GET /v8/coverage — Get Integration Gateway Coverage"
+sidebarTitle: "Coverage"
+description: "GET /v8/coverage returns a reference coverage report showing which Praxa API endpoints and capabilities are available on your Integration Gateway deployment."
+---
+
+The `GET /v8/coverage` endpoint returns an evidence-scored coverage report for your Integration Gateway deployment. The report tells you which API endpoints are registered, which capability kinds are available, and how thoroughly each has been verified by the Praxa platform's independent evidence-scoring process. This is the fastest way to understand what your specific deployment can do and to confirm that it is configured correctly before you build missions against it.
+
+<Tip>
+  Call `GET /v8/coverage` first when setting up a new deployment or diagnosing unexpected capability gaps. The coverage report gives you a single, authoritative view of everything your gateway exposes — without having to search capabilities endpoint-by-endpoint.
+</Tip>
+
+## Endpoint
+
+```
+GET /v8/coverage
+```
+
+**Required scope:** `coverage:read`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl https://your-gateway.example/v8/coverage \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN"
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const coverage = await client.getReferenceCoverage();
+
+console.log(coverage);
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+The response body is a coverage report object. The report is scoped to your principal — you only see endpoints and capabilities that your OAuth token's scopes permit you to read. Coverage scores are evidence-based assessments of verification depth, not production readiness guarantees.
+
+```json Example 200 response
+{
+  "gatewayVersion": "8.1.0",
+  "contractVersion": "aura-integration-gateway-v8.1",
+  "generatedAt": "2025-07-11T10:00:00Z",
+  "endpoints": [
+    {
+      "operationId": "createMission",
+      "method": "POST",
+      "path": "/v8/missions",
+      "scope": "missions:write",
+      "available": true,
+      "evidenceScore": 0.98
+    },
+    {
+      "operationId": "getMission",
+      "method": "GET",
+      "path": "/v8/missions/{runId}",
+      "scope": "missions:read",
+      "available": true,
+      "evidenceScore": 0.98
+    },
+    {
+      "operationId": "streamMissionEvents",
+      "method": "GET",
+      "path": "/v8/missions/{runId}/events",
+      "scope": "missions:read",
+      "available": true,
+      "evidenceScore": 0.95
+    },
+    {
+      "operationId": "searchCapabilities",
+      "method": "POST",
+      "path": "/v8/capabilities/search",
+      "scope": "capabilities:read",
+      "available": true,
+      "evidenceScore": 0.96
+    }
+  ],
+  "capabilityKinds": {
+    "api": { "count": 12, "healthyCount": 11 },
+    "mcp": { "count": 4, "healthyCount": 4 },
+    "skill": { "count": 7, "healthyCount": 6 },
+    "browser": { "count": 2, "healthyCount": 2 },
+    "a2a_agent": { "count": 1, "healthyCount": 1 },
+    "human": { "count": 0, "healthyCount": 0 },
+    "device": { "count": 0, "healthyCount": 0 }
+  },
+  "overallEvidenceScore": 0.96
+}
+```
+
+**Coverage report fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `gatewayVersion` | string | The Integration Gateway API version this report was generated against |
+| `contractVersion` | string | The Aura contract version identifier (e.g., `"aura-integration-gateway-v8.1"`) |
+| `generatedAt` | string | ISO 8601 UTC timestamp of when the report was produced |
+| `endpoints` | array | List of all API endpoints visible to your principal with their availability and evidence scores |
+| `endpoints[].operationId` | string | The operation identifier from the OpenAPI contract |
+| `endpoints[].method` | string | HTTP method (`GET`, `POST`, etc.) |
+| `endpoints[].path` | string | API path |
+| `endpoints[].scope` | string | Required OAuth scope |
+| `endpoints[].available` | boolean | Whether this endpoint is reachable and policy-eligible for your principal |
+| `endpoints[].evidenceScore` | number | Evidence-based verification score from 0.0 to 1.0 |
+| `capabilityKinds` | object | Per-kind summary of registered capabilities and how many are currently healthy |
+| `overallEvidenceScore` | number | Aggregate evidence score across all covered endpoints (0.0–1.0) |
+
+<Warning>
+  The `evidenceScore` reflects the depth of independent verification, not a guarantee of production readiness. An endpoint with a score of `1.0` has been thoroughly verified by the platform's evidence-scoring process. Always test in your specific environment before relying on coverage scores for production decisions.
+</Warning>
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `coverage:read` scope |
+
+---
+
+## SDK Equivalent
+
+```typescript
+const coverage = await client.getReferenceCoverage();
+```
+
+**Returns:** `Promise<JsonValue>`

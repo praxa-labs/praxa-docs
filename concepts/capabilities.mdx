@@ -1,0 +1,118 @@
+---
+title: "Capabilities: Discover What Your Agent Can Do"
+sidebarTitle: "Capabilities"
+description: "Capabilities are the actions and integrations available to Praxa missions. Use the capability search API to discover what your gateway supports before submitting a mission."
+---
+
+**Capabilities** are the integrations and actions that the Praxa Integration Gateway can invoke on behalf of a running mission. Before you submit a mission, you can search the gateway's capability registry to discover what is available — letting you confirm that the tools your agent needs are present and healthy before committing to a run. Capability discovery is read-only and safe to call as often as you need.
+
+## What Are Capabilities
+
+A capability represents a specific type of action the gateway knows how to perform. This could be anything the gateway's operator has registered — web search, code execution, document retrieval, database queries, external API calls, browser automation, or custom integrations. Capabilities are organised by `kind`, which describes the underlying integration mechanism:
+
+| Kind | Description |
+|---|---|
+| `api` | A governed REST or RPC call to an external service. |
+| `mcp` | An action exposed through an MCP 2025-03-26 tool server. |
+| `a2a_agent` | A call to another agent via the Agent-to-Agent protocol. |
+| `browser` | Automated browser interaction for web tasks. |
+| `device` | Interaction with a connected device or IoT endpoint. |
+| `skill` | A versioned, reusable Praxa skill registered in the gateway. |
+| `human` | A human-in-the-loop escalation action. |
+
+The gateway owns all credential management for every capability. Your application code never handles provider API keys — the gateway injects credentials during execution as authorised by policy.
+
+## Searching Capabilities
+
+Use `client.searchCapabilities()` to find capabilities that match a described need. You pass a `CapabilityRequirement` object that specifies the `actionFamily` (a broad action category), the `purpose` (why you need it), and the `targetType` (the kind of resource being acted on). The gateway returns a ranked list of matching `CapabilityManifest` entries that your tenant's policy permits.
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+import type { CapabilityRequirement } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: async () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+// Describe what you need — the gateway matches against registered capabilities
+const requirement: CapabilityRequirement = {
+  actionFamily: "search",
+  purpose:      "web search and summarization",
+  targetType:   "webpage",
+};
+
+const capabilities = await client.searchCapabilities(requirement);
+
+for (const cap of capabilities) {
+  console.log(cap.capabilityId, cap.kind, cap.healthState);
+}
+```
+
+The search is a **semantic match** — the gateway ranks capabilities by how well they fit your requirement description. Receiving a result in the list means policy has determined that your principal may use it; it is not merely a directory listing. Results are capped at 256 entries per search.
+
+Note that `principalId` is injected automatically from your OAuth token and is forbidden from the `CapabilityRequirement` request body. You do not specify which principal is searching.
+
+## CapabilityManifest
+
+Each result returned by `searchCapabilities()` is a `CapabilityManifest` that describes a single registered capability:
+
+```typescript
+import type { CapabilityManifest } from "@praxa/sdk";
+
+type CapabilityManifest = Readonly<{
+  readonly capabilityId: string;  // stable unique identifier for this capability
+  readonly kind: "api" | "mcp" | "a2a_agent" | "browser" | "device" | "skill" | "human";
+  readonly version: string;       // semantic version of the capability contract
+  readonly contractHash: string;  // sha-256 hex digest of the capability contract
+  readonly healthState: "healthy" | "degraded" | "unavailable" | "quarantined";
+}>;
+```
+
+| Field | Description |
+|---|---|
+| `capabilityId` | A stable string identifier for this capability. You can reference it in observability queries and trace analysis. |
+| `kind` | The integration mechanism — see the table in the previous section. |
+| `version` | The semantic version of the capability's contract. Use this to track breaking changes when your gateway is updated. |
+| `contractHash` | A SHA-256 hex digest of the capability's contract definition. You can use this for offline verification that the contract has not changed. |
+| `healthState` | The current operational state. Only `healthy` capabilities are reliably invocable; `degraded` may produce partial results; `unavailable` and `quarantined` will not serve requests. |
+
+Check `healthState` before submitting missions that depend on a specific capability. If a required capability is `unavailable` or `quarantined`, your mission will likely fail or stall waiting for it.
+
+```typescript
+const healthy = capabilities.filter(cap => cap.healthState === "healthy");
+
+if (healthy.length === 0) {
+  throw new Error("No healthy capabilities matched the requirement.");
+}
+
+console.log(`${healthy.length} healthy capabilities available.`);
+```
+
+## Using Capabilities in Missions
+
+You do **not** invoke capabilities directly from your application code. Instead, you describe your goal in the `goalSpec` of a mission, and the agent autonomously selects and invokes the appropriate capabilities as it executes steps toward that goal. The Integration Gateway routes each step to an eligible capability based on the agent's intent, your tenant's policy, and the capability's current health state.
+
+```typescript
+// You describe the goal — the agent handles capability selection
+const mission = await client.createMission(
+  {
+    goalSpec: {
+      task: "Search the web for recent TypeScript 5.5 release notes and summarise the key changes",
+    },
+    resourceBudget: {
+      maximumSteps: 8,
+      maximumToolCalls: 4,
+      maximumElapsedMs: 60_000,
+      maximumParallelism: 1,
+    },
+  },
+  crypto.randomUUID(),
+);
+```
+
+This design means your application logic is decoupled from the specific integrations the gateway supports. When new capabilities are added or updated on the gateway, your missions can benefit from them without any code changes on your end.
+
+<Info>
+  Capability availability depends on your gateway's configuration and your tenant's policy. The same `searchCapabilities()` call may return different results across different gateway deployments or after a gateway update. Always verify capability health at runtime rather than assuming a capability you saw yesterday is still available today.
+</Info>

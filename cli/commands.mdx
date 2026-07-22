@@ -1,0 +1,230 @@
+---
+title: "Praxa CLI Command Reference"
+sidebarTitle: "Commands"
+description: "Full reference for all praxa CLI commands: version, doctor, mission get, mission create, and mission cancel. Includes flags, environment variables, and example output."
+---
+
+This page covers every command available in `@praxa/cli`. Each section includes a description of what the command does, the full flag set, which environment variables it reads, and a runnable example. All commands write JSON to stdout and errors to stderr, exiting with code `1` on failure.
+
+## `praxa version`
+
+Prints the CLI version, the embedded OpenAPI spec version, the wire contract version, and a SHA-256 fingerprint of the OpenAPI source. This command makes no network connection and requires no configuration, making it a reliable smoke test after installation.
+
+**Syntax**
+
+```bash
+praxa version
+# or
+praxa --version
+```
+
+**Flags**
+
+This command accepts no flags.
+
+**Environment variables**
+
+None required.
+
+**Example output**
+
+```json
+{
+  "cliVersion": "0.1.0",
+  "openapiVersion": "8.1.0",
+  "contractVersion": "aura-integration-gateway-v8.1",
+  "openapiSha256": "<hex fingerprint>"
+}
+```
+
+<Tip>
+Run `praxa version` immediately after installation to confirm the correct build is on your `PATH` and to capture the exact OpenAPI version for support requests.
+</Tip>
+
+---
+
+## `praxa doctor`
+
+Makes an authenticated read-only request to your gateway to verify that the URL is reachable, the TLS certificate is valid, and the access token is accepted. It fetches reference coverage data and returns it alongside an `ok: true` field on success.
+
+**Syntax**
+
+```bash
+praxa doctor [--base-url <url>]
+```
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--base-url <url>` | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+
+**Environment variables**
+
+| Variable | Description |
+|---|---|
+| `PRAXA_BASE_URL` | Gateway HTTPS URL (required if `--base-url` is not provided) |
+| `PRAXA_ACCESS_TOKEN` | Short-lived delegated OAuth token (required) |
+
+**Example**
+
+```bash
+praxa doctor
+```
+
+```json
+{
+  "ok": true,
+  "coverage": { ... }
+}
+```
+
+---
+
+## `praxa mission get`
+
+Retrieves an authoritative mission projection for the given run ID. Use this command to poll mission status, inspect the current state, or retrieve output after a mission completes.
+
+**Syntax**
+
+```bash
+praxa mission get --run-id <uuid> [--base-url <url>]
+```
+
+**Flags**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--run-id <uuid>` | Yes | The UUID of the mission run to retrieve |
+| `--base-url <url>` | No | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+
+**Environment variables**
+
+| Variable | Description |
+|---|---|
+| `PRAXA_BASE_URL` | Gateway HTTPS URL (required if `--base-url` is not provided) |
+| `PRAXA_ACCESS_TOKEN` | Short-lived delegated OAuth token (required) |
+
+**Example**
+
+```bash
+praxa mission get --run-id 550e8400-e29b-41d4-a716-446655440000
+```
+
+You can pipe the output to `jq` to extract a specific field:
+
+```bash
+praxa mission get --run-id 550e8400-e29b-41d4-a716-446655440000 | jq '.status'
+```
+
+---
+
+## `praxa mission create`
+
+Submits a new mission to the Praxa Integration Gateway by reading a JSON file from disk and posting it to the `/v8/missions` endpoint. The response contains the assigned run ID and the initial mission state.
+
+**Syntax**
+
+```bash
+praxa mission create --input <path> --idempotency-key <uuid> [--base-url <url>]
+```
+
+**Flags**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--input <path>` | Yes | Path to a JSON file containing the mission payload |
+| `--idempotency-key <uuid>` | Yes | A unique UUID (v4 recommended) to make this request safely retryable |
+| `--base-url <url>` | No | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+
+**Environment variables**
+
+| Variable | Description |
+|---|---|
+| `PRAXA_BASE_URL` | Gateway HTTPS URL (required if `--base-url` is not provided) |
+| `PRAXA_ACCESS_TOKEN` | Short-lived delegated OAuth token (required) |
+
+**Mission file format**
+
+Your `--input` file must be valid JSON with at minimum a `goalSpec` object and a `resourceBudget` object:
+
+```json
+{
+  "goalSpec": { "task": "Prepare the weekly review" },
+  "resourceBudget": {
+    "maximumSteps": 12,
+    "maximumToolCalls": 8,
+    "maximumElapsedMs": 120000,
+    "maximumParallelism": 2
+  }
+}
+```
+
+**Example**
+
+```bash
+praxa mission create \
+  --input mission.json \
+  --idempotency-key $(uuidgen)
+```
+
+Store the returned run ID for subsequent `get` or `cancel` calls:
+
+```bash
+RUN_ID=$(praxa mission create \
+  --input mission.json \
+  --idempotency-key $(uuidgen) | jq -r '.runId')
+
+echo "Mission started: $RUN_ID"
+```
+
+---
+
+## `praxa mission cancel`
+
+Requests durable cancellation of a running mission through the Control Plane. The reason string is recorded in the mission audit log. You must provide a unique idempotency key so the cancellation request is safely retryable in the event of a network failure.
+
+**Syntax**
+
+```bash
+praxa mission cancel \
+  --run-id <uuid> \
+  --reason <text> \
+  --idempotency-key <uuid> \
+  [--base-url <url>]
+```
+
+**Flags**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--run-id <uuid>` | Yes | The UUID of the mission run to cancel |
+| `--reason <text>` | Yes | Human-readable cancellation reason recorded in the audit log |
+| `--idempotency-key <uuid>` | Yes | A unique UUID (v4 recommended) to make this request safely retryable |
+| `--base-url <url>` | No | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+
+**Environment variables**
+
+| Variable | Description |
+|---|---|
+| `PRAXA_BASE_URL` | Gateway HTTPS URL (required if `--base-url` is not provided) |
+| `PRAXA_ACCESS_TOKEN` | Short-lived delegated OAuth token (required) |
+
+**Example**
+
+```bash
+praxa mission cancel \
+  --run-id 550e8400-e29b-41d4-a716-446655440000 \
+  --reason "User requested cancellation" \
+  --idempotency-key $(uuidgen)
+```
+
+---
+
+<Note>
+All commands write their result as pretty-printed JSON to stdout. This makes it easy to pipe output to `jq` for scripting. Errors are written to stderr and the process exits with code `1`.
+</Note>
+
+<Warning>
+Idempotency keys must be unique UUIDs. Using the same key for two logically different requests (e.g. creating two different missions) causes the gateway to treat the second request as a duplicate and return the cached result of the first. Generate a fresh key per invocation using `$(uuidgen)` or an equivalent UUID v4 generator.
+</Warning>

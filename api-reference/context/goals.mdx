@@ -1,0 +1,121 @@
+---
+title: "GET /v8/context-twin/goals — List Context Goals"
+sidebarTitle: "List Goals"
+description: "GET /v8/context-twin/goals returns the current goal list from the context twin associated with your deployment. Requires context:read scope."
+---
+
+The `GET /v8/context-twin/goals` endpoint returns the active goals registered in the context twin associated with your Praxa deployment. The context twin is a persistent, stateful representation of your deployment's current operating context — it tracks long-horizon goals, standing objectives, and organisational constraints that missions can consult to align their behaviour without requiring you to re-specify them in every mission's goal specification. Retrieving the goal list lets you audit what standing objectives are currently active and verify that they reflect your intent before launching a new mission.
+
+## Endpoint
+
+```
+GET /v8/context-twin/goals
+```
+
+**Required scope:** `context:read`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl https://your-gateway.example/v8/context-twin/goals \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN"
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const goals = await client.listGoals();
+
+for (const goal of goals) {
+  console.log(`[${goal.priority}] ${goal.title} — ${goal.status}`);
+}
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+The response body is a purpose- and compartment-filtered array of goal objects. Only goals that your principal is permitted to read under the `context:read` scope are returned — goals outside your compartment or purpose boundary are silently excluded.
+
+```json Example 200 response
+{
+  "goals": [
+    {
+      "goalId": "goal_01j4k3m...",
+      "title": "Maintain weekly revenue reporting cadence for EMEA",
+      "description": "Produce and distribute the EMEA revenue review every Monday by 09:00 UTC.",
+      "status": "active",
+      "priority": "high",
+      "compartment": "team-emea",
+      "createdAt": "2025-06-01T00:00:00Z",
+      "updatedAt": "2025-07-07T08:55:00Z"
+    },
+    {
+      "goalId": "goal_01j1a2b...",
+      "title": "Monitor pipeline coverage weekly",
+      "description": "Track pipeline coverage ratio and alert when it drops below 110%.",
+      "status": "active",
+      "priority": "medium",
+      "compartment": "team-emea",
+      "createdAt": "2025-05-15T00:00:00Z",
+      "updatedAt": "2025-07-07T08:55:00Z"
+    }
+  ]
+}
+```
+
+**Goal object fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `goalId` | string | Stable unique identifier for this goal |
+| `title` | string | Short human-readable name for the goal |
+| `description` | string | Full description of the goal's intent and success criteria |
+| `status` | string | `"active"`, `"paused"`, or `"archived"` |
+| `priority` | string | Relative priority: `"critical"`, `"high"`, `"medium"`, or `"low"` |
+| `compartment` | string | The memory and context compartment this goal is scoped to |
+| `createdAt` | string | ISO 8601 UTC timestamp of when the goal was registered |
+| `updatedAt` | string | ISO 8601 UTC timestamp of the most recent modification |
+
+---
+
+## About the Context Twin
+
+The context twin is a standing, deployment-scoped store of goals, constraints, and operating preferences that persists independently of individual mission runs. Think of it as your deployment's long-term memory for *what* it should be doing, as opposed to the ephemeral state of *what it is currently doing* in a given mission. Missions consult the context twin automatically at planning time to align their step plans with your standing objectives. You can read goals with the `context:read` scope; modifying the context twin requires the `context:write` scope.
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `context:read` scope |
+
+---
+
+## SDK Equivalent
+
+```typescript
+const goals = await client.listGoals();
+```
+
+**Returns:** `Promise<JsonValue>`

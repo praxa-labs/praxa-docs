@@ -1,47 +1,114 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Praxa in Under 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Install the Praxa TypeScript SDK, configure your gateway connection, and run your first AI agent mission in under 5 minutes. Requires Node.js 20 or later."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+This guide walks you through installing `@praxa/sdk`, configuring your connection to the Praxa Integration Gateway, and submitting your first governed AI agent mission — all without touching a provider API key. You'll need Node.js 20 or later and a Praxa gateway URL and access token from your deployment administrator.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Install the SDK">
+    Add `@praxa/sdk` to your project using your preferred package manager:
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+    <CodeGroup>
+      ```sh npm
+      npm install @praxa/sdk
+      ```
 
-    ```bash
-    your-cli init
-    ```
+      ```sh yarn
+      yarn add @praxa/sdk
+      ```
+
+      ```sh pnpm
+      pnpm add @praxa/sdk
+      ```
+    </CodeGroup>
   </Step>
+
+  <Step title="Set environment variables">
+    Export two environment variables before running your code. `PRAXA_BASE_URL` is the HTTPS origin of your Praxa Integration Gateway — the base URL of the deployment, not a specific path. `PRAXA_ACCESS_TOKEN` is a short-lived delegated OAuth token issued by your gateway; see the [Authentication guide](/authentication) for how to obtain one.
+
+    ```sh
+    export PRAXA_BASE_URL="https://api.your-praxa-gateway.example"
+    export PRAXA_ACCESS_TOKEN="<your-short-lived-oauth-token>"
+    ```
+
+    <Note>
+      `PRAXA_BASE_URL` must be an HTTPS origin. The SDK rejects HTTP origins and any URL containing embedded usernames or passwords.
+    </Note>
+  </Step>
+
+  <Step title="Create your first mission">
+    Create a file called `mission.ts` with the following code. It reads your environment variables, instantiates a `PraxaClient`, submits a mission with a goal specification and resource budget, and then streams the resulting mission events to the console.
+
+    ```ts mission.ts
+    import { PraxaClient } from "@praxa/sdk";
+
+    const baseUrl = process.env.PRAXA_BASE_URL;
+    const accessToken = process.env.PRAXA_ACCESS_TOKEN;
+
+    if (baseUrl === undefined || accessToken === undefined) {
+      throw new Error("Set PRAXA_BASE_URL and PRAXA_ACCESS_TOKEN");
+    }
+
+    const praxa = new PraxaClient({
+      baseUrl,
+      accessToken: () => accessToken,
+    });
+
+    const mission = await praxa.createMission(
+      {
+        goalSpec: { task: "Prepare the weekly review" },
+        resourceBudget: {
+          maximumSteps: 12,
+          maximumToolCalls: 8,
+          maximumElapsedMs: 120_000,
+          maximumParallelism: 2,
+        },
+      },
+      crypto.randomUUID(),
+    );
+
+    console.log({ runId: mission.runId, status: mission.status });
+
+    for await (const event of praxa.missionEvents(mission.runId)) {
+      console.log(event.id, event.event, event.data);
+    }
+    ```
+
+    The second argument to `createMission` is your **idempotency key** — a stable UUID that ensures retrying the call never creates a duplicate mission. `crypto.randomUUID()` generates a fresh key each run; in production, generate and persist this key before the call so retries are safe.
+
+    The `resourceBudget` fields cap what the mission may consume:
+
+    | Field | Value | Meaning |
+    |---|---|---|
+    | `maximumSteps` | `12` | At most 12 reasoning or action steps |
+    | `maximumToolCalls` | `8` | At most 8 tool invocations |
+    | `maximumElapsedMs` | `120000` | At most 2 minutes of wall-clock time |
+    | `maximumParallelism` | `2` | At most 2 concurrent sub-tasks |
+  </Step>
+
   <Step title="Run it">
-    Show the first thing a user does to see it working.
+    Execute your file directly with `tsx` (no compile step needed):
 
-    ```bash
-    your-cli start
-    ```
+    <CodeGroup>
+      ```sh npx tsx
+      npx tsx mission.ts
+      ```
+
+      ```sh node --import tsx
+      node --import tsx mission.ts
+      ```
+    </CodeGroup>
+
+    You should see a `runId` and an initial `status` logged immediately, followed by a stream of structured events as the gateway executes your mission.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+<Note>
+  Your gateway URL must use HTTPS. The Praxa SDK rejects HTTP origins at client construction time. If you see an error about an invalid base URL, check that `PRAXA_BASE_URL` starts with `https://`.
+</Note>
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+---
+
+**Next step:** Read the [Authentication guide](/authentication) to understand how to obtain short-lived OAuth tokens and refresh them in production applications.

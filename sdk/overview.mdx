@@ -1,0 +1,113 @@
+---
+title: "Praxa TypeScript SDK: @praxa/sdk Overview"
+sidebarTitle: "Overview"
+description: "@praxa/sdk is the official TypeScript client for the Praxa Integration Gateway. Install it to submit missions, stream events, and query capabilities from any Node.js application."
+---
+
+`@praxa/sdk` is the official TypeScript client for the Praxa Integration Gateway. It is credential-free by design: you supply a short-lived delegated OAuth access token at runtime, and the SDK contains no embedded secrets, no provider credentials, and no execution authority. With a single `PraxaClient` instance you can submit governed AI agent missions, stream their Server-Sent Event lifecycles in real time, search capabilities, query memory, and inspect traces and skills — all against the versioned `/v8` API surface.
+
+## Installation
+
+Install `@praxa/sdk` with your preferred package manager:
+
+<CodeGroup>
+```bash npm
+npm install @praxa/sdk
+```
+
+```bash yarn
+yarn add @praxa/sdk
+```
+
+```bash pnpm
+pnpm add @praxa/sdk
+```
+</CodeGroup>
+
+## Requirements
+
+- **Node.js >= 20** — the SDK relies on the global `fetch`, `ReadableStream`, and `TextDecoder` APIs that ship in Node 20's runtime.
+- **TypeScript** (optional but strongly recommended) — the package ships full type declarations generated directly from the canonical OpenAPI contract. You get end-to-end type safety for every request body and response shape.
+- **ESM module support** — `@praxa/sdk` is published as an ES module. Your `tsconfig.json` should target `"module": "NodeNext"` or `"module": "ESNext"`, and your `package.json` should include `"type": "module"` (or use `.mts`/`.mjs` file extensions).
+
+## What's Included
+
+`@praxa/sdk` exports everything you need to interact with the Praxa Integration Gateway:
+
+- **`PraxaClient`** — the main client class. Construct one instance per application and call its methods to create missions, stream events, and query the gateway.
+- **`PraxaClientError`** — the typed error class thrown for all HTTP error responses. Carries the HTTP `status` code and an optional RFC 9457 `problem` object.
+- **`PraxaClientOptions`** — the TypeScript type for the constructor configuration object.
+- **All generated contract types** — `CreateMissionRequest`, `MissionProjection`, `AuraSseEvent`, `CapabilityRequirement`, `CapabilityManifest`, `MemoryQuery`, `ResourceBudget`, `Problem`, `JsonValue`, `JsonObject`, and more, generated deterministically from the canonical OpenAPI document.
+- **`PRAXA_CONTRACT_VERSION`** — the wire-level contract version string sent on every request as the `x-aura-contract-version` header.
+- **`PRAXA_OPENAPI_VERSION`** — the semantic version of the OpenAPI document the SDK was generated from (currently `"8.1.0"`).
+- **`PRAXA_OPENAPI_SHA256`** — the SHA-256 fingerprint of the canonical OpenAPI source, for audit and validation.
+- **`PRAXA_ROUTE_CONTRACTS`** — a typed read-only array of every route's operation ID, HTTP method, path, required OAuth scope, idempotency mode, and response format.
+
+## Exports
+
+Import the client and error class from the main entry point. For advanced introspection of route contracts, import from the `/contracts` sub-path:
+
+```typescript
+// Main SDK — client, error, and all generated types
+import { PraxaClient, PraxaClientError } from "@praxa/sdk";
+
+// Contract metadata — version constants and route descriptors
+import {
+  PRAXA_CONTRACT_VERSION,
+  PRAXA_OPENAPI_VERSION,
+  PRAXA_OPENAPI_SHA256,
+  PRAXA_ROUTE_CONTRACTS,
+} from "@praxa/sdk";
+```
+
+You can also import individual generated types for use in your own functions:
+
+```typescript
+import type {
+  CreateMissionRequest,
+  MissionProjection,
+  AuraSseEvent,
+  CapabilityRequirement,
+  MemoryQuery,
+  ResourceBudget,
+  Problem,
+} from "@praxa/sdk";
+```
+
+## Contract Versions
+
+The SDK is generated from a versioned OpenAPI document. Three constants let you verify exactly which contract version your installed package implements:
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `PRAXA_CONTRACT_VERSION` | `"aura-integration-gateway-v8.1"` | Sent as the `x-aura-contract-version` header on every request. The gateway uses this to select the correct contract parser. |
+| `PRAXA_OPENAPI_VERSION` | `"8.1.0"` | Semantic version of the OpenAPI document the SDK was generated from. |
+| `PRAXA_OPENAPI_SHA256` | `"7afed65f..."` | SHA-256 fingerprint of the source OpenAPI YAML. Use this for audit logs or to assert a specific contract in CI. |
+
+You can assert the expected contract version at startup to guard against accidental package upgrades:
+
+```typescript
+import { PRAXA_CONTRACT_VERSION, PRAXA_OPENAPI_SHA256 } from "@praxa/sdk";
+
+const EXPECTED_CONTRACT = "aura-integration-gateway-v8.1";
+const EXPECTED_SHA256   = "7afed65f7a8de5a07d974f729675419e4d99c93d1ada26353bd7844efd43a98e";
+
+if (PRAXA_CONTRACT_VERSION !== EXPECTED_CONTRACT) {
+  throw new Error(`Unexpected Praxa contract: ${PRAXA_CONTRACT_VERSION}`);
+}
+if (PRAXA_OPENAPI_SHA256 !== EXPECTED_SHA256) {
+  throw new Error(`Unexpected Praxa OpenAPI fingerprint: ${PRAXA_OPENAPI_SHA256}`);
+}
+```
+
+<CardGroup cols={3}>
+  <Card title="PraxaClient Reference" icon="code" href="/sdk/praxaclient">
+    Full constructor options, every method signature, and working code examples.
+  </Card>
+  <Card title="Mission Events" icon="satellite-dish" href="/sdk/mission-events">
+    Stream SSE lifecycle events from a running mission with an async generator.
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/sdk/error-handling">
+    Catch and inspect PraxaClientError with HTTP status and RFC 9457 problem details.
+  </Card>
+</CardGroup>

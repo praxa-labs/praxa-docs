@@ -1,0 +1,174 @@
+---
+title: "GET /v8/traces/{traceId} — Inspect Mission Execution Trace"
+sidebarTitle: "Get Trace"
+description: "GET /v8/traces/{traceId} retrieves a detailed execution trace for a completed Praxa mission step, including timing, inputs, outputs, and tool calls made."
+---
+
+The `GET /v8/traces/{traceId}` endpoint returns a detailed, redacted causal trace for a specific mission execution unit. Traces give you deep visibility into exactly what the agent did during a step: the inputs it received, the tool calls it made, the outputs it produced, and the wall-clock timing for each operation. This is your primary tool for debugging unexpected agent behaviour, auditing policy decisions, and optimising resource budgets. Sensitive fields are redacted before the trace leaves the gateway — credentials, tokens, and other secret values are never exposed in trace data.
+
+<Tip>
+  You can find `traceId` values in the `data` payload of `mission.step.completed` and `mission.step.started` events emitted by the [Mission Events stream](/api-reference/missions/events). Each step event includes a `traceId` field that maps directly to this endpoint.
+</Tip>
+
+## Endpoint
+
+```
+GET /v8/traces/{traceId}
+```
+
+**Required scope:** `traces:read`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+
+---
+
+## Path Parameters
+
+<ParamField path="traceId" type="string" required>
+  The unique identifier of the trace to retrieve. Must match the pattern `^[A-Za-z0-9][A-Za-z0-9._:-]*$` and be between 1 and 256 characters. Trace IDs are surfaced in mission event payloads and in the `steps` array of a `MissionProjection`.
+
+  Example: `trc_018e2f3a.step_3.exec`
+</ParamField>
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl https://your-gateway.example/v8/traces/trc_018e2f3a.step_3.exec \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN"
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const trace = await client.getTrace("trc_018e2f3a.step_3.exec");
+
+console.log(trace);
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+The response body is a redacted causal trace object. The exact schema may evolve as the platform adds richer observability, but the following fields are always present.
+
+<ResponseField name="traceId" type="string" required>
+  The unique identifier for this trace. Matches the path parameter you supplied.
+</ResponseField>
+
+<ResponseField name="missionRunId" type="string (UUID)" required>
+  The `runId` of the mission this trace belongs to. Use this to correlate traces back to the originating mission.
+</ResponseField>
+
+<ResponseField name="stepId" type="string" required>
+  The identifier of the mission step this trace captures.
+</ResponseField>
+
+<ResponseField name="startedAt" type="string (ISO 8601)" required>
+  UTC timestamp of when this step began executing.
+</ResponseField>
+
+<ResponseField name="completedAt" type="string (ISO 8601)">
+  UTC timestamp of when this step finished. Absent if the step did not complete (e.g., it was cancelled mid-execution).
+</ResponseField>
+
+<ResponseField name="elapsedMs" type="integer">
+  Total wall-clock duration of the step in milliseconds.
+</ResponseField>
+
+<ResponseField name="steps" type="array" required>
+  Ordered list of operations performed during this trace. Each element describes a single operation — a reasoning observation, a tool call, or a sub-step — with its own timing and I/O details.
+
+  <Expandable title="Operation object fields">
+    <ResponseField name="operationId" type="string">
+      Unique identifier for this operation within the trace.
+    </ResponseField>
+    <ResponseField name="kind" type="string">
+      The type of operation: `"observation"`, `"tool-call"`, `"sub-step"`, or `"branch"`.
+    </ResponseField>
+    <ResponseField name="toolCallId" type="string">
+      Present when `kind` is `"tool-call"`. Identifies the specific capability or tool that was invoked.
+    </ResponseField>
+    <ResponseField name="input" type="object">
+      The redacted input passed to this operation. Sensitive values are replaced with `[REDACTED]`.
+    </ResponseField>
+    <ResponseField name="output" type="object">
+      The redacted output produced by this operation.
+    </ResponseField>
+    <ResponseField name="startedAt" type="string (ISO 8601)">
+      When this individual operation began.
+    </ResponseField>
+    <ResponseField name="elapsedMs" type="integer">
+      Duration of this individual operation in milliseconds.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```json Example 200 response
+{
+  "traceId": "trc_018e2f3a.step_3.exec",
+  "missionRunId": "018e2f3a-7c14-7000-b1e2-4d3f8a20c911",
+  "stepId": "step_3",
+  "startedAt": "2025-07-11T10:04:22.100Z",
+  "completedAt": "2025-07-11T10:04:24.853Z",
+  "elapsedMs": 2753,
+  "steps": [
+    {
+      "operationId": "op_1",
+      "kind": "tool-call",
+      "toolCallId": "praxa.web-search.v2",
+      "input": { "query": "EMEA SaaS revenue Q2 2025" },
+      "output": { "results": "[REDACTED: 3 items]" },
+      "startedAt": "2025-07-11T10:04:22.300Z",
+      "elapsedMs": 1840
+    },
+    {
+      "operationId": "op_2",
+      "kind": "observation",
+      "input": { "summary": "Retrieved 3 relevant articles" },
+      "output": { "decision": "Proceed to summarisation step" },
+      "startedAt": "2025-07-11T10:04:24.140Z",
+      "elapsedMs": 712
+    }
+  ]
+}
+```
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `traces:read` scope |
+| `404 Not Found` | No trace exists with the given `traceId` under your principal's policy scope |
+
+---
+
+## SDK Equivalent
+
+```typescript
+const trace = await client.getTrace(traceId);
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `traceId` | `string` | Identifier of the trace to retrieve |
+
+**Returns:** `Promise<JsonValue>`

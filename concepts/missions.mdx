@@ -1,0 +1,174 @@
+---
+title: "Understanding Praxa Missions: Goals, Steps, and Lifecycle"
+sidebarTitle: "Missions"
+description: "A mission is a governed, goal-directed agent task in Praxa. Learn about mission structure, lifecycle states, steps, and how the Integration Gateway executes missions."
+---
+
+A **mission** is the fundamental unit of work in Praxa. When you submit a mission, you hand the Integration Gateway a natural-language goal and a resource budget. The gateway validates your request against policy — checking tenant, principal, consent, purpose, scope, and idempotency — then orchestrates an AI agent to accomplish the goal entirely server-side. You never embed provider API keys in your code; Praxa's authority and execution plane handles all credential management on your behalf.
+
+## Mission Structure
+
+Every mission you create must supply two required fields: a `goalSpec` describing what the agent should accomplish, and a `resourceBudget` capping how far the agent can go. These are expressed through the `CreateMissionRequest` type from `@praxa/sdk`:
+
+```typescript
+import type { CreateMissionRequest, ResourceBudget } from "@praxa/sdk";
+
+// ResourceBudget defines hard server-enforced limits for the run
+type ResourceBudget = Readonly<{
+  readonly maximumSteps: number;       // max reasoning iterations
+  readonly maximumToolCalls: number;   // max external tool invocations
+  readonly maximumElapsedMs: number;   // wall-clock time limit in ms
+  readonly maximumParallelism: number; // max concurrent agent branches
+}>;
+
+// CreateMissionRequest is what you POST to /v8/missions
+type CreateMissionRequest = Readonly<{
+  readonly goalSpec: JsonObject;       // free-form task description
+  readonly resourceBudget: ResourceBudget;
+}>;
+```
+
+The `goalSpec` is a JSON object whose `task` field carries your plain-language instruction. You can include additional structured fields to provide context the agent can reference during execution.
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: async () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const mission = await client.createMission(
+  {
+    goalSpec: { task: "Prepare the weekly engineering review summary" },
+    resourceBudget: {
+      maximumSteps: 12,
+      maximumToolCalls: 8,
+      maximumElapsedMs: 120_000,
+      maximumParallelism: 2,
+    },
+  },
+  crypto.randomUUID(), // idempotency key — see Idempotency section below
+);
+
+console.log(mission.runId, mission.status);
+```
+
+The gateway responds with a `MissionProjection` — a live snapshot of the mission — and returns HTTP `202 Accepted`. Acceptance means the request passed validation and is queued for execution; it is **not** a guarantee that an external effect has already occurred.
+
+<Note>
+  Resource budgets are enforced entirely server-side by the Integration Gateway. Raising the values in your request cannot bypass policy limits configured for your tenant. If your budget request exceeds your tenant's configured ceiling, the gateway will reject the mission at intake.
+</Note>
+
+## Mission Lifecycle
+
+Once created, a mission moves through a set of status values that describe its current execution state. You can read the status at any time by calling `client.getMission(runId)` or by streaming real-time events with `client.missionEvents(runId)`.
+
+| Status | Meaning |
+|---|---|
+| `running` | The agent is actively executing steps toward the goal. |
+| `waiting` | The agent has paused, typically awaiting a human-in-the-loop signal or an external event. |
+| `succeeded` | The agent completed the goal within the resource budget. All steps finished cleanly. |
+| `failed` | The mission could not be completed. This may indicate a budget exceeded condition, an unrecoverable error, or a policy rejection during execution. |
+| `cancelled` | You (or your application) called `cancelMission()` and the cancellation was propagated by the Control Plane. |
+
+These values come directly from the `MissionProjection` type returned by the gateway:
+
+```typescript
+import type { MissionProjection } from "@praxa/sdk";
+
+type MissionProjection = Readonly<{
+  readonly runId: string;
+  readonly sequence: number;
+  readonly status: "running" | "waiting" | "succeeded" | "failed" | "cancelled";
+  readonly steps: readonly (Readonly<{
+    readonly stepId: string;
+    readonly status: string;
+  }>)[];
+}>;
+```
+
+The `sequence` field is a monotonically increasing integer. You can use it alongside `Last-Event-ID` to reconnect to the event stream without replaying events you have already processed.
+
+## Mission Steps
+
+Steps are the individual actions the agent takes while pursuing your goal. Each step recorded in the mission's `steps` array has a `stepId` string that uniquely identifies it within the run, and a `status` string that reflects its current disposition.
+
+```typescript
+const mission = await client.getMission(runId);
+
+for (const step of mission.steps) {
+  console.log(`Step ${step.stepId}: ${step.status}`);
+}
+```
+
+The gateway records up to 4,096 steps per mission. Steps accumulate as the agent reasons, calls tools, retrieves memory, and writes results. You can use step data to audit what the agent did, feed it into downstream observability pipelines, or display progress to end users. For a full causal breakdown of a completed run, retrieve the trace with `client.getTrace(traceId)`.
+
+## Real-Time Events
+
+Missions emit Server-Sent Events (SSE) that you can consume as an `AsyncGenerator` using `client.missionEvents()`. This lets you react to state transitions, step completions, and other runtime notifications without polling.
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: async () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const mission = await client.createMission(
+  {
+    goalSpec: { task: "Summarise the latest pull requests" },
+    resourceBudget: {
+      maximumSteps: 8,
+      maximumToolCalls: 5,
+      maximumElapsedMs: 60_000,
+      maximumParallelism: 1,
+    },
+  },
+  crypto.randomUUID(),
+);
+
+for await (const event of client.missionEvents(mission.runId)) {
+  console.log(event.id, event.event, event.data);
+
+  // Stop consuming once the mission reaches a terminal state
+  const data = event.data as Record<string, unknown>;
+  if (
+    data?.status === "succeeded" ||
+    data?.status === "failed" ||
+    data?.status === "cancelled"
+  ) {
+    break;
+  }
+}
+```
+
+Each emitted `AuraSseEvent` carries an `id` (cursor), an `event` type string, and a `data` payload parsed from JSON. If your connection drops mid-stream, pass the last received `id` as `lastEventId` when you reconnect — the gateway replays events from your cursor position within its bounded durable replay window.
+
+```typescript
+// Resume a dropped stream from the last seen event
+for await (const event of client.missionEvents(mission.runId, {
+  lastEventId: lastSeenId,
+})) {
+  // handle events
+}
+```
+
+## Idempotency
+
+Every call to `createMission()` requires an idempotency key as its second argument. The key must be a string between 16 and 128 characters containing only alphanumeric characters, dots, underscores, hyphens, or colons. Using `crypto.randomUUID()` is the recommended approach.
+
+```typescript
+const idempotencyKey = crypto.randomUUID();
+
+// Safe to retry — the gateway deduplicates on the key
+const mission = await client.createMission(
+  { goalSpec: { task: "Run the nightly report" }, resourceBudget: { ... } },
+  idempotencyKey,
+);
+```
+
+If a network error causes your request to time out before you receive a response, you can resend the identical request with the **same idempotency key**. The gateway will return the original `MissionProjection` instead of creating a duplicate mission. This makes `createMission()` safe to retry in transient failure scenarios without risk of running the same agent task twice.
+
+Idempotency is also required for `signalMission()` and `cancelMission()`, for the same reason — signals and cancellations have durable side-effects that must not be applied more than once.

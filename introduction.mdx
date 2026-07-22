@@ -1,0 +1,45 @@
+---
+title: "What is Praxa? Governed Agentic Mission Platform"
+sidebarTitle: "Introduction"
+description: "Praxa is a credential-free platform for submitting governed AI agent missions. Learn about missions, the Integration Gateway, and how Praxa keeps provider keys out of your code."
+---
+
+Praxa is a governed agentic mission platform that lets your application submit AI agent missions through the Praxa Integration Gateway without embedding provider credentials in your code, your environment, or your infrastructure. You describe what you want accomplished and how much resource the mission may consume; Praxa enforces OAuth scopes and consent, then executes the mission entirely server-side using credentials that never leave the gateway. The result is a clean trust boundary between your application logic and the AI execution plane.
+
+## How Praxa Works
+
+Every unit of work in Praxa is a **mission**. When you create a mission, you supply two things:
+
+- A **goal specification** (`goalSpec`) — a structured description of the task you want the agent to accomplish.
+- A **resource budget** (`resourceBudget`) — explicit limits on how many steps, tool calls, elapsed milliseconds, and parallel sub-tasks the mission may consume.
+
+You submit the mission through the Praxa Integration Gateway using a short-lived OAuth access token scoped to the operations your application needs. The gateway validates your tenant, principal, consent record, purpose, budget, and idempotency key before any execution begins. Provider execution and verification remain entirely server-side — your application receives a `runId` and a stream of structured events, not raw provider output.
+
+An accepted mission request is not proof that an external effect has occurred. The gateway records your intent durably and enforces policy independently.
+
+## Key Principles
+
+**Credential-free design.** Your application never holds or supplies provider API keys. The gateway manages provider credentials server-side. The SDK, CLI, and MCP contracts contain no provider adapters and no embedded secrets.
+
+**OAuth governance.** Every Praxa API operation requires a specific OAuth scope. Tokens are short-lived, delegated, and scoped to the minimum set of operations your integration needs. A scope grants access to gateway policy evaluation — it does not itself authorize a provider effect.
+
+**Idempotency.** Every mutating operation requires a stable idempotency key. If you retry a `createMission` call with the same key, the gateway returns the existing mission rather than creating a duplicate. Safe read operations are also retried automatically by the SDK.
+
+**Resource budgets.** Missions cannot exceed the `resourceBudget` you declare at creation time. Setting explicit limits on steps, tool calls, elapsed time, and parallelism protects both your application and downstream provider resources.
+
+## What You Need
+
+To integrate with Praxa, you need three things:
+
+- A **gateway HTTPS URL** — the origin of your Praxa Integration Gateway deployment (e.g., `https://api.your-praxa-gateway.example`). HTTP origins are rejected by the SDK.
+- A **short-lived OAuth access token** — issued by your Praxa deployment for a specific tenant, principal, and scope set. Tokens are obtained through your gateway's token issuance flow; see the [Authentication guide](/authentication) for details.
+- **Node.js 20 or newer** — required by `@praxa/sdk` and `@praxa/cli`.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get your gateway connection configured and run your first mission in under 5 minutes.
+  </Card>
+  <Card title="Mission Concepts" icon="lightbulb" href="/concepts/missions">
+    A deeper look at goal specifications, resource budgets, idempotency, and the event stream lifecycle.
+  </Card>
+</CardGroup>

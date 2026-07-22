@@ -1,0 +1,181 @@
+---
+title: "POST /v8/missions — Create a New Agent Mission"
+sidebarTitle: "Create Mission"
+description: "POST /v8/missions creates a new governed AI agent mission. Accepts a goal specification and resource budget. Requires missions:write scope and an Idempotency-Key header."
+---
+
+The `POST /v8/missions` endpoint is your entry point for every governed operation on the Praxa Integration Gateway. You submit a goal specification describing what you want the agent to accomplish alongside a resource budget that caps how much work it can do. The gateway records your intent durably, assigns a unique run ID, and hands the mission off to the private policy and broker plane for execution. Because the intake is idempotent, you can safely retry on network failure by re-sending the same `Idempotency-Key`.
+
+<Info>
+  The gateway returns **202 Accepted** — not 201 — because recording the intake mission is itself a governed operation. Provider outcomes are verified asynchronously; the response confirms durable receipt, not completion.
+</Info>
+
+## Endpoint
+
+```
+POST /v8/missions
+```
+
+**Required scope:** `missions:write`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+| `Idempotency-Key` | 16–128 character alphanumeric key used to deduplicate retries |
+| `Content-Type` | `application/json` |
+
+---
+
+## Request Body
+
+<ParamField body="goalSpec" type="object" required>
+  The goal specification that describes what the mission should accomplish. The gateway treats this object as opaque and forwards it intact to the policy plane.
+
+  <Expandable title="goalSpec properties">
+    <ParamField body="task" type="string" required>
+      Natural language description of the task you want the agent to complete. Be specific — the policy plane uses this text to select capabilities, plan steps, and scope tool calls.
+
+      Example: `"Prepare the weekly revenue review for the EMEA region and send a summary to the team Slack channel."`
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="resourceBudget" type="object" required>
+  Hard limits that govern how many resources the mission may consume. All four fields are required. The mission transitions to `failed` if any limit is reached before the goal is satisfied.
+
+  <Expandable title="resourceBudget properties">
+    <ParamField body="maximumSteps" type="integer" required>
+      Maximum number of reasoning steps the agent may take. Must be `≥ 1`. A step represents one cycle of the agent's plan–act–observe loop.
+    </ParamField>
+
+    <ParamField body="maximumToolCalls" type="integer" required>
+      Maximum number of tool invocations across all steps. Must be `≥ 0`. Set to `0` to allow a planning-only mission with no tool use.
+    </ParamField>
+
+    <ParamField body="maximumElapsedMs" type="integer" required>
+      Wall-clock time limit in milliseconds from the moment the mission begins executing. Must be `≥ 1`. The mission is cancelled if this limit elapses regardless of step or tool call counts.
+    </ParamField>
+
+    <ParamField body="maximumParallelism" type="integer" required>
+      Maximum number of concurrent branches the agent may execute simultaneously. Must be between `1` and `64`. Set to `1` for fully sequential execution.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://your-gateway.example/v8/missions \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "goalSpec": { "task": "Prepare the weekly review" },
+    "resourceBudget": {
+      "maximumSteps": 12,
+      "maximumToolCalls": 8,
+      "maximumElapsedMs": 120000,
+      "maximumParallelism": 2
+    }
+  }'
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const mission = await client.createMission(
+  {
+    goalSpec: { task: "Prepare the weekly review" },
+    resourceBudget: {
+      maximumSteps: 12,
+      maximumToolCalls: 8,
+      maximumElapsedMs: 120_000,
+      maximumParallelism: 2,
+    },
+  },
+  crypto.randomUUID() // idempotencyKey
+);
+
+console.log(mission.runId);   // "018e2f3a-..."
+console.log(mission.status);  // "running"
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `202 Accepted`**
+
+The response body is a `MissionProjection` object. It reflects the initial state of the mission immediately after intake — the agent has not yet taken any steps.
+
+<ResponseField name="runId" type="string (UUID)" required>
+  Globally unique identifier for this mission run. Store this value — you will use it to poll status, stream events, send signals, and cancel.
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  The mission's current lifecycle state immediately after intake. On a successful create this is almost always `"running"` or `"waiting"`.
+
+  | Value | Meaning |
+  |---|---|
+  | `running` | The agent is actively executing steps |
+  | `waiting` | The agent is paused waiting for a signal or external event |
+  | `succeeded` | The mission completed successfully |
+  | `failed` | The mission failed (budget exceeded, policy rejection, or unrecoverable error) |
+  | `cancelled` | The mission was cancelled via `POST /v8/missions/{runId}/cancel` |
+</ResponseField>
+
+<ResponseField name="sequence" type="integer" required>
+  A monotonically increasing version counter for this projection. Use this value to detect stale reads when polling concurrently.
+</ResponseField>
+
+<ResponseField name="steps" type="array" required>
+  List of step summaries recorded so far. Each element contains a `stepId` (string) and a `status` (string). This array is empty immediately after mission creation.
+</ResponseField>
+
+```json Example 202 response
+{
+  "runId": "018e2f3a-7c14-7000-b1e2-4d3f8a20c911",
+  "status": "running",
+  "sequence": 1,
+  "steps": []
+}
+```
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457). Sensitive fields are redacted before the response leaves the gateway.
+
+| HTTP Status | Typical cause |
+|---|---|
+| `400 Bad Request` | Missing required fields, budget values out of range, or malformed JSON |
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `missions:write` scope |
+| `409 Conflict` | An existing mission was already recorded under the same `Idempotency-Key` with a different request body |
+| `429 Too Many Requests` | Rate limit exceeded for your principal |
+
+---
+
+## SDK Equivalent
+
+```typescript
+const mission = await client.createMission(input, idempotencyKey);
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `input` | `CreateMissionRequest` | Object containing `goalSpec` and `resourceBudget` |
+| `idempotencyKey` | `string` | Unique key for deduplication; generate with `crypto.randomUUID()` |
+
+**Returns:** `Promise<MissionProjection>`

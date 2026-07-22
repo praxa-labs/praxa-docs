@@ -1,0 +1,66 @@
+---
+title: "Praxa CLI: Manage Agent Missions from the Terminal"
+sidebarTitle: "Overview"
+description: "@praxa/cli is a command-line tool for submitting, monitoring, and cancelling Praxa missions from your terminal. Install it globally or use npx without installation."
+---
+
+`@praxa/cli` is a thin command-line adapter over `@praxa/sdk` that lets you submit, inspect, and cancel Praxa missions directly from your terminal. The CLI never stores provider credentials or calls AI providers directly — it communicates exclusively with your Praxa Integration Gateway over HTTPS using a short-lived OAuth token that you supply.
+
+## Installation
+
+Install the CLI globally to make the `praxa` binary available everywhere on your system, or run it on demand with `npx` if you prefer not to install it.
+
+```bash
+npm install --global @praxa/cli
+# or use without installing
+npx @praxa/cli mission create --input mission.json --idempotency-key $(uuidgen)
+```
+
+## Configuration
+
+Every command except `praxa version` requires two pieces of configuration: the URL of your Praxa Integration Gateway and a valid OAuth access token. You can provide both as environment variables, which is the recommended approach for scripts and CI pipelines.
+
+| Variable | Required | Description |
+|---|---|---|
+| `PRAXA_BASE_URL` | Yes (or `--base-url`) | The HTTPS base URL of your Praxa Integration Gateway, e.g. `https://api.example.com` |
+| `PRAXA_ACCESS_TOKEN` | Yes | A short-lived delegated OAuth token scoped to the operations you need |
+
+The `--base-url` flag overrides `PRAXA_BASE_URL` for a single invocation, which is useful when targeting a staging gateway without changing your environment.
+
+<Note>
+The CLI validates that `PRAXA_BASE_URL` (and `--base-url`) use the `https:` protocol and contain no embedded credentials. Plain HTTP URLs and `https://user:pass@…` URLs are rejected at startup.
+</Note>
+
+A typical `.env` file looks like this:
+
+```bash
+# .env
+PRAXA_BASE_URL="https://api.example.com"
+PRAXA_ACCESS_TOKEN="<short-lived delegated OAuth token>"
+```
+
+<Warning>
+Never place a provider API key in `PRAXA_BASE_URL` or `PRAXA_ACCESS_TOKEN`. These variables must only contain your gateway URL and a delegated Praxa OAuth token respectively. The legacy `AURA_BASE_URL` and `AURA_ACCESS_TOKEN` variables are accepted as compatibility fallbacks but the `PRAXA_*` names are preferred.
+</Warning>
+
+## Available Commands
+
+| Command | Description |
+|---|---|
+| `praxa version` | Prints SDK, OpenAPI spec, and contract version info — no network call required |
+| `praxa doctor` | Performs an authenticated read-only health check against your gateway |
+| `praxa mission get` | Fetches a mission by its run ID |
+| `praxa mission create` | Submits a new mission from a JSON file |
+| `praxa mission cancel` | Cancels a running mission |
+
+All commands write JSON to stdout, making it straightforward to pipe output to `jq` or other tools.
+
+## Legacy `aura` Alias
+
+The `aura` binary is a compatibility alias for `praxa` and accepts exactly the same commands and flags. If you have existing scripts that call `aura mission create …` they will continue to work without modification. New scripts should use the `praxa` name.
+
+<CardGroup cols={2}>
+  <Card title="Command Reference" icon="terminal" href="/cli/commands">
+    Full flag tables, environment variables, and example output for every command
+  </Card>
+</CardGroup>

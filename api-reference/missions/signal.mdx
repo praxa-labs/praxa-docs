@@ -1,0 +1,119 @@
+---
+title: "POST /v8/missions/{runId}/signals — Send a Mission Signal"
+sidebarTitle: "Signal Mission"
+description: "POST /v8/missions/{runId}/signals sends a named signal with a JSON payload to a running Praxa mission, enabling mid-flight user input or workflow injection."
+---
+
+The `POST /v8/missions/{runId}/signals` endpoint lets you inject information or instructions into a mission that is already running or waiting. Signals are the primary mechanism for mid-flight human-in-the-loop interactions — for example, responding to a clarification request, providing additional context, or triggering a branch of the agent's plan that depends on external data. The gateway durably records the signal and delivers it to the agent at its next observation cycle. Like mission creation, signal delivery is idempotent: re-sending the same `Idempotency-Key` with the same body is safe and produces no duplicate effects.
+
+<Info>
+  Signals are only delivered to missions in the `running` or `waiting` state. Sending a signal to a mission in a terminal state (`succeeded`, `failed`, `cancelled`) returns a `409 Conflict` response.
+</Info>
+
+## Endpoint
+
+```
+POST /v8/missions/{runId}/signals
+```
+
+**Required scope:** `missions:write`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+| `Idempotency-Key` | 16–128 character alphanumeric key used to deduplicate retries |
+| `Content-Type` | `application/json` |
+
+---
+
+## Path Parameters
+
+<ParamField path="runId" type="string (UUID)" required>
+  The unique run identifier of the mission to signal. Returned by `POST /v8/missions` when the mission was created.
+</ParamField>
+
+---
+
+## Request Body
+
+<ParamField body="signal" type="string" required>
+  The name of the signal to send. Must be between 1 and 256 characters. The agent's plan interprets this name to route the signal to the correct handler. Use descriptive, kebab-case names like `"user-input"`, `"approval-granted"`, or `"data-ready"`.
+</ParamField>
+
+<ParamField body="payload" type="object" required>
+  Arbitrary JSON data accompanying the signal. The shape of this object is determined by your agent's signal handler contract, not by the gateway. Pass any serializable JSON value — object, array, string, number, or boolean.
+</ParamField>
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://your-gateway.example/v8/missions/018e2f3a-7c14-7000-b1e2-4d3f8a20c911/signals \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"signal": "user-input", "payload": {"message": "Focus on Q4 data only"}}'
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+await client.signalMission(
+  "018e2f3a-7c14-7000-b1e2-4d3f8a20c911", // runId
+  "user-input",                             // signal name
+  { message: "Focus on Q4 data only" },    // payload
+  crypto.randomUUID()                       // idempotencyKey
+);
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+A `200 OK` with no response body confirms that the signal has been durably recorded by the Control Plane. The agent will receive the signal at its next observation cycle — this is an acknowledgement of receipt, not of delivery or processing.
+
+<Note>
+  The gateway documentation describes the response as "Signal durably recorded by the Control Plane." Receiving `200 OK` guarantees the signal will not be lost, even if the agent is mid-step when the request arrives.
+</Note>
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `400 Bad Request` | Missing required fields or `signal` exceeds 256 characters |
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `missions:write` scope |
+| `404 Not Found` | No mission exists for the given `runId` under your principal |
+| `409 Conflict` | Mission is in a terminal state and cannot receive signals, or a different body was sent with the same `Idempotency-Key` |
+
+---
+
+## SDK Equivalent
+
+```typescript
+await client.signalMission(runId, signal, payload, idempotencyKey);
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `runId` | `string` | UUID of the mission to signal |
+| `signal` | `string` | Signal name (1–256 characters) |
+| `payload` | `JsonValue` | Arbitrary JSON data to deliver with the signal |
+| `idempotencyKey` | `string` | Unique key for deduplication; generate with `crypto.randomUUID()` |
+
+**Returns:** `Promise<void>`

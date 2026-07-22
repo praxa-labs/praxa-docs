@@ -1,0 +1,246 @@
+---
+title: "Monitor and Observe Praxa Agent Missions"
+sidebarTitle: "Observability"
+description: "Track mission progress, inspect execution traces, and retrieve skill details to understand how your Praxa agent missions are running and diagnose issues."
+---
+
+Understanding what your agent is doing — and why — is as important as getting a result. Praxa gives you multiple complementary views into mission execution: a live server-sent event stream for real-time progress, a poll-able mission projection that captures the current state and step list, execution traces that record the causal sequence of operations, and skill definitions that describe the reusable capabilities the agent invoked. Together these surfaces let you build dashboards, trigger alerts, and diagnose failures without ever needing access to provider-side infrastructure.
+
+<Tip>
+  Always persist `mission.runId` after calling `createMission()`. The `runId`
+  is the entry point for every observability API — without it you cannot
+  retrieve the mission projection, stream events, or fetch the associated trace.
+</Tip>
+
+## Real-Time Mission Events
+
+`missionEvents()` returns an async generator that yields `AuraSseEvent` objects as the agent works through each step. Each event has three fields:
+
+- **`id`** — a monotonically increasing string identifier you can use to resume the stream after a reconnect
+- **`event`** — the event type string (see table below)
+- **`data`** — a JSON value with event-specific payload
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+for await (const event of client.missionEvents(runId)) {
+  console.log(`id=${event.id}  type=${event.event}`);
+  console.log("data:", JSON.stringify(event.data, null, 2));
+}
+```
+
+The following event types are emitted over a mission's lifetime:
+
+| Event type | When it fires | `data` payload |
+|---|---|---|
+| `mission.started` | The agent begins execution | Initial mission metadata |
+| `mission.step.started` | An individual step begins | `{ stepId, description }` |
+| `mission.step.completed` | An individual step finishes | `{ stepId, result }` |
+| `mission.completed` | The mission succeeds | Final structured output |
+| `mission.failed` | The mission terminates with an error | Error details and context |
+| `mission.cancelled` | A cancellation request was processed | Cancellation reason |
+
+`mission.completed`, `mission.failed`, and `mission.cancelled` are **terminal events** — the generator closes automatically after emitting one of them.
+
+<Note>
+  To reconnect and continue from a specific point in the stream, pass
+  `{ lastEventId }` as the second argument. The gateway replays all events
+  with IDs greater than the one you supply.
+
+  ```typescript
+  for await (const event of client.missionEvents(runId, { lastEventId: lastSeenId })) {
+    // picks up where you left off
+  }
+  ```
+</Note>
+
+## Polling Mission Status
+
+When you need a point-in-time snapshot rather than a continuous stream — for example in a background worker that checks missions on a schedule — call `getMission()` with the run identifier.
+
+```typescript
+const mission = await client.getMission(runId);
+
+console.log("runId:   ", mission.runId);
+console.log("status:  ", mission.status);
+console.log("sequence:", mission.sequence);
+console.log("steps:   ", mission.steps);
+```
+
+`getMission()` returns a `MissionProjection` with these fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `runId` | `string` | Globally unique mission identifier |
+| `status` | `"running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled"` | Current lifecycle state |
+| `steps` | `Array<{ stepId: string; status: string }>` | Steps recorded so far, with per-step status |
+| `sequence` | `number` | Monotonic event counter; useful for detecting stale cached copies |
+
+Use `status === "running"` or `status === "waiting"` to determine whether a mission is still in progress, and `status === "succeeded"` to confirm a clean completion. The `sequence` field increments with every mutation — if a re-polled mission has the same `sequence` as your cached copy, nothing has changed.
+
+## Inspecting Execution Traces
+
+Traces record the causal sequence of operations the agent performed: tool calls, model turns, decisions, and their timings. Call `getTrace()` with the trace identifier found in mission step data.
+
+```typescript
+const trace = await client.getTrace(traceId);
+
+console.log("Trace:", JSON.stringify(trace, null, 2));
+```
+
+Trace data includes:
+
+- **Operation sequence** — each discrete action taken, in causal order
+- **Timing** — start and end timestamps for every operation
+- **Tool invocations** — which tools the agent called, with inputs and outputs (redacted where policy requires)
+- **Step linkage** — how each trace span maps back to the corresponding step in the mission projection
+
+<Warning>
+  Traces are **redacted** by gateway policy before being served. Sensitive
+  payload fields, provider-internal identifiers, and personally identifiable
+  information may be removed. Do not build logic that depends on the presence
+  of any specific redactable field.
+</Warning>
+
+## Retrieving Skill Details
+
+Skills are versioned, reusable agent capabilities registered in the Praxa Integration Gateway — analogous to functions or plugins. Call `getSkill()` to retrieve the definition and evidence state for a skill your agent used.
+
+```typescript
+const skill = await client.getSkill(skillId);
+
+console.log("Skill:", JSON.stringify(skill, null, 2));
+```
+
+Skill records include the skill's identifier, version, a description of what it does, its input and output contracts, and a governed evidence state that indicates whether the skill has passed required verification checks. Use this information to understand exactly which capability version the agent executed, and to audit whether the evidence requirements were satisfied at execution time.
+
+## Reference Coverage
+
+`getReferenceCoverage()` returns an object describing which portions of the Integration Gateway API surface your gateway deployment supports. This is useful for detecting whether a newly released endpoint is available in your environment before building a dependency on it.
+
+```typescript
+const coverage = await client.getReferenceCoverage();
+
+console.log("Coverage report:", JSON.stringify(coverage, null, 2));
+```
+
+<Note>
+  Coverage is **reference evidence**, not a production readiness guarantee. An
+  endpoint appearing in the coverage report means it is part of the API
+  contract your gateway is registered against — it does not mean the endpoint
+  will succeed for every input under all conditions.
+</Note>
+
+## Building a Dashboard
+
+You have two options for powering a live mission dashboard: streaming events via `missionEvents()` or polling via `getMission()`. Use streaming when you want the lowest latency; use polling when you need a simple periodic refresh without managing an open connection.
+
+<Tabs>
+  <Tab title="Streaming (SSE)">
+    Forward the server-sent event stream from your backend to the browser using
+    an SSE or WebSocket relay.
+
+    ```typescript
+    import { PraxaClient } from "@praxa/sdk";
+
+    const client = new PraxaClient({
+      baseUrl: process.env.PRAXA_BASE_URL!,
+      accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+    });
+
+    // Express route — relay Praxa SSE events to the browser
+    app.get("/api/missions/:runId/events", async (req, res) => {
+      res.setHeader("Content-Type",  "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection",    "keep-alive");
+
+      const abortController = new AbortController();
+      req.on("close", () => abortController.abort());
+
+      try {
+        for await (const event of client.missionEvents(req.params.runId, {
+          signal: abortController.signal,
+        })) {
+          res.write(`id: ${event.id}\n`);
+          res.write(`event: ${event.event}\n`);
+          res.write(`data: ${JSON.stringify(event.data)}\n\n`);
+
+          // Terminal events: close the relay
+          if (["mission.completed", "mission.failed", "mission.cancelled"].includes(event.event)) {
+            res.end();
+            return;
+          }
+        }
+      } catch (err: unknown) {
+        if ((err as Error)?.name !== "AbortError") console.error(err);
+        res.end();
+      }
+    });
+    ```
+  </Tab>
+
+  <Tab title="Polling">
+    A simple Node.js polling loop that checks mission status every few seconds.
+
+    ```typescript
+    import { PraxaClient } from "@praxa/sdk";
+
+    const client = new PraxaClient({
+      baseUrl: process.env.PRAXA_BASE_URL!,
+      accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+    });
+
+    async function pollUntilTerminal(
+      runId: string,
+      intervalMs = 3000,
+    ) {
+      const terminalStatuses = new Set(["succeeded", "failed", "cancelled"]);
+
+      while (true) {
+        const mission = await client.getMission(runId);
+
+        console.log(
+          `[${new Date().toISOString()}] ${mission.runId} — ` +
+          `status: ${mission.status}, steps: ${mission.steps.length}, ` +
+          `sequence: ${mission.sequence}`,
+        );
+
+        if (terminalStatuses.has(mission.status)) {
+          return mission;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    }
+
+    // Usage
+    const finalMission = await pollUntilTerminal(runId);
+    console.log("Final status:", finalMission.status);
+    ```
+  </Tab>
+</Tabs>
+
+<CardGroup cols={2}>
+  <Card title="Real-Time Events" icon="bolt">
+    Use `missionEvents()` for the lowest latency. Events arrive as soon as they
+    are emitted by the gateway — ideal for live progress bars and step-by-step
+    logs.
+  </Card>
+  <Card title="Periodic Polling" icon="clock">
+    Use `getMission()` in a polling loop for dashboards that refresh on a timer.
+    Simpler to implement and robust to transient connection issues.
+  </Card>
+  <Card title="Execution Traces" icon="list-tree">
+    Use `getTrace()` after a mission completes to reconstruct the exact causal
+    sequence of operations for auditing or debugging.
+  </Card>
+  <Card title="Skill Inspection" icon="puzzle-piece">
+    Use `getSkill()` to verify which capability version and evidence state the
+    agent used — essential for compliance and reproducibility.
+  </Card>
+</CardGroup>

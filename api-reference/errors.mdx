@@ -1,0 +1,107 @@
+---
+title: "Praxa API Error Codes and Problem Details"
+sidebarTitle: "Errors"
+description: "Praxa API errors follow RFC 9457 problem+json format. Learn what each HTTP status code means, how to read the problem detail, and how to recover from common errors."
+---
+
+The Praxa API returns errors in RFC 9457 `application/problem+json` format, providing structured machine-readable details alongside the HTTP status code. Every error response carries a stable `type` URI you can use to distinguish error kinds programmatically, a human-readable `detail` field for logging, and a `requestId` UUID you can share with support to trace exactly what happened on the server.
+
+## Error Response Format
+
+Every non-successful response has a `Content-Type: application/problem+json` header and a body that follows this structure:
+
+```json
+{
+  "type": "https://praxa.ai/problems/mission-not-found",
+  "title": "Mission Not Found",
+  "status": 404,
+  "detail": "No mission with runId 550e8400-e29b-41d4-a716-446655440000 was found.",
+  "instance": "/v8/missions/550e8400-e29b-41d4-a716-446655440000",
+  "code": "MISSION_NOT_FOUND",
+  "requestId": "a3bb189e-8bf9-3888-9912-ace4e6543002"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `string` (URI) | Stable URI identifying the problem kind. Use this for programmatic error handling. |
+| `title` | `string` | Short, human-readable summary of the problem. Does not change between occurrences of the same type. |
+| `status` | `integer` | The HTTP status code for this response (400–599). |
+| `detail` | `string` | Human-readable explanation specific to this occurrence. Suitable for logging. |
+| `code` | `string` | Machine-readable error code. Stable within a contract version. |
+| `requestId` | `string` (UUID) | Unique ID for this specific request. Include this when contacting support. |
+
+<Note>
+  Sensitive fields such as credentials and internal stack traces are always
+  redacted from problem responses before they reach you.
+</Note>
+
+## HTTP Status Codes
+
+The table below covers every HTTP status code the Integration Gateway can return, what causes it, and what you should do.
+
+| Status | Name | Cause | Action |
+|--------|------|-------|--------|
+| `400` | Bad Request | Invalid request body or missing required field | Fix the request payload — check required fields and value constraints |
+| `401` | Unauthorized | Missing, expired, or invalid Bearer token | Refresh your access token and retry |
+| `403` | Forbidden | Token is valid but lacks the required scope | Request a new token with the needed scope |
+| `404` | Not Found | Mission, skill, or trace ID does not exist | Verify the ID is correct — the resource may not have been created yet |
+| `409` | Conflict | Idempotency key reused with a different payload | Use a new idempotency key or re-send the original payload unchanged |
+| `422` | Unprocessable Entity | Request body is valid JSON but semantically invalid | Check field constraints — for example, `maximumParallelism` must be between 1 and 64 |
+| `429` | Too Many Requests | Rate limit exceeded | Back off and retry after the number of seconds in the `Retry-After` response header |
+| `503` | Service Unavailable | Gateway temporarily unavailable | Retry with exponential backoff |
+
+## Idempotency Conflicts (409)
+
+A `409 Conflict` on a mutating endpoint means you sent the same `Idempotency-Key` header value with a **different** request body than the one originally associated with that key. This is always a client error.
+
+You have two options to resolve it:
+
+<Steps>
+  <Step title="Reuse the original payload">
+    If you intended to replay the original operation (for example, after a
+    network timeout), re-send the request with the **exact same body** you used
+    the first time. The gateway will return the original response without
+    re-executing the operation.
+  </Step>
+  <Step title="Generate a new idempotency key">
+    If you intend to submit a genuinely different operation, generate a fresh
+    `Idempotency-Key` value (for example, a new UUID v4) and send the new
+    payload with that key.
+  </Step>
+</Steps>
+
+<Warning>
+  Do not silently swallow `409` responses or retry them without making one of
+  the two changes above. Retrying with the same key and a different body will
+  always return `409`.
+</Warning>
+
+## Retry-After Header
+
+When you receive a `429 Too Many Requests` response, the gateway includes a `Retry-After` header that tells you how many seconds to wait before retrying:
+
+```
+Retry-After: 30
+```
+
+Wait at least this many seconds before re-sending the request. If you receive consecutive `429` responses, apply additional exponential backoff on top of the `Retry-After` value to avoid amplifying load on the gateway.
+
+```ts
+async function withRetry(fn: () => Promise<Response>): Promise<Response> {
+  const response = await fn();
+  if (response.status === 429) {
+    const retryAfter = parseInt(response.headers.get("Retry-After") ?? "5", 10);
+    await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+    return fn();
+  }
+  return response;
+}
+```
+
+<Note>
+  If you use the Praxa SDK, it automatically retries `408`, `425`, `429`, and
+  `5xx` responses using the `Retry-After` header where present. You only need
+  to handle non-retryable errors such as `400`, `401`, `403`, `404`, `409`,
+  and `422` in your own code.
+</Note>

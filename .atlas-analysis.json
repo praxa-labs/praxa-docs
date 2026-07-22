@@ -1,19 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Praxa",
+  "projectType": "sdk-library",
+  "projectName": "Praxa",
+  "projectDescription": "Credential-free agentic mission platform providing a TypeScript SDK, CLI, and MCP contracts for submitting and observing governed AI agent missions through the Praxa Integration Gateway.",
   "theme": "luma",
-  "favicon": "https://media.brand.dev/5bf0c599-8404-485e-a929-a6e148e92ef2.jpg",
-  "colors": {
-    "primary": "#909090",
-    "light": "#dddddd",
-    "dark": "#1d1d1d"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/praxa-labs/praxa"
-    }
-  },
+  "primaryColor": "#909090",
+  "lightColor": "#1d1d1d",
+  "darkColor": "#dddddd",
   "navigation": {
     "tabs": [
       {
@@ -123,5 +115,40 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Credential-free mission submission — provider API keys never appear in client code",
+    "OAuth-governed access with fine-grained scopes per operation",
+    "Real-time mission event streaming via Server-Sent Events (SSE)",
+    "Automatic idempotency-key retry with exponential backoff",
+    "Resource budgeting for agent missions (steps, tool calls, elapsed time, parallelism)",
+    "MCP 2025-03-26 protocol contracts for AI agent tool integration",
+    "TypeScript-first SDK with full type coverage",
+    "CLI for mission management and gateway health checks",
+    "Capability discovery and memory querying",
+    "Full trace and skill introspection"
+  ],
+  "publicApiSurface": [
+    "PraxaClient constructor (baseUrl, accessToken, fetch, maximumAttempts, retryBaseDelayMs)",
+    "client.createMission(input, idempotencyKey) — POST /v8/missions",
+    "client.getMission(runId) — GET /v8/missions/{runId}",
+    "client.missionEvents(runId, options) — GET /v8/missions/{runId}/events (SSE)",
+    "client.signalMission(runId, signal, payload, idempotencyKey) — POST /v8/missions/{runId}/signals",
+    "client.cancelMission(runId, reason, idempotencyKey) — POST /v8/missions/{runId}/cancel",
+    "client.searchCapabilities(requirement) — POST /v8/capabilities/search",
+    "client.queryMemory(query) — POST /v8/memory/query",
+    "client.getSkill(skillId) — GET /v8/skills/{skillId}",
+    "client.getTrace(traceId) — GET /v8/traces/{traceId}",
+    "client.listGoals() — GET /v8/context-twin/goals",
+    "client.listWorldModelCertificates() — GET /v8/world-model/certificates",
+    "client.getReferenceCoverage() — GET /v8/coverage",
+    "PraxaClientError (with .status and .problem)",
+    "PRAXA_MCP_TOOLS — array of 11 MCP tool definitions",
+    "praxaMcpTool(name) — tool lookup function",
+    "praxa version — CLI: print version info",
+    "praxa doctor — CLI: gateway health check",
+    "praxa mission get --run-id <uuid>",
+    "praxa mission create --input <file> --idempotency-key <uuid>",
+    "praxa mission cancel --run-id <uuid> --reason <text> --idempotency-key <uuid>"
+  ]
 }

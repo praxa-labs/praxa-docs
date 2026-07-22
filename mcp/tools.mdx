@@ -1,0 +1,117 @@
+---
+title: "Praxa MCP Tool Definitions Reference"
+sidebarTitle: "MCP Tools"
+description: "Reference for all 11 Praxa MCP tools. Each tool maps to a Praxa Integration Gateway operation with defined input schemas, required OAuth scopes, and idempotency behavior."
+---
+
+`PRAXA_MCP_TOOLS` is the complete, authoritative list of MCP tools exposed by the Praxa Integration Gateway. You import this array from `@praxa/mcp-contracts` and register its entries with your MCP host — no manual schema authoring required. Every tool definition includes a `name`, human-readable `description`, `inputSchema` (JSON Schema draft-07 compatible), the gateway `operationId`, HTTP `method` and `path`, a `requiredScope` for OAuth authorization, and an `idempotency` field indicating whether the tool mutates state.
+
+Each tool object in the array has the following shape:
+
+```typescript
+type PraxaMcpTool = {
+  name: string;           // MCP tool name registered with the host
+  description: string;    // Shown to the AI model as tool documentation
+  inputSchema: object;    // JSON Schema for the tool's input object
+  operationId: string;    // Corresponding gateway operation
+  method: "GET" | "POST"; // HTTP method used by the gateway
+  path: string;           // Gateway path, e.g. /v8/missions/{runId}
+  requiredScope: string;  // OAuth scope the token must include
+  idempotency: "required" | "safe-read"; // Mutation behaviour
+  pathArgument?: string;  // Input field interpolated into the path
+};
+```
+
+## Tool List
+
+| Tool Name | HTTP Method | Path | Required Scope | Idempotency |
+|---|---|---|---|---|
+| `aura_create_mission` | POST | `/v8/missions` | `missions:write` | Required |
+| `aura_get_mission` | GET | `/v8/missions/{runId}` | `missions:read` | None |
+| `aura_signal_mission` | POST | `/v8/missions/{runId}/signals` | `missions:write` | Required |
+| `aura_cancel_mission` | POST | `/v8/missions/{runId}/cancel` | `missions:write` | Required |
+| `aura_search_capabilities` | POST | `/v8/capabilities/search` | `capabilities:read` | None |
+| `aura_query_memory` | POST | `/v8/memory/query` | `memory:read` | None |
+| `aura_get_skill` | GET | `/v8/skills/{skillId}` | `skills:read` | None |
+| `aura_get_trace` | GET | `/v8/traces/{traceId}` | `traces:read` | None |
+| `aura_list_goals` | GET | `/v8/context-twin/goals` | `context:read` | None |
+| `aura_list_world_certificates` | GET | `/v8/world-model/certificates` | `world:read` | None |
+| `aura_get_coverage` | GET | `/v8/coverage` | `coverage:read` | None |
+
+Tools with `idempotency: "required"` mutate gateway state and must receive a unique `idempotencyKey` field in their input on every call. Tools listed as `safe-read` are read-only and carry no idempotency requirement.
+
+Brief descriptions of what each tool does:
+
+- **`aura_create_mission`** — Submits a goal to Praxa policy and broker orchestration. Grants no action authority on its own.
+- **`aura_get_mission`** — Reads an authoritative mission projection for a given run ID.
+- **`aura_signal_mission`** — Records a mission signal for policy-controlled handling; does not directly commit a provider effect.
+- **`aura_cancel_mission`** — Requests durable mission cancellation through the Control Plane.
+- **`aura_search_capabilities`** — Searches policy-eligible capability manifests before semantic ranking.
+- **`aura_query_memory`** — Queries purpose-filtered memory through the private Control Plane.
+- **`aura_get_skill`** — Reads a versioned governed skill and its evidence state.
+- **`aura_get_trace`** — Reads a redacted causal trace.
+- **`aura_list_goals`** — Lists purpose- and compartment-filtered context goals.
+- **`aura_list_world_certificates`** — Lists signed model capability certificates. Certificates grant zero action authority.
+- **`aura_get_coverage`** — Reads reference coverage evidence. Coverage is not a measure of production readiness.
+
+## Using `PRAXA_MCP_TOOLS`
+
+Import `PRAXA_MCP_TOOLS` to iterate all tool definitions, or use `praxaMcpTool` to retrieve a single tool by name. Both are fully typed in TypeScript.
+
+```typescript
+import { PRAXA_MCP_TOOLS, praxaMcpTool } from "@praxa/mcp-contracts";
+
+// Iterate all tools — useful when registering with an MCP host
+for (const tool of PRAXA_MCP_TOOLS) {
+  console.log(tool.name, tool.requiredScope);
+}
+
+// Look up a specific tool
+const createTool = praxaMcpTool("aura_create_mission");
+console.log(createTool?.inputSchema);
+```
+
+A typical MCP server registration loop looks like this:
+
+```typescript
+import { PRAXA_MCP_TOOLS, MCP_SERVER_NAME, MCP_PROTOCOL_VERSION } from "@praxa/mcp-contracts";
+
+const server = createMcpServer({
+  name: MCP_SERVER_NAME,
+  version: MCP_PROTOCOL_VERSION,
+});
+
+for (const tool of PRAXA_MCP_TOOLS) {
+  server.registerTool({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+  });
+}
+```
+
+## Tool Name Convention
+
+Every tool in `PRAXA_MCP_TOOLS` has a name prefixed with `aura_`. These names are **stable wire-protocol identifiers** retained for backward compatibility with MCP hosts and agent configurations that were built against earlier versions of the gateway. Renaming them on the wire would break existing deployments. The public package name and TypeScript type aliases (`PRAXA_MCP_TOOLS`, `PraxaMcpTool`, `praxaMcpTool`) use the Praxa brand, but the tool names your MCP host and AI model see remain `aura_*`.
+
+## JSON-RPC Types
+
+`@praxa/mcp-contracts` also exports TypeScript types for the JSON-RPC 2.0 message layer that MCP uses as its transport:
+
+```typescript
+import type { JsonRpcRequest, JsonRpcResponse, JsonRpcId } from "@praxa/mcp-contracts";
+
+function handleMessage(message: JsonRpcRequest): JsonRpcResponse {
+  return {
+    jsonrpc: "2.0",
+    id: message.id ?? null,
+    result: { /* ... */ },
+  };
+}
+```
+
+Use these types when building the request/response handling layer of your own MCP server implementation on top of these contracts.
+
+<Note>
+Any tool with `idempotency: "required"` — `aura_create_mission`, `aura_signal_mission`, and `aura_cancel_mission` — must receive a unique `idempotencyKey` field in its input on every invocation. Reusing the same key for two logically different calls causes the gateway to return the cached result of the first. Generate a fresh UUID v4 per call.
+</Note>

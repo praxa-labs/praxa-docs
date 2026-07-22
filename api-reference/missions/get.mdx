@@ -1,0 +1,133 @@
+---
+title: "GET /v8/missions/{runId} — Retrieve Mission Status"
+sidebarTitle: "Get Mission"
+description: "GET /v8/missions/{runId} fetches the current status and step history of a Praxa mission by its run ID. Requires missions:read scope."
+---
+
+The `GET /v8/missions/{runId}` endpoint returns an authoritative projection of a mission at the moment you call it. You get the mission's current lifecycle status, the full ordered list of steps recorded so far, and a sequence number you can use to detect concurrent updates. This endpoint is safe to call repeatedly — it is read-only and idempotent. If you need real-time updates as the mission progresses, combine polling with the [Mission Events stream](/api-reference/missions/events) instead.
+
+## Endpoint
+
+```
+GET /v8/missions/{runId}
+```
+
+**Required scope:** `missions:read`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+
+---
+
+## Path Parameters
+
+<ParamField path="runId" type="string (UUID)" required>
+  The unique run identifier returned when you created the mission via `POST /v8/missions`. Must be a valid UUID v7.
+</ParamField>
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl https://your-gateway.example/v8/missions/018e2f3a-7c14-7000-b1e2-4d3f8a20c911 \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN"
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const mission = await client.getMission("018e2f3a-7c14-7000-b1e2-4d3f8a20c911");
+
+console.log(mission.status);        // "running" | "succeeded" | ...
+console.log(mission.steps.length);  // number of steps recorded so far
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+The response body is a full `MissionProjection` object reflecting the mission's current authoritative state.
+
+<ResponseField name="runId" type="string (UUID)" required>
+  The unique run identifier for this mission. Matches the `runId` path parameter you supplied.
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  The mission's current lifecycle state.
+
+  | Value | Meaning |
+  |---|---|
+  | `running` | The agent is actively executing steps |
+  | `waiting` | The agent is paused, waiting for a signal or external event |
+  | `succeeded` | The mission completed successfully — all goal criteria were met |
+  | `failed` | The mission failed due to a budget overrun, policy rejection, or unrecoverable error |
+  | `cancelled` | The mission was explicitly cancelled via `POST /v8/missions/{runId}/cancel` |
+</ResponseField>
+
+<ResponseField name="sequence" type="integer" required>
+  Monotonically increasing version counter for this projection. If you are polling from multiple clients, compare `sequence` values to determine which response is more recent. A higher value always represents a later state.
+</ResponseField>
+
+<ResponseField name="steps" type="array" required>
+  Ordered list of every step the agent has recorded for this mission. Each element in the array is a step summary object.
+
+  <Expandable title="Step object fields">
+    <ResponseField name="stepId" type="string">
+      Unique identifier for this step within the mission.
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      The step's lifecycle status (e.g., `"completed"`, `"failed"`, `"running"`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```json Example 200 response
+{
+  "runId": "018e2f3a-7c14-7000-b1e2-4d3f8a20c911",
+  "status": "succeeded",
+  "sequence": 9,
+  "steps": [
+    { "stepId": "step_1", "status": "completed" },
+    { "stepId": "step_2", "status": "completed" },
+    { "stepId": "step_3", "status": "completed" }
+  ]
+}
+```
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `missions:read` scope |
+| `404 Not Found` | No mission exists for the given `runId` under your principal |
+
+---
+
+## SDK Equivalent
+
+```typescript
+const mission = await client.getMission(runId);
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `runId` | `string` | UUID of the mission to retrieve |
+
+**Returns:** `Promise<MissionProjection>`

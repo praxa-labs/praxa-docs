@@ -1,0 +1,50 @@
+---
+title: "Praxa MCP Contracts: Protocol Definitions for AI Agents"
+sidebarTitle: "Overview"
+description: "@praxa/mcp-contracts provides MCP 2025-03-26 tool definitions for Praxa. Use these contracts to register Praxa tools with any MCP-compatible AI agent server."
+---
+
+`@praxa/mcp-contracts` is a zero-dependency package containing the MCP (Model Context Protocol) 2025-03-26 tool definitions for the Praxa Integration Gateway. It gives you a stable, typed set of tool schemas and metadata that you can register with any MCP-compatible AI agent server, without coupling your server implementation to any specific Praxa SDK version.
+
+## Installation
+
+```bash
+npm install @praxa/mcp-contracts
+```
+
+## What's Included
+
+The package exports everything you need to describe Praxa tools to an MCP host:
+
+- **`PRAXA_MCP_TOOLS`** — An array of 11 `PraxaMcpTool` objects. Each object contains the tool name, description, `inputSchema` (JSON Schema), `operationId`, HTTP method and path, required OAuth scope, and idempotency behavior.
+- **`praxaMcpTool(name)`** — A lookup function that returns a single tool definition by name, or `undefined` if the name is not found.
+- **`MCP_PROTOCOL_VERSION`** — The string `"2025-03-26"`, the MCP protocol revision these contracts target.
+- **`MCP_SERVER_NAME`** — The string `"aura-agent-os"`, the canonical server identifier used in the hosted `/mcp` endpoint.
+- **JSON-RPC message types** — `JsonRpcRequest`, `JsonRpcResponse`, and `JsonRpcId` TypeScript types for building MCP server implementations on top of these contracts.
+
+## Protocol Details
+
+These contracts target **MCP protocol version `2025-03-26`** using **JSON-RPC 2.0** as the transport framing. The `MCP_PROTOCOL_VERSION` constant is exported for you to include in server capability negotiation:
+
+```typescript
+import { MCP_PROTOCOL_VERSION, MCP_SERVER_NAME } from "@praxa/mcp-contracts";
+
+console.log(MCP_PROTOCOL_VERSION); // "2025-03-26"
+console.log(MCP_SERVER_NAME);      // "aura-agent-os"
+```
+
+Connect an MCP 2025-03-26 Streamable HTTP client to the hosted `/mcp` endpoint and authenticate using a delegated Praxa OAuth token scoped to the specific operations your agent requires.
+
+## Important Note
+
+`@praxa/mcp-contracts` contains **protocol contracts only**. The package defines tool schemas and metadata — it does not include server execution logic, OAuth authority, provider adapters, or action executors. To actually execute the tools described here, you need a running Praxa Integration Gateway. The contracts tell your MCP host *what* each tool accepts and returns; the gateway is what carries out the work.
+
+<Info>
+`@praxa/mcp-contracts` is licensed under Apache-2.0 and is safe to vendor directly into your project or redistribute as part of your own MCP server package. The tool definitions carry no embedded credentials or environment dependencies.
+</Info>
+
+<CardGroup cols={2}>
+  <Card title="MCP Tools Reference" icon="wrench" href="/mcp/tools">
+    Full table of all 11 tool definitions with scopes, paths, and usage examples
+  </Card>
+</CardGroup>

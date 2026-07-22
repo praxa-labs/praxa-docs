@@ -1,0 +1,173 @@
+---
+title: "POST /v8/capabilities/search — Search Available Capabilities"
+sidebarTitle: "Search Capabilities"
+description: "POST /v8/capabilities/search returns a list of capabilities matching your requirement string. Use this to discover what actions are available before submitting a mission."
+---
+
+The `POST /v8/capabilities/search` endpoint lets you discover which capabilities are available on your Praxa Integration Gateway before committing to a mission. You describe what you need using three structured fields — the action family, the purpose, and the target type — and the gateway returns a ranked list of policy-eligible `CapabilityManifest` objects. Each manifest tells you the capability's identifier, kind, version, a verifiable contract hash, and its current health state. Use this endpoint to validate that your gateway deployment has the right capabilities before building a mission goal specification around them.
+
+<Info>
+  The search results are semantically ranked but grant no authority on their own. A capability appearing in search results means it is policy-eligible for your principal — the actual authority to invoke it is verified at mission execution time by the private policy plane.
+</Info>
+
+## Endpoint
+
+```
+POST /v8/capabilities/search
+```
+
+**Required scope:** `capabilities:read`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+| `Content-Type` | `application/json` |
+
+---
+
+## Request Body
+
+<ParamField body="actionFamily" type="string" required>
+  The category or family of action you need. Must be between 1 and 128 characters. Examples: `"web-search"`, `"calendar-read"`, `"code-execution"`, `"email-send"`.
+</ParamField>
+
+<ParamField body="purpose" type="string" required>
+  A natural language description of why you need this capability — the intended use of the action in your mission. Must be between 1 and 256 characters. The policy plane uses this value to filter results to those permitted for your stated purpose.
+
+  Example: `"Retrieve current news articles to summarise recent industry developments for a weekly report"`
+</ParamField>
+
+<ParamField body="targetType" type="string" required>
+  The type of resource or system the capability will operate on. Must be between 1 and 128 characters. Examples: `"web-page"`, `"google-calendar"`, `"github-repository"`, `"slack-channel"`.
+</ParamField>
+
+<Note>
+  The `principalId` field is injected automatically from your OAuth delegation token. You must not include it in the request body — the gateway rejects any request that contains it.
+</Note>
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://your-gateway.example/v8/capabilities/search \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "actionFamily": "web-search",
+    "purpose": "Retrieve current news articles to summarise recent industry developments",
+    "targetType": "web-page"
+  }'
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const capabilities = await client.searchCapabilities({
+  actionFamily: "web-search",
+  purpose: "Retrieve current news articles to summarise recent industry developments",
+  targetType: "web-page",
+});
+
+for (const cap of capabilities) {
+  console.log(`${cap.capabilityId} (${cap.kind}) — ${cap.healthState}`);
+}
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+The response body is a JSON array of `CapabilityManifest` objects, capped at 256 results. Results are ordered by policy-weighted semantic relevance to your requirement.
+
+<ResponseField name="capabilityId" type="string" required>
+  The stable, unique identifier for this capability. Use this value when referencing a specific capability in a mission goal specification or when pinning to a known version.
+</ResponseField>
+
+<ResponseField name="kind" type="string" required>
+  The capability's integration kind. One of:
+
+  | Value | Description |
+  |---|---|
+  | `api` | REST or GraphQL API integration |
+  | `mcp` | Model Context Protocol tool |
+  | `a2a_agent` | Agent-to-agent delegation target |
+  | `browser` | Headless browser / web automation |
+  | `device` | Physical or IoT device interface |
+  | `skill` | Composed multi-step skill |
+  | `human` | Human-in-the-loop delegate |
+</ResponseField>
+
+<ResponseField name="version" type="string" required>
+  The version string of this capability's contract. Use this alongside `contractHash` to pin to a specific revision.
+</ResponseField>
+
+<ResponseField name="contractHash" type="string" required>
+  A 64-character lowercase hex SHA-256 hash of the capability's contract definition. Use this value to verify that the capability your agent invokes at runtime matches the one you discovered at search time.
+</ResponseField>
+
+<ResponseField name="healthState" type="string" required>
+  The capability's current operational health.
+
+  | Value | Meaning |
+  |---|---|
+  | `healthy` | Fully operational |
+  | `degraded` | Partially operational; some requests may fail or be slower than normal |
+  | `unavailable` | Currently offline; do not include in mission goal specifications |
+  | `quarantined` | Suspended pending a policy or security review; cannot be invoked |
+</ResponseField>
+
+```json Example 200 response
+[
+  {
+    "capabilityId": "praxa.web-search.v2",
+    "kind": "api",
+    "version": "2.4.1",
+    "contractHash": "a3f9e2c17b045d8e6f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e",
+    "healthState": "healthy"
+  },
+  {
+    "capabilityId": "praxa.web-search.v1",
+    "kind": "api",
+    "version": "1.9.0",
+    "contractHash": "b4e1f3d2a8c6e5f4b3a2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0",
+    "healthState": "degraded"
+  }
+]
+```
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `400 Bad Request` | Missing required fields or field values exceed length limits |
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `capabilities:read` scope, or `principalId` was included in the request body |
+
+---
+
+## SDK Equivalent
+
+```typescript
+const capabilities = await client.searchCapabilities(requirement);
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `requirement` | `CapabilityRequirement` | Object with `actionFamily`, `purpose`, and `targetType` |
+
+**Returns:** `Promise<CapabilityManifest[]>`

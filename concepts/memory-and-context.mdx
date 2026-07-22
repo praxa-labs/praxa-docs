@@ -1,0 +1,119 @@
+---
+title: "Memory, Context, and World Model in Praxa"
+sidebarTitle: "Memory & Context"
+description: "Praxa missions can read from persistent memory, a context-twin goal list, and a world model. Learn how to query memory and context to build smarter, more aware agents."
+---
+
+Praxa missions don't operate in a vacuum. The Integration Gateway maintains three sources of ambient awareness that agents can draw on during execution: **persistent memory** accumulated from past activity, a **context twin** that tracks the current set of active goals for your deployment, and a **world model** that holds certified, signed facts about the state of the world the agent operates in. You can query all three directly from your application — and the agent uses them automatically during mission execution.
+
+## Memory
+
+Persistent memory stores information that accumulates across missions and can be retrieved by future runs. This lets agents learn from past activity, recall previous decisions, and avoid repeating work that has already been done. Memory is scoped to your tenant and filtered by compartment and purpose, so different workloads can maintain isolated memory stores within the same deployment.
+
+Use `client.queryMemory()` with a `MemoryQuery` to retrieve relevant memory records:
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+import type { MemoryQuery } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: async () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const query: MemoryQuery = {
+  compartment: "engineering-weekly",       // logical isolation boundary
+  purpose:     "retrieve past review notes for context",
+  queryText:   "previous weekly review notes",
+  classes:     ["review", "notes"],        // at least one class is required
+  limit:       5,                          // max results returned (1–50)
+};
+
+const results = await client.queryMemory(query);
+console.log(results);
+```
+
+The `MemoryQuery` type exposes additional optional fields for more precise retrieval:
+
+```typescript
+type MemoryQuery = Readonly<{
+  readonly compartment: string;          // required: isolation boundary
+  readonly purpose: string;              // required: why you're reading this memory
+  readonly queryText: string;            // required: natural-language search string
+  readonly classes: readonly string[];   // required: at least one memory class filter
+  readonly limit?: number;               // optional: default 10, max 50
+  readonly maxContextBytes?: number;     // optional: cap on total bytes returned
+  readonly maxContextTokens?: number;    // optional: cap on total tokens returned
+  readonly queryEmbedding?: readonly number[]; // optional: vector for semantic search
+}>;
+```
+
+The `purpose` field is part of the gateway's policy enforcement — it must accurately describe why your application is accessing memory. The `compartment` field scopes the search to a specific logical partition within your tenant's memory store.
+
+## Context Twin
+
+The context twin maintains a live list of active goals associated with your deployment. These goals represent high-level intentions — things your organisation or system is currently trying to achieve — that agents can incorporate into their reasoning without needing to be told explicitly in each mission's `goalSpec`.
+
+Use `client.listGoals()` to retrieve the current goal list:
+
+```typescript
+const goals = await client.listGoals();
+
+console.log(`Active goals in context: ${goals.length}`);
+for (const goal of goals) {
+  console.log(goal);
+}
+```
+
+The response is filtered by purpose and compartment based on your OAuth token's scopes, so you only see goals your principal is authorised to read. Goals returned here are the same ones the gateway surfaces to agents during mission execution, ensuring your application's view is consistent with what the agent sees.
+
+You can use the goal list to validate that the correct goals are registered before submitting a mission, or to surface active objectives in your application's UI.
+
+## World Model
+
+The world model holds certified, signed assertions about facts the agent can rely on. These are not user-supplied data — they are formally attested statements managed by the gateway, covering domains such as the current date and time horizon, service availability, regulatory context, or other stable facts that agents need to reason correctly.
+
+Use `client.listWorldModelCertificates()` to retrieve the current set of certified facts:
+
+```typescript
+const certificates = await client.listWorldModelCertificates();
+
+console.log(`World model certificates: ${certificates.length}`);
+for (const cert of certificates) {
+  console.log(cert);
+}
+```
+
+Each certificate is signed per-domain and includes head and horizon capability data. The gateway automatically makes these certificates available to running agents, so your missions can make grounded, temporally-aware decisions without you needing to inject environmental facts manually into each `goalSpec`.
+
+## How Agents Use Context
+
+When the gateway executes a mission, the agent automatically incorporates available memory, context-twin goals, and world model certificates into its reasoning. You do not need to manually fetch and inject this information into each mission — the gateway surfaces it to the agent as part of the execution context.
+
+This means a mission with a minimal `goalSpec` can still produce context-aware results:
+
+```typescript
+// The agent will automatically draw on memory, goals, and world model
+const mission = await client.createMission(
+  {
+    goalSpec: {
+      task: "Prepare this week's engineering review using our standard format",
+    },
+    resourceBudget: {
+      maximumSteps: 15,
+      maximumToolCalls: 10,
+      maximumElapsedMs: 180_000,
+      maximumParallelism: 2,
+    },
+  },
+  crypto.randomUUID(),
+);
+```
+
+The phrase "our standard format" can be grounded by the agent through memory records from previous reviews — without you embedding that format explicitly in the goal. This separation keeps your application code clean while still enabling highly contextualised agent behaviour.
+
+You can query memory and context directly from your application when you need to display that information to users, validate the current state of the deployment, or pre-flight a mission before submitting it.
+
+<Note>
+  Memory, context-twin goals, and world model certificates are all scoped to your tenant and deployment. Data from one tenant is never visible to another. Within a tenant, compartment boundaries and OAuth scope filters further restrict which records a given principal can read or write. Always specify accurate `compartment` and `purpose` values in `MemoryQuery` requests to ensure correct policy enforcement.
+</Note>

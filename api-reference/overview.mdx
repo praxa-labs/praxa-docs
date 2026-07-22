@@ -1,0 +1,105 @@
+---
+title: "Praxa Integration Gateway REST API Reference"
+sidebarTitle: "Overview"
+description: "The Praxa Integration Gateway REST API (v8.1.0) lets you create, monitor, and control governed AI agent missions. All endpoints require OAuth Bearer authentication."
+---
+
+The Praxa Integration Gateway exposes a REST API at version 8.1.0 (contract: `aura-integration-gateway-v8.1`) for submitting and managing governed AI agent missions. The public edge delegates every governed operation to a private deterministic policy, broker, and verifier plane — models, SDKs, CLIs, and MCP tools grant no action authority of their own. This reference covers all 14 endpoints available in v8.1.0.
+
+## Base URL
+
+The base URL is the HTTPS origin of your Praxa Integration Gateway deployment. All endpoint paths in this reference are relative to that origin.
+
+```
+https://your-gateway.example
+```
+
+<Info>
+  No shared `workers.dev` route exists for the Integration Gateway. You must
+  use the canonical HTTPS origin of your own deployment.
+</Info>
+
+Every request must use HTTPS. HTTP origins are rejected by the gateway.
+
+## API Version
+
+The current API version is **v8.1.0**, accessible under the `/v8/` path prefix. All v8 paths share a single wire-compatibility contract that is identified by the following header, which the server includes in every response:
+
+```
+x-aura-contract-version: aura-integration-gateway-v8.1
+```
+
+You can use this header to confirm that the gateway you are talking to is
+running the expected contract version before you send mission payloads.
+
+## Endpoints Overview
+
+The table below lists every endpoint exposed by the Integration Gateway. Click any endpoint in the Authentication or Errors pages to see full request and response schemas.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v8/missions` | Create a new mission |
+| `GET` | `/v8/missions/{runId}` | Get mission status |
+| `GET` | `/v8/missions/{runId}/events` | Stream mission events (SSE) |
+| `POST` | `/v8/missions/{runId}/signals` | Send signal to mission |
+| `POST` | `/v8/missions/{runId}/cancel` | Cancel a mission |
+| `POST` | `/v8/capabilities/search` | Search available capabilities |
+| `POST` | `/v8/memory/query` | Query persistent memory |
+| `GET` | `/v8/skills/{skillId}` | Get skill details |
+| `GET` | `/v8/traces/{traceId}` | Get execution trace |
+| `GET` | `/v8/context-twin/goals` | List context goals |
+| `GET` | `/v8/world-model/certificates` | List world model certificates |
+| `GET` | `/v8/coverage` | Get reference coverage |
+| `POST` | `/mcp` | MCP protocol endpoint |
+
+<Tip>
+  The `/mcp` endpoint sits outside the `/v8/` prefix because it implements the
+  MCP 2025-03-26 Streamable HTTP JSON-RPC protocol, which has its own
+  versioning surface.
+</Tip>
+
+## Response Format
+
+All endpoints return JSON bodies (`application/json`) together with standard HTTP status codes. A `200` or `202` response means your request was accepted and the body contains the documented schema.
+
+When the gateway cannot fulfill a request, it returns an `application/problem+json` body following [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457). Every problem response includes the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `string` (URI) | A stable URI identifying the problem kind |
+| `title` | `string` | Short human-readable summary |
+| `status` | `integer` | HTTP status code |
+| `detail` | `string` | Human-readable explanation of this specific occurrence |
+| `code` | `string` | Machine-readable error code |
+| `requestId` | `string` (UUID) | Unique ID for this request, useful when contacting support |
+
+See [Errors](/api-reference/errors) for the full list of status codes and recovery steps.
+
+## Idempotency
+
+Mutating operations (`POST /v8/missions`, `POST /v8/missions/{runId}/signals`, and `POST /v8/missions/{runId}/cancel`) require you to include an `Idempotency-Key` header on every call. Safe read operations (`GET` requests and search/query `POST` requests) do not require it.
+
+```
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+```
+
+The value must be a string between 16 and 128 characters, containing only alphanumeric characters and the symbols `.`, `_`, `:`, `-`. A UUID v4 string is the most common and recommended choice.
+
+<Note>
+  If you replay a mutating request with the **same** `Idempotency-Key` and the
+  **same** request body, the gateway returns the original response without
+  re-executing the operation. If you replay with the same key but a **different**
+  body, you receive a `409 Conflict`. See [Errors](/api-reference/errors) for
+  details.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api-reference/authentication">
+    Learn how to obtain and send OAuth Bearer tokens, required scopes per
+    endpoint, and how to handle auth errors.
+  </Card>
+  <Card title="Errors" icon="circle-exclamation" href="/api-reference/errors">
+    Understand RFC 9457 problem+json responses, all HTTP status codes, and
+    how to retry safely.
+  </Card>
+</CardGroup>

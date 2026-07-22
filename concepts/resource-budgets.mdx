@@ -1,0 +1,123 @@
+---
+title: "Resource Budgets: Control Agent Mission Scope"
+sidebarTitle: "Resource Budgets"
+description: "Resource budgets let you cap how many steps, tool calls, elapsed time, and parallel branches a Praxa mission can use. Learn how to set budgets and what happens when they are exceeded."
+---
+
+A **resource budget** is a set of hard limits that govern how much work a Praxa mission is allowed to perform. Every `CreateMissionRequest` must include a `resourceBudget`, and the Integration Gateway enforces those limits server-side throughout the lifetime of the run. Budgets give you predictable cost, latency, and risk profiles for every mission you submit — regardless of how ambitious the agent's reasoning might become.
+
+## Budget Parameters
+
+The `ResourceBudget` type from `@praxa/sdk` exposes four required fields. All four must be set; there are no optional budget fields.
+
+```typescript
+import type { ResourceBudget } from "@praxa/sdk";
+
+type ResourceBudget = Readonly<{
+  readonly maximumSteps: number;
+  readonly maximumToolCalls: number;
+  readonly maximumElapsedMs: number;
+  readonly maximumParallelism: number;
+}>;
+```
+
+| Field | Type | Description | Example value |
+|---|---|---|---|
+| `maximumSteps` | `number` (integer ≥ 1) | Maximum number of reasoning iterations the agent may take. Each time the agent decides what to do next counts as one step. | `12` |
+| `maximumToolCalls` | `number` (integer ≥ 0) | Maximum number of external tool or integration invocations across the entire mission. Set to `0` to prevent any external calls. | `8` |
+| `maximumElapsedMs` | `number` (integer ≥ 1) | Wall-clock time limit for the mission in milliseconds. The mission is terminated if it has not reached a terminal state by this deadline. | `120000` |
+| `maximumParallelism` | `number` (integer 1–64) | Maximum number of agent branches that may execute concurrently. Higher values can speed up multi-part tasks but consume more resources simultaneously. | `2` |
+
+Each field has a server-side minimum enforced by the gateway (e.g. `maximumSteps` must be at least `1`). The gateway may also apply tenant-level ceilings that are lower than what you specify — see your gateway configuration for authoritative limits.
+
+## Example Budget
+
+The following budget is a reasonable starting point for a moderately complex research or summarisation task:
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: async () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const mission = await client.createMission(
+  {
+    goalSpec: { task: "Summarise the last 7 days of customer support tickets" },
+    resourceBudget: {
+      maximumSteps: 12,
+      maximumToolCalls: 8,
+      maximumElapsedMs: 120_000,   // 2 minutes
+      maximumParallelism: 2,
+    },
+  },
+  crypto.randomUUID(),
+);
+
+console.log(mission.runId, mission.status);
+```
+
+This budget allows the agent up to 12 reasoning steps, 8 tool calls, 2 minutes of wall time, and 2 concurrent branches. Adjust values based on the complexity and latency requirements of your specific workload.
+
+## What Happens When a Budget Is Exceeded
+
+If the agent hits any budget limit before the mission reaches a natural end, the Integration Gateway transitions the mission to the `failed` status with a budget-exceeded reason recorded in the mission projection and its trace. The specific limit that was breached (steps, tool calls, elapsed time, or parallelism) is reflected in the failure detail so you can diagnose and tune your budget for the next attempt.
+
+```typescript
+const mission = await client.getMission(runId);
+
+if (mission.status === "failed") {
+  console.error(
+    `Mission ${mission.runId} failed after ${mission.steps.length} steps.`,
+  );
+  // Retrieve the full trace for the budget-exceeded reason
+  const trace = await client.getTrace(runId);
+  console.error(trace);
+}
+```
+
+Budget enforcement is not a penalty — it is a safety boundary. Any work the agent completed before the limit was reached is preserved in the mission's step history and trace, so partial results are not lost.
+
+## Tuning Your Budget
+
+Different workloads call for different budget shapes. Use the following guidance as a starting point and refine values based on observed mission traces from your own data.
+
+**Quick, focused tasks** — e.g. classifying a single document, answering a narrow factual question, or formatting a structured output:
+
+```typescript
+const quickBudget = {
+  maximumSteps: 4,
+  maximumToolCalls: 2,
+  maximumElapsedMs: 15_000,   // 15 seconds
+  maximumParallelism: 1,
+};
+```
+
+**Multi-step research or synthesis** — e.g. surveying multiple data sources, comparing options, and producing a written report:
+
+```typescript
+const researchBudget = {
+  maximumSteps: 20,
+  maximumToolCalls: 15,
+  maximumElapsedMs: 300_000,  // 5 minutes
+  maximumParallelism: 4,
+};
+```
+
+**Long-running automation** — e.g. processing a backlog of items, running a nightly workflow, or iterating over a large dataset:
+
+```typescript
+const automationBudget = {
+  maximumSteps: 50,
+  maximumToolCalls: 40,
+  maximumElapsedMs: 1_800_000, // 30 minutes
+  maximumParallelism: 8,
+};
+```
+
+When a mission repeatedly fails with budget-exceeded errors, increase the specific dimension that is being exhausted — for example, raise `maximumElapsedMs` if the agent is running out of time while still within its step count. When a mission succeeds but finishes well under all limits, you can safely reduce the budget to tighten your cost and risk envelope.
+
+<Tip>
+  Start with conservative budgets and increase them based on observed mission traces. The trace returned by `client.getTrace(traceId)` shows exactly how many steps and tool calls a completed mission consumed, giving you a precise baseline for calibrating future budgets.
+</Tip>

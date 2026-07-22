@@ -1,0 +1,241 @@
+---
+title: "Build Multi-Step Agent Workflows with Praxa"
+sidebarTitle: "Multi-Step Workflows"
+description: "Orchestrate complex, multi-step AI agent workflows using Praxa missions. Use signals to inject data mid-mission and stream live progress events to your users."
+---
+
+Complex workflows that involve multiple dependent steps are a natural fit for Praxa missions. Rather than manually chaining model calls, managing intermediate state, and handling failures at each transition, you submit a single goal and let the Praxa Integration Gateway's agent autonomously decompose and execute the work. You retain full observability through the event stream and can intervene at any point using signals or cancellation.
+
+## How Praxa Executes Multi-Step Workflows
+
+When you submit a mission, the agent receives your `goalSpec` and plans a sequence of steps that it believes will achieve the goal within the declared `resourceBudget`. Each step is a traceable unit of work — the agent records what it did, what tool it called, and what result it received before advancing to the next step.
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const mission = await client.createMission(
+  {
+    goalSpec: {
+      task: "Research competitors, draft a positioning brief, and produce a slide outline",
+      competitors: ["Acme Corp", "BetaCo", "Gamma Inc"],
+      audience: "executive",
+    },
+    resourceBudget: {
+      maximumSteps: 30,       // enough for a multi-phase workflow
+      maximumToolCalls: 20,
+      maximumElapsedMs: 300_000, // 5 minutes
+      maximumParallelism: 3,
+    },
+  },
+  crypto.randomUUID(),
+);
+
+console.log(`Workflow started: ${mission.runId}`);
+```
+
+<Note>
+  The `maximumParallelism` field in `resourceBudget` controls how many
+  concurrent branches the agent may execute at once. Setting it above `1`
+  allows the agent to research multiple competitors simultaneously, which
+  can significantly reduce elapsed time for fan-out workflows.
+</Note>
+
+Every step emitted during execution appears in `mission.steps` when you poll `getMission()`, giving you a running record of progress even before the workflow completes.
+
+## Sending Signals to a Running Mission
+
+Signals let you inject data or instructions into a mission that is still in progress — for example, to provide a user's choice, supply a value fetched from an external system, or redirect the agent's focus.
+
+```typescript
+await client.signalMission(
+  mission.runId,
+  "user-input",
+  { message: "Please focus on Q4 data only" },
+  crypto.randomUUID(),
+);
+```
+
+The four arguments are:
+
+| Argument | Type | Description |
+|---|---|---|
+| `runId` | `string` | The identifier returned by `createMission` |
+| `signalName` | `string` | A label the agent uses to route the signal |
+| `payload` | `JsonValue` | Any JSON-serialisable data to attach |
+| `idempotencyKey` | `string` | Prevents duplicate signal delivery on retry |
+
+Here is a fuller example that waits until the mission reaches a waiting state before sending a signal:
+
+```typescript
+for await (const event of client.missionEvents(mission.runId)) {
+  if (event.event === "mission.step.completed") {
+    const stepData = event.data as Record<string, unknown>;
+
+    // Agent signalled it needs the user to choose a reporting region
+    if (stepData.waitingFor === "region-selection") {
+      await client.signalMission(
+        mission.runId,
+        "region-selected",
+        { region: "EMEA", quarter: "Q4" },
+        crypto.randomUUID(),
+      );
+    }
+  }
+
+  if (event.event === "mission.completed") {
+    console.log("Workflow complete:", event.data);
+    break;
+  }
+
+  if (event.event === "mission.failed") {
+    throw new Error(`Workflow failed: ${JSON.stringify(event.data)}`);
+  }
+}
+```
+
+## Streaming Live Progress
+
+The `missionEvents()` async generator yields every server-sent event emitted during the mission's lifetime. Pipe these events to your front-end via WebSocket or SSE to give users a live view of agent progress.
+
+```typescript
+import { PraxaClient, type AuraSseEvent } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+async function streamWorkflow(runId: string, pushToClient: (e: AuraSseEvent) => void) {
+  for await (const event of client.missionEvents(runId)) {
+    // Forward every event to the connected client in real time
+    pushToClient(event);
+
+    switch (event.event) {
+      case "mission.started":
+        console.log("Agent began execution.");
+        break;
+
+      case "mission.step.started":
+        console.log("  → Step started:", event.data);
+        break;
+
+      case "mission.step.completed":
+        console.log("  ✓ Step completed:", event.data);
+        break;
+
+      case "mission.completed":
+        console.log("Workflow succeeded:", event.data);
+        return event.data; // terminal — generator closes automatically
+
+      case "mission.failed":
+        console.error("Workflow failed:", event.data);
+        throw new Error(`Mission ${runId} failed`);
+
+      case "mission.cancelled":
+        console.warn("Workflow was cancelled:", event.data);
+        return null;
+    }
+  }
+}
+```
+
+<Tip>
+  Pass `{ lastEventId: savedId }` as the second argument to `missionEvents()` to
+  resume a stream from a known point after a connection drop. The gateway replays
+  events from that ID forward.
+
+  ```typescript
+  for await (const event of client.missionEvents(runId, { lastEventId: "evt-42" })) {
+    // resumes from event 43 onwards
+  }
+  ```
+</Tip>
+
+## Cancelling a Workflow
+
+Call `cancelMission()` whenever you need to stop execution — user request, budget alert, or external policy trigger. The gateway records the cancellation durably and the agent terminates at the next safe checkpoint.
+
+```typescript
+await client.cancelMission(
+  mission.runId,
+  "User requested cancellation via dashboard", // human-readable reason
+  crypto.randomUUID(),                          // idempotency key
+);
+```
+
+After cancellation is accepted, the event stream emits `mission.cancelled` and closes. If you have an active `missionEvents()` loop running, it will exit on its own once it receives the terminal event.
+
+<Warning>
+  Cancellation is a durable request, not an instant kill signal. Steps that are
+  already in flight may complete before the agent halts. Always wait for the
+  `mission.cancelled` event before assuming execution has stopped.
+</Warning>
+
+## Error Recovery
+
+When a mission transitions to `failed`, the `mission.failed` event's `data` field contains error details you can inspect to understand what went wrong. To retry the workflow, create a new mission with a fresh idempotency key.
+
+```typescript
+import { PraxaClient, PraxaClientError } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+async function runWithRetry(
+  goalSpec: Record<string, unknown>,
+  maxAttempts = 3,
+) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // A new UUID on every attempt avoids idempotency collisions with the
+    // previous failed run.
+    const mission = await client.createMission(
+      {
+        goalSpec,
+        resourceBudget: {
+          maximumSteps: 20,
+          maximumToolCalls: 12,
+          maximumElapsedMs: 180_000,
+          maximumParallelism: 2,
+        },
+      },
+      crypto.randomUUID(),
+    );
+
+    let failed = false;
+
+    for await (const event of client.missionEvents(mission.runId)) {
+      if (event.event === "mission.completed") {
+        return { success: true, result: event.data, runId: mission.runId };
+      }
+      if (event.event === "mission.failed") {
+        console.warn(`Attempt ${attempt} failed:`, event.data);
+        failed = true;
+        break;
+      }
+    }
+
+    if (!failed) break; // terminal for non-failure exits
+
+    if (attempt < maxAttempts) {
+      // Exponential back-off before the next attempt
+      await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** (attempt - 1)));
+    }
+  }
+
+  throw new Error(`Workflow failed after ${maxAttempts} attempts`);
+}
+```
+
+<Note>
+  The `PraxaClient` automatically retries transient HTTP errors (408, 425, 429,
+  500–504) on idempotent requests up to three times with exponential back-off.
+  The error recovery pattern above is for handling missions that reach a
+  terminal `failed` status at the application level, not HTTP transport failures.
+</Note>

@@ -1,0 +1,129 @@
+---
+title: "GET /v8/skills/{skillId} — Retrieve Skill Details"
+sidebarTitle: "Get Skill"
+description: "GET /v8/skills/{skillId} returns the definition and metadata for a specific skill available in the Praxa Integration Gateway. Requires skills:read scope."
+---
+
+The `GET /v8/skills/{skillId}` endpoint returns the versioned definition and current evidence state for a specific skill registered in your Praxa Integration Gateway. Skills are composed multi-step capabilities that an agent can invoke as a single unit — they encapsulate a reusable sequence of tool calls, sub-goals, or capability invocations. Retrieving a skill's definition lets you inspect its contract, understand its expected inputs and outputs, and verify its evidence state before referencing it in a mission goal specification. This endpoint is read-only and safe to call repeatedly.
+
+## Endpoint
+
+```
+GET /v8/skills/{skillId}
+```
+
+**Required scope:** `skills:read`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+
+---
+
+## Path Parameters
+
+<ParamField path="skillId" type="string" required>
+  The unique identifier of the skill to retrieve. Must match the pattern `^[A-Za-z0-9][A-Za-z0-9._:-]*$` and be between 1 and 256 characters. Skill IDs are returned by the capabilities search endpoint when `kind` is `"skill"`.
+
+  Example: `praxa.summarise-and-send.v1`
+</ParamField>
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl https://your-gateway.example/v8/skills/praxa.summarise-and-send.v1 \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN"
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const skill = await client.getSkill("praxa.summarise-and-send.v1");
+
+console.log(skill);
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+The response body is the skill's versioned definition and evidence state. The gateway returns zero action authority with the response — reading the skill definition does not grant permission to invoke it.
+
+```json Example 200 response
+{
+  "skillId": "praxa.summarise-and-send.v1",
+  "name": "Summarise and Send",
+  "description": "Summarises a body of content using the configured model and sends the result to a specified destination channel or address.",
+  "version": "1.3.0",
+  "contractHash": "c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8",
+  "kind": "skill",
+  "healthState": "healthy",
+  "requiredScopes": ["skills:invoke", "capabilities:read"],
+  "inputSchema": {
+    "type": "object",
+    "required": ["content", "destination"],
+    "properties": {
+      "content": { "type": "string" },
+      "destination": { "type": "string" }
+    }
+  },
+  "evidenceState": {
+    "lastVerifiedAt": "2025-07-10T04:00:00Z",
+    "evidenceScore": 0.97,
+    "verificationPassed": true
+  }
+}
+```
+
+**Key response fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `skillId` | string | The stable identifier for this skill |
+| `name` | string | Human-readable display name |
+| `description` | string | What the skill does |
+| `version` | string | Semantic version of the skill's contract |
+| `contractHash` | string | 64-character hex SHA-256 of the skill's contract; use this to pin to a specific revision |
+| `kind` | string | Always `"skill"` for this endpoint |
+| `healthState` | string | Current operational health: `healthy`, `degraded`, `unavailable`, or `quarantined` |
+| `requiredScopes` | array | OAuth scopes required to invoke this skill in a mission |
+| `inputSchema` | object | JSON Schema describing the expected input to the skill |
+| `evidenceState` | object | Verification status, evidence score (0–1), and timestamp of the last verification run |
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `skills:read` scope |
+| `404 Not Found` | No skill exists with the given `skillId` under your principal's policy scope |
+
+---
+
+## SDK Equivalent
+
+```typescript
+const skill = await client.getSkill(skillId);
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `skillId` | `string` | Identifier of the skill to retrieve |
+
+**Returns:** `Promise<JsonValue>`

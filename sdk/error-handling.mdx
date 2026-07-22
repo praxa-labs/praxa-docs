@@ -1,0 +1,145 @@
+---
+title: "Handle Praxa SDK Errors and API Failures"
+sidebarTitle: "Error Handling"
+description: "PraxaClientError extends Error with HTTP status and RFC 9457 problem details. Learn how to catch, inspect, and respond to Praxa SDK errors in your TypeScript application."
+---
+
+`PraxaClient` throws a `PraxaClientError` for every HTTP error response it receives from the gateway. This is the only error type the SDK itself raises for API failures — all other thrown values (such as `TypeError` for network connectivity issues or `DOMException` for aborted requests) originate from the underlying `fetch` implementation. Because `PraxaClientError` extends the native `Error` class, you can use a standard `instanceof` check in any `catch` block to distinguish API errors from unexpected exceptions.
+
+## PraxaClientError
+
+`PraxaClientError` carries two pieces of structured information alongside the inherited `message` string:
+
+```typescript
+class PraxaClientError extends Error {
+  readonly status: number;           // HTTP status code, e.g. 401
+  readonly problem: Problem | undefined; // RFC 9457 problem details, if the gateway returned them
+}
+```
+
+| Property | Type | Description |
+|---|---|---|
+| `message` | `string` | Human-readable error description. Defaults to the `detail` field from the problem object, or `"Aura request failed with HTTP {status}"` if no problem body was returned. |
+| `status` | `number` | The HTTP status code of the failed response — for example `401`, `403`, or `503`. |
+| `problem` | `Problem \| undefined` | The parsed RFC 9457 `application/problem+json` body, if the gateway included one. Contains `type`, `title`, `detail`, `status`, `code`, and `requestId`. |
+
+The `Problem` type looks like this:
+
+```typescript
+type Problem = Readonly<{
+  type: string;       // URI identifying the error class, e.g. "https://praxa.ai/problems/invalid-goal-spec"
+  title: string;      // Short human-readable summary
+  detail: string;     // Longer human-readable explanation
+  status: number;     // HTTP status code (mirrors the response status)
+  code: string;       // Machine-readable error code
+  requestId: string;  // Unique request identifier for support and tracing
+}>;
+```
+
+Use `instanceof PraxaClientError` to safely narrow the type and access `status` and `problem`:
+
+```typescript
+import { PraxaClient, PraxaClientError } from "@praxa/sdk";
+import type { CreateMissionRequest } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const input: CreateMissionRequest = {
+  goalSpec: { task: "Prepare the weekly review" },
+  resourceBudget: {
+    maximumSteps: 12,
+    maximumToolCalls: 8,
+    maximumElapsedMs: 120_000,
+    maximumParallelism: 2,
+  },
+};
+
+const idempotencyKey = crypto.randomUUID();
+
+try {
+  const mission = await client.createMission(input, idempotencyKey);
+  console.log("Created mission:", mission.runId);
+} catch (err) {
+  if (err instanceof PraxaClientError) {
+    console.error(`HTTP ${err.status}: ${err.message}`);
+    if (err.problem) {
+      console.error("Detail:", err.problem.detail);
+      console.error("Request ID:", err.problem.requestId);
+    }
+  } else {
+    // Re-throw unexpected errors (network failures, abort signals, etc.)
+    throw err;
+  }
+}
+```
+
+## Common Error Status Codes
+
+| Status | Cause | Recommended Action |
+|---|---|---|
+| `400 Bad Request` | The request body failed schema validation — for example, a missing required field in `CreateMissionRequest` or a `ResourceBudget` with zero `maximumSteps`. | Inspect `err.problem.detail` and `err.problem.code` to identify which field is invalid. Fix the input before retrying. |
+| `401 Unauthorized` | The `Authorization` header is missing, malformed, or the token has expired. | Refresh the access token and retry the request. If you are using an async token provider, ensure it returns a fresh token on each call. |
+| `403 Forbidden` | The access token is valid but lacks the OAuth scope required for this operation — for example, `missions:write` for `createMission`. | Request a token with the required scope. Consult `PRAXA_ROUTE_CONTRACTS` to see which scope each route requires. |
+| `404 Not Found` | The requested resource does not exist — for example, a `runId` or `skillId` that was never created or has been purged. | Check that the identifier is correct. Do not retry automatically; treat this as a definitive absence. |
+| `409 Conflict` | The idempotency key was previously used with a different request payload. | Generate a new `crypto.randomUUID()` idempotency key for a genuinely new submission. If you intended to deduplicate, ensure your payload matches exactly. |
+| `429 Too Many Requests` | The client or token has exceeded the gateway's rate limit. | The SDK automatically retries `429` responses with exponential backoff up to `maximumAttempts`. If you see this error propagated, reduce request frequency. |
+| `503 Service Unavailable` | The gateway is temporarily unavailable — for example during a rolling deployment. | The SDK automatically retries `503` (and `500`, `502`, `504`) with exponential backoff. If the error propagates after all retries, wait before retrying manually. |
+
+## Automatic Retries
+
+The SDK silently retries requests that return a retryable status code, as long as the request is safe to replay. The retryable status codes are: **408**, **425**, **429**, **500**, **502**, **503**, and **504**.
+
+A request is eligible for retry when it either:
+- Carries an **idempotency key** (e.g. `createMission`, `signalMission`, `cancelMission`), or
+- Is a **safe read** (all `GET` requests and `searchCapabilities` / `queryMemory`).
+
+The SDK performs up to `maximumAttempts` total attempts (default 3, maximum 4) with **exponential backoff**: before attempt `n` it waits `retryBaseDelayMs × 2^(n-1)` milliseconds. The idempotency key is preserved unchanged on every retry so the gateway can detect and discard duplicates.
+
+```typescript
+// Configure aggressive retries for a resilient background worker
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => getToken(),
+  maximumAttempts: 4,    // 4 total attempts
+  retryBaseDelayMs: 250, // delays: 250ms, 500ms, 1000ms
+});
+```
+
+Once all attempts are exhausted, the SDK throws the final `PraxaClientError` for your code to handle.
+
+## Non-Retryable Errors
+
+The following status codes indicate a client-side problem that retrying will not fix. The SDK throws immediately without any retry:
+
+- **400 Bad Request** — the request payload is structurally invalid.
+- **401 Unauthorized** — the access token is missing or expired.
+- **403 Forbidden** — the token lacks the required OAuth scope.
+- **404 Not Found** — the requested resource does not exist.
+- **409 Conflict** — an idempotency key conflict was detected.
+
+You must handle these errors explicitly in your application code. For `401` specifically, refresh the token and resubmit. For `400` and `409`, inspect `err.problem` to understand exactly what went wrong before attempting again.
+
+```typescript
+try {
+  await client.signalMission(runId, "user.approval", { approved: true }, crypto.randomUUID());
+} catch (err) {
+  if (err instanceof PraxaClientError) {
+    if (err.status === 404) {
+      console.warn("Mission not found — it may have already completed.");
+    } else if (err.status === 409) {
+      console.warn("Idempotency conflict — this signal may have already been delivered.");
+    } else {
+      throw err; // Re-throw unexpected errors
+    }
+  } else {
+    throw err;
+  }
+}
+```
+
+<Tip>
+  Check `err.problem?.type` for machine-readable error classification. The `type` field is a URI that uniquely identifies the error class — for example, `"https://praxa.ai/problems/invalid-goal-spec"` or `"https://praxa.ai/problems/budget-exceeded"`. You can use it in a lookup table or switch statement to drive automated recovery logic without parsing human-readable strings.
+</Tip>

@@ -1,0 +1,119 @@
+---
+title: "GET /v8/world-model/certificates — List World Model Certificates"
+sidebarTitle: "World Model Certs"
+description: "GET /v8/world-model/certificates returns certified facts from the world model associated with your Praxa deployment. Requires world:read scope."
+---
+
+The `GET /v8/world-model/certificates` endpoint returns the signed capability certificates from the world model associated with your Praxa deployment. The world model is Praxa's authoritative representation of facts about the external systems, data sources, and services your agent operates on — it encodes what the platform knows to be true about your environment at a given point in time. Certificates are signed per-domain, per-head, and per-horizon, giving you a cryptographically verifiable record of the world state that underpins each mission's planning and execution. Use this endpoint to audit what the platform believes about your environment and to verify that its knowledge is current before launching a mission that depends on specific external conditions.
+
+## Endpoint
+
+```
+GET /v8/world-model/certificates
+```
+
+**Required scope:** `world:read`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl https://your-gateway.example/v8/world-model/certificates \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN"
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const certificates = await client.listWorldModelCertificates();
+
+for (const cert of certificates) {
+  console.log(`${cert.domain} (${cert.horizon}) — valid until ${cert.expiresAt}`);
+}
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+The response body is an array of world model certificate objects. Each certificate covers a specific domain of knowledge, a head (the specific version or snapshot of that knowledge), and a horizon (the time boundary up to which the certificate is valid). Certificates are signed by the private Praxa verifier plane — you can use the included signatures to verify provenance without trusting the gateway alone.
+
+```json Example 200 response
+{
+  "certificates": [
+    {
+      "certificateId": "wmc_01j3p2q...",
+      "domain": "calendar.google",
+      "head": "sha256:a1b2c3d4e5f6...",
+      "horizon": "2025-07-14T00:00:00Z",
+      "expiresAt": "2025-07-12T00:00:00Z",
+      "signature": "ed25519:9f8e7d6c5b4a...",
+      "healthState": "healthy",
+      "issuedAt": "2025-07-11T00:00:00Z"
+    },
+    {
+      "certificateId": "wmc_01j2n1m...",
+      "domain": "slack.channels",
+      "head": "sha256:b2c3d4e5f6a7...",
+      "horizon": "2025-07-14T00:00:00Z",
+      "expiresAt": "2025-07-12T00:00:00Z",
+      "signature": "ed25519:8e7d6c5b4a3f...",
+      "healthState": "degraded",
+      "issuedAt": "2025-07-11T00:00:00Z"
+    }
+  ]
+}
+```
+
+**Certificate object fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `certificateId` | string | Stable unique identifier for this certificate |
+| `domain` | string | The external domain or system this certificate covers (e.g., `"calendar.google"`, `"slack.channels"`) |
+| `head` | string | Cryptographic hash of the specific snapshot of world model knowledge this certificate vouches for |
+| `horizon` | string | ISO 8601 UTC timestamp indicating the furthest point in time the certified knowledge is expected to be valid |
+| `expiresAt` | string | ISO 8601 UTC timestamp after which the gateway will not use this certificate for mission planning |
+| `signature` | string | Ed25519 signature over the certificate content, produced by the private Praxa verifier plane |
+| `healthState` | string | Current state: `healthy`, `degraded`, `unavailable`, or `quarantined` |
+| `issuedAt` | string | ISO 8601 UTC timestamp of when this certificate was issued |
+
+<Warning>
+  Certificates with a `healthState` of `degraded`, `unavailable`, or `quarantined` indicate that the platform's knowledge of that domain is stale or under review. Missions that depend on a quarantined domain may be rejected at planning time by the policy plane.
+</Warning>
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `world:read` scope |
+
+---
+
+## SDK Equivalent
+
+```typescript
+const certificates = await client.listWorldModelCertificates();
+```
+
+**Returns:** `Promise<JsonValue>`

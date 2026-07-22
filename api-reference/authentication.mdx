@@ -1,0 +1,91 @@
+---
+title: "Authenticate Praxa API Requests with OAuth Tokens"
+sidebarTitle: "Authentication"
+description: "The Praxa API uses OAuth 2.0 Bearer tokens. Pass your short-lived access token in the Authorization header on every request. Tokens are scoped per operation."
+---
+
+Every request to the Praxa Integration Gateway must include a valid OAuth 2.0 Bearer token in the `Authorization` header. Praxa uses short-lived Ed25519 delegated tokens — not long-lived API keys — so your integration must be capable of refreshing tokens transparently before they expire. Tokens are issued for a specific gateway audience, tenant, principal, and scope set, meaning a token granted for one operation cannot be used for another.
+
+## Authorization Header
+
+Include your access token as a Bearer credential on every request:
+
+```
+Authorization: Bearer <your-access-token>
+```
+
+Here is a minimal `curl` example that fetches mission status:
+
+```bash
+curl https://your-gateway.example/v8/missions/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN"
+```
+
+<Tip>
+  Store your access token in an environment variable such as
+  `PRAXA_ACCESS_TOKEN` rather than inline in scripts. Never commit tokens to
+  source control or include them in URLs, where they may appear in logs.
+</Tip>
+
+If you are using the Praxa SDK, provide an async token function so the client can refresh automatically without you needing to recreate it:
+
+```ts
+const client = new PraxaClient({
+  baseUrl: "https://your-praxa-gateway.example",
+  accessToken: () => session.getPraxaAccessToken(),
+});
+```
+
+## Token Requirements
+
+Praxa access tokens have several requirements that distinguish them from conventional long-lived API keys:
+
+- **Short-lived** — tokens typically expire in 60 seconds or less. Your code must refresh tokens before they expire, not after a `401` is returned.
+- **Operation-scoped** — each token is issued for one or more specific scopes (see [Required Scopes](#required-scopes) below). A token without the correct scope is rejected with `403 Forbidden`.
+- **Ed25519 signed** — tokens are delegated credentials signed with Ed25519 and introspected by the gateway's private OAuth authority. Third-party provider API keys are never accepted.
+- **Audience-bound** — tokens are issued for a specific gateway deployment. A token issued for one gateway cannot be used against another.
+
+<Warning>
+  Do not pass provider API keys to the Praxa SDK or API. Praxa is a
+  credential-free platform — external credentials are managed by the policy
+  plane and are never surfaced to callers.
+</Warning>
+
+## Required Scopes
+
+Each operation requires exactly one scope. Request only the scopes your integration actually needs — a scope lets a request reach server-side policy, but it does not itself authorize a provider effect.
+
+| Scope | Endpoints |
+|-------|-----------|
+| `missions:write` | `POST /v8/missions`, `POST /v8/missions/{runId}/signals`, `POST /v8/missions/{runId}/cancel` |
+| `missions:read` | `GET /v8/missions/{runId}`, `GET /v8/missions/{runId}/events` |
+| `capabilities:read` | `POST /v8/capabilities/search` |
+| `memory:read` | `POST /v8/memory/query` |
+| `skills:read` | `GET /v8/skills/{skillId}` |
+| `traces:read` | `GET /v8/traces/{traceId}` |
+| `context:read` | `GET /v8/context-twin/goals` |
+| `world:read` | `GET /v8/world-model/certificates` |
+| `coverage:read` | `GET /v8/coverage` |
+| `mcp:invoke` | `POST /mcp` |
+
+<Note>
+  OAuth discovery, client registration, and production token issuance are
+  managed by your Praxa deployment. Consult your deployment's operator
+  documentation for instructions on obtaining tokens for each scope.
+</Note>
+
+## Auth Errors
+
+The gateway returns two distinct HTTP status codes for authentication and authorization failures:
+
+**`401 Unauthorized`** — returned when the token is missing, expired, or cannot be validated. The `WWW-Authenticate` header in the response describes the failure reason. Refresh your access token and retry.
+
+**`403 Forbidden`** — returned when the token is valid and unexpired, but it does not include the scope required by the endpoint you called. Request a new token that includes the required scope (see the table above) and retry. Do not retry with the same token — it will not succeed.
+
+Both error responses use the `application/problem+json` format. The `detail` field in the response body explains the specific cause. See [Errors](/api-reference/errors) for the full error schema.
+
+<Warning>
+  HTTPS is required for all requests. The Integration Gateway rejects any
+  request arriving over a plain HTTP origin. Make sure your `baseUrl` always
+  begins with `https://`.
+</Warning>

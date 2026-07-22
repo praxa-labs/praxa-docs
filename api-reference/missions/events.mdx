@@ -1,0 +1,148 @@
+---
+title: "GET /v8/missions/{runId}/events — Stream Mission Events"
+sidebarTitle: "Mission Events"
+description: "GET /v8/missions/{runId}/events streams real-time Server-Sent Events for a running mission. Returns a text/event-stream that closes when the mission reaches a terminal state."
+---
+
+The `GET /v8/missions/{runId}/events` endpoint opens a durable, resumable Server-Sent Events (SSE) stream for a mission. As the agent executes each step, the gateway emits a typed event that you can consume in real time. You can reconnect at any point in the stream's history by sending the `Last-Event-ID` header — the gateway maintains a bounded replay window so you never miss events across brief network interruptions. The stream closes automatically once the mission reaches a terminal state (`succeeded`, `failed`, or `cancelled`).
+
+## Endpoint
+
+```
+GET /v8/missions/{runId}/events
+```
+
+**Required scope:** `missions:read`
+
+**Response content type:** `text/event-stream`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+| `Accept` | `text/event-stream` |
+
+**Optional headers:**
+
+| Header | Description |
+|---|---|
+| `Last-Event-ID` | Resume the stream from a specific event. The value must be an event `id` previously received from this stream. If the ID is outside the bounded replay window, the gateway returns `409 Conflict`. |
+
+---
+
+## Path Parameters
+
+<ParamField path="runId" type="string (UUID)" required>
+  The unique run identifier returned when you created the mission via `POST /v8/missions`. Must be a valid UUID v7.
+</ParamField>
+
+---
+
+## SSE Event Format
+
+Each event conforms to the [WHATWG EventSource specification](https://html.spec.whatwg.org/multipage/server-sent-events.html). Events carry three lines:
+
+```text Example SSE event
+id: evt_01
+event: mission.step.completed
+data: {"stepId":"step_1","result":{"summary":"Loaded calendar data"}}
+```
+
+| Field | Description |
+|---|---|
+| `id` | Opaque, stable cursor for this event. Pass this as `Last-Event-ID` to resume the stream after a reconnect. |
+| `event` | Event type string. See the table below for all possible values. |
+| `data` | JSON-encoded payload specific to the event type. |
+
+---
+
+## Event Types
+
+| Event type | Emitted when |
+|---|---|
+| `mission.started` | The agent begins executing the mission for the first time |
+| `mission.step.started` | The agent begins a new reasoning or tool-call step |
+| `mission.step.completed` | A step finishes successfully; payload includes the step result summary |
+| `mission.completed` | The mission reached the `succeeded` terminal state; stream closes after this event |
+| `mission.failed` | The mission reached the `failed` terminal state (budget exceeded, policy error, or unrecoverable failure); stream closes after this event |
+| `mission.cancelled` | The mission reached the `cancelled` terminal state (explicit cancellation); stream closes after this event |
+
+<Warning>
+  Events that arrive after a `mission.completed`, `mission.failed`, or `mission.cancelled` event are informational trailing events only. Do not assume the stream will emit additional state-changing events once a terminal event is received.
+</Warning>
+
+---
+
+## Example: Consuming with curl
+
+<CodeGroup>
+
+```bash cURL
+curl -N https://your-gateway.example/v8/missions/018e2f3a-7c14-7000-b1e2-4d3f8a20c911/events \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN" \
+  -H "Accept: text/event-stream"
+```
+
+```bash cURL — resume from last event
+curl -N https://your-gateway.example/v8/missions/018e2f3a-7c14-7000-b1e2-4d3f8a20c911/events \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN" \
+  -H "Accept: text/event-stream" \
+  -H "Last-Event-ID: evt_04"
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const runId = "018e2f3a-7c14-7000-b1e2-4d3f8a20c911";
+
+for await (const event of client.missionEvents(runId)) {
+  console.log(event.event, event.data);
+
+  if (
+    event.event === "mission.completed" ||
+    event.event === "mission.failed" ||
+    event.event === "mission.cancelled"
+  ) {
+    break; // Terminal state reached — generator closes automatically
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## SDK Equivalent
+
+```typescript
+for await (const event of client.missionEvents(runId)) {
+  // event: AuraSseEvent
+  // event.id    — cursor for Last-Event-ID resumption
+  // event.event — event type string
+  // event.data  — parsed JSON payload
+}
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `runId` | `string` | UUID of the mission to stream events for |
+
+**Returns:** `AsyncGenerator<AuraSseEvent>`
+
+<Note>
+  The SDK's `missionEvents` async generator closes automatically when the stream reaches a terminal event (`mission.completed`, `mission.failed`, or `mission.cancelled`). You do not need to call `.return()` or wrap the loop in a `try/finally` block for normal termination. For early exits, use `break` inside your `for await` loop and the generator will clean up the underlying HTTP connection.
+</Note>
+
+---
+
+## Error Responses
+
+| HTTP Status | Typical cause |
+|---|---|
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `missions:read` scope |
+| `404 Not Found` | No mission exists for the given `runId` under your principal |
+| `409 Conflict` | The `Last-Event-ID` cursor is outside the bounded durable replay window; re-fetch from the beginning |

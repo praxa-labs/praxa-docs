@@ -1,0 +1,117 @@
+---
+title: "POST /v8/missions/{runId}/cancel — Cancel a Mission"
+sidebarTitle: "Cancel Mission"
+description: "POST /v8/missions/{runId}/cancel requests cancellation of a running or pending Praxa mission. The mission status transitions to CANCELLED after the current step completes."
+---
+
+The `POST /v8/missions/{runId}/cancel` endpoint requests graceful cancellation of a mission that is currently running or waiting. The gateway propagates the cancellation request to the Control Plane, which signals the agent to stop after finishing its current step. The mission status transitions to `cancelled` and the [event stream](/api-reference/missions/events) emits a final `mission.cancelled` event before closing. Cancellation is cooperative — the agent completes whatever atomic step it is currently executing before stopping, so there is a brief window between your request and the final status transition.
+
+<Warning>
+  Cancellation is irreversible. Once a mission transitions to the `cancelled` state it cannot be resumed. If you need to pause and resume, use [signals](/api-reference/missions/signal) instead.
+</Warning>
+
+## Endpoint
+
+```
+POST /v8/missions/{runId}/cancel
+```
+
+**Required scope:** `missions:write`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+| `Idempotency-Key` | 16–128 character alphanumeric key used to deduplicate retries |
+| `Content-Type` | `application/json` |
+
+---
+
+## Path Parameters
+
+<ParamField path="runId" type="string (UUID)" required>
+  The unique run identifier of the mission to cancel. Returned by `POST /v8/missions` when the mission was created.
+</ParamField>
+
+---
+
+## Request Body
+
+<ParamField body="reason" type="string" required>
+  A human-readable explanation for why the mission is being cancelled. Must be between 1 and 500 characters. This value is recorded in the mission's audit log and surfaces in trace data — use it to provide context for operators and for your own debugging.
+
+  Examples: `"User requested cancellation"`, `"Budget exceeded before goal was confirmed"`, `"Replacing with updated goal specification"`.
+</ParamField>
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://your-gateway.example/v8/missions/018e2f3a-7c14-7000-b1e2-4d3f8a20c911/cancel \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "User requested cancellation"}'
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+await client.cancelMission(
+  "018e2f3a-7c14-7000-b1e2-4d3f8a20c911", // runId
+  "User requested cancellation",           // reason
+  crypto.randomUUID()                      // idempotencyKey
+);
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+A `200 OK` confirms that the cancellation request has been propagated to the Control Plane. The mission has not necessarily reached the `cancelled` state at the moment this response is returned — the agent finishes its in-progress step first.
+
+To confirm the mission has fully cancelled, poll `GET /v8/missions/{runId}` until `status` equals `"cancelled"`, or listen on the [event stream](/api-reference/missions/events) for the `mission.cancelled` event.
+
+<Note>
+  External outcomes that were already committed by the agent before cancellation are independently verified and remain valid. Cancellation prevents future steps from being taken; it does not roll back completed work.
+</Note>
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `400 Bad Request` | Missing `reason` field or value exceeds 500 characters |
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `missions:write` scope |
+| `404 Not Found` | No mission exists for the given `runId` under your principal |
+| `409 Conflict` | Mission is already in a terminal state (`succeeded`, `failed`, or `cancelled`), or a different body was sent with the same `Idempotency-Key` |
+
+---
+
+## SDK Equivalent
+
+```typescript
+await client.cancelMission(runId, reason, idempotencyKey);
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `runId` | `string` | UUID of the mission to cancel |
+| `reason` | `string` | Human-readable cancellation reason (1–500 characters) |
+| `idempotencyKey` | `string` | Unique key for deduplication; generate with `crypto.randomUUID()` |
+
+**Returns:** `Promise<void>`

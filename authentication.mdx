@@ -1,0 +1,107 @@
+---
+title: "Authenticate with the Praxa Integration Gateway"
+sidebarTitle: "Authentication"
+description: "Praxa uses short-lived OAuth Bearer tokens scoped per operation. Learn how to acquire a token, pass it to the SDK or CLI, and handle auth errors."
+---
+
+Praxa uses short-lived OAuth Bearer tokens to authenticate every request to the Integration Gateway. Tokens are delegated, meaning they are issued on behalf of a specific principal within your Praxa deployment, and scoped, meaning each token declares exactly which operations it may be used for. No provider API keys are ever passed to your application — authentication with the gateway is entirely separate from the server-side provider credentials Praxa manages on your behalf.
+
+## Getting Your Access Token
+
+Access tokens are issued by your Praxa gateway deployment as short-lived OAuth tokens. Each token is bound to a specific gateway audience, tenant, principal, and set of scopes. The exact flow for obtaining a token — whether through an admin panel, a CLI tool, or a service account credential exchange — depends on how your Praxa deployment is configured.
+
+Contact your Praxa deployment administrator or refer to your gateway's own documentation to learn how to request a token with the scopes your integration needs. Ask only for the scopes required by the operations you intend to call; the gateway enforces the declared scope for every operation.
+
+<Warning>
+  Always use HTTPS when connecting to the Praxa Integration Gateway. The SDK rejects HTTP origins at construction time and will throw before making any network request. Never embed your access token in a URL — pass it only through the `accessToken` option or the `PRAXA_ACCESS_TOKEN` environment variable.
+</Warning>
+
+## Using Your Token with the SDK
+
+Pass your token through the `accessToken` option when constructing a `PraxaClient`. This option accepts either a string or a function that returns a string or a `Promise<string>`. Using an async function is strongly preferred in production because it lets your application refresh the token transparently without recreating the client.
+
+**For testing only — static string:**
+
+```ts
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: "https://api.your-praxa-gateway.example",
+  accessToken: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...", // not for production
+});
+```
+
+**Recommended — async token provider:**
+
+```ts
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: async () => {
+    // Retrieve a fresh token from your session or secret store.
+    // This function is called before each authenticated request.
+    return session.getPraxaAccessToken();
+  },
+});
+```
+
+The async provider pattern means your client remains valid across token expiry boundaries. The SDK calls your provider function before each request, so returning a refreshed token automatically keeps the client authenticated.
+
+<Tip>
+  In production, always use an async token provider function rather than a static string. This lets you integrate with your platform's secret management or session layer and rotate tokens without restarting your application.
+</Tip>
+
+## Using Your Token with the CLI
+
+The `@praxa/cli` reads your gateway URL and token from environment variables. Set both before running any CLI command:
+
+```sh
+export PRAXA_BASE_URL="https://api.your-praxa-gateway.example"
+export PRAXA_ACCESS_TOKEN="<your-short-lived-oauth-token>"
+```
+
+You can verify your configuration with the read-only `doctor` command:
+
+```sh
+praxa doctor
+```
+
+Use `--base-url` to override `PRAXA_BASE_URL` for a single command without changing your environment:
+
+```sh
+praxa doctor --base-url https://api.other-gateway.example
+```
+
+The older `AURA_BASE_URL` and `AURA_ACCESS_TOKEN` environment variables remain supported as compatibility fallbacks, but `PRAXA_BASE_URL` and `PRAXA_ACCESS_TOKEN` are preferred for new integrations.
+
+## OAuth Scopes
+
+Every operation in the Praxa Integration Gateway API requires exactly one OAuth scope. Your access token must include the appropriate scope for every operation you call — the gateway rejects requests with missing or insufficient scopes with a `403 Forbidden` response.
+
+Request only the scopes your integration actually needs. A scope authorises a request to reach server-side policy evaluation; it does not itself cause a provider effect.
+
+| Scope | Operations covered |
+|---|---|
+| `missions:write` | Create a mission, signal a mission, cancel a mission |
+| `missions:read` | Get a mission, stream mission events |
+| `capabilities:read` | Search capabilities |
+| `memory:read` | Query memory |
+| `skills:read` | Get a skill |
+| `traces:read` | Get a trace |
+| `context:read` | List goals |
+| `world:read` | List world model certificates |
+| `coverage:read` | Get reference coverage |
+| `mcp:invoke` | MCP 2025-03-26 Streamable HTTP JSON-RPC endpoint |
+
+## Auth Errors
+
+The gateway returns standard HTTP error responses for authentication and authorisation failures:
+
+**`401 Unauthorized`** — Your request did not include a valid Bearer token, the token has expired, or the token signature could not be verified against the gateway's expected audience. Check that `PRAXA_ACCESS_TOKEN` is set, that the token has not expired, and that it was issued for the correct gateway audience.
+
+**`403 Forbidden`** — Your token is valid and was verified, but it does not include the scope required by the operation you called. Request a new token that includes the needed scope, or adjust your integration to call only operations covered by your current token's scopes.
+
+<Warning>
+  Never send requests over plain HTTP. Even if a gateway host is reachable over HTTP, sending a Bearer token over an unencrypted connection exposes it to interception. The Praxa SDK enforces HTTPS at construction time, but double-check any raw HTTP client usage in your infrastructure.
+</Warning>

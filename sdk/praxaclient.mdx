@@ -1,0 +1,462 @@
+---
+title: "PraxaClient: Full SDK Reference"
+sidebarTitle: "PraxaClient"
+description: "Complete reference for PraxaClient — the main class in @praxa/sdk. Covers all constructor options, every method signature, and examples for missions, capabilities, memory, traces, and skills."
+---
+
+`PraxaClient` is the single entry point for all Praxa Integration Gateway interactions. You construct one instance per application — passing the gateway origin and an access-token provider — and then call its methods to create missions, stream their event lifecycles, search capabilities, query memory, and inspect skills, traces, and coverage. Every method returns a native `Promise` (or an `AsyncGenerator` for event streams), so you can use standard `async`/`await` patterns and `AbortSignal` cancellation throughout.
+
+## Constructor
+
+Construct a `PraxaClient` by passing a `PraxaClientOptions` object. The `baseUrl` and `accessToken` fields are required; all others are optional.
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: async () => acquireShortLivedPraxaToken(),
+});
+```
+
+<ParamField path="baseUrl" type="string" required>
+  The HTTPS origin of the Praxa Integration Gateway — for example, `"https://gateway.praxa.ai"`. Pass the origin only, not a path. URLs that use `http:`, contain a username, or contain a password are rejected at construction time.
+</ParamField>
+
+<ParamField path="accessToken" type="string | (() => string | Promise<string>)" required>
+  A short-lived delegated OAuth access token, or an async function that returns one. The SDK calls your provider before every request, so you can rotate tokens transparently. Tokens must be 1–16,384 characters and must not contain carriage-return or line-feed characters.
+</ParamField>
+
+<ParamField path="fetch" type="typeof globalThis.fetch">
+  A custom `fetch` implementation. Defaults to `globalThis.fetch`. Useful for testing with a mock fetch, for adding observability middleware, or for environments that require a custom HTTP agent.
+</ParamField>
+
+<ParamField path="maximumAttempts" type="number">
+  The maximum number of attempts for retryable requests. Clamped to the range **1–4**. Defaults to **3**. Only requests that carry an idempotency key or are safe reads are retried; unkeyed mutations are never replayed.
+</ParamField>
+
+<ParamField path="retryBaseDelayMs" type="number">
+  The base delay in milliseconds for exponential backoff between retry attempts. Clamped to the range **0–30,000**. Defaults to **100**. On attempt `n` the SDK waits `retryBaseDelayMs × 2^(n-1)` ms before the next attempt.
+</ParamField>
+
+---
+
+## Mission Methods
+
+### `createMission`
+
+Submit a new governed AI agent mission to the gateway. The mission is created synchronously; use `missionEvents` to stream its lifecycle.
+
+```typescript
+createMission(
+  input: CreateMissionRequest,
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<MissionProjection>
+```
+
+<ParamField path="input" type="CreateMissionRequest" required>
+  The mission definition. Contains two fields:
+  - `goalSpec` (`JsonObject`) — a free-form JSON object describing the task the agent should accomplish.
+  - `resourceBudget` (`ResourceBudget`) — governance limits: `maximumSteps`, `maximumToolCalls`, `maximumElapsedMs`, and `maximumParallelism`.
+</ParamField>
+
+<ParamField path="idempotencyKey" type="string" required>
+  A stable, unique key for this submission — typically `crypto.randomUUID()`. If the network fails after the server accepts the request, the SDK retries with the same key so the mission is not created twice. Submitting the same key with a different payload returns `409 Conflict`.
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+**Returns** `Promise<MissionProjection>` — the initial mission snapshot with `runId`, `status`, `sequence`, and `steps`.
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+import type { CreateMissionRequest } from "@praxa/sdk";
+
+const input: CreateMissionRequest = {
+  goalSpec: { task: "Prepare the weekly review" },
+  resourceBudget: {
+    maximumSteps: 12,
+    maximumToolCalls: 8,
+    maximumElapsedMs: 120_000,
+    maximumParallelism: 2,
+  },
+};
+
+const mission = await client.createMission(input, crypto.randomUUID());
+console.log(mission.runId, mission.status); // e.g. "run_abc123" "running"
+```
+
+---
+
+### `getMission`
+
+Fetch a point-in-time snapshot of a mission by its run ID.
+
+```typescript
+getMission(
+  runId: string,
+  signal?: AbortSignal,
+): Promise<MissionProjection>
+```
+
+<ParamField path="runId" type="string" required>
+  The `runId` of the mission to retrieve, as returned by `createMission`.
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+**Returns** `Promise<MissionProjection>` — the current mission snapshot.
+
+```typescript
+const mission = await client.getMission("run_abc123");
+console.log(mission.status); // "running" | "waiting" | "succeeded" | "failed" | "cancelled"
+```
+
+---
+
+### `missionEvents`
+
+Open a Server-Sent Event stream and iterate over mission lifecycle events in real time. Returns an `AsyncGenerator` — use a `for await` loop to consume events.
+
+```typescript
+missionEvents(
+  runId: string,
+  opts?: { lastEventId?: string; signal?: AbortSignal },
+): AsyncGenerator<AuraSseEvent>
+```
+
+<ParamField path="runId" type="string" required>
+  The `runId` of the mission to stream.
+</ParamField>
+
+<ParamField path="opts.lastEventId" type="string">
+  Resume the stream from a specific event. Pass the `id` field of the last event you received to replay any events you may have missed during a reconnect. The value must be 1–256 printable ASCII characters.
+</ParamField>
+
+<ParamField path="opts.signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the stream.
+</ParamField>
+
+**Yields** `AuraSseEvent` — objects with `id` (string), `event` (string), and `data` (parsed `JsonValue`).
+
+```typescript
+for await (const event of client.missionEvents(mission.runId)) {
+  console.log(event.id, event.event, event.data);
+}
+```
+
+See [Mission Events](/sdk/mission-events) for a full guide including cancellation, filtering, and result collection.
+
+---
+
+### `signalMission`
+
+Send a named signal with an arbitrary JSON payload to a running mission.
+
+```typescript
+signalMission(
+  runId: string,
+  signalName: string,
+  payload: JsonValue,
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<JsonObject>
+```
+
+<ParamField path="runId" type="string" required>
+  The `runId` of the target mission.
+</ParamField>
+
+<ParamField path="signalName" type="string" required>
+  The name of the signal to deliver — for example, `"user.approval"` or `"input.provided"`.
+</ParamField>
+
+<ParamField path="payload" type="JsonValue" required>
+  Arbitrary JSON data to attach to the signal. Can be an object, array, string, number, boolean, or null.
+</ParamField>
+
+<ParamField path="idempotencyKey" type="string" required>
+  A stable unique key to make this signal delivery idempotent across retries.
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+```typescript
+await client.signalMission(
+  mission.runId,
+  "user.approval",
+  { approved: true, reviewedBy: "alice" },
+  crypto.randomUUID(),
+);
+```
+
+---
+
+### `cancelMission`
+
+Request cancellation of a running or waiting mission.
+
+```typescript
+cancelMission(
+  runId: string,
+  reason: string,
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<JsonObject>
+```
+
+<ParamField path="runId" type="string" required>
+  The `runId` of the mission to cancel.
+</ParamField>
+
+<ParamField path="reason" type="string" required>
+  A human-readable explanation for the cancellation, recorded in the mission audit trail.
+</ParamField>
+
+<ParamField path="idempotencyKey" type="string" required>
+  A stable unique key to make this cancellation request idempotent.
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight HTTP request (not the mission itself).
+</ParamField>
+
+```typescript
+await client.cancelMission(
+  mission.runId,
+  "User requested early termination",
+  crypto.randomUUID(),
+);
+```
+
+---
+
+## Discovery & Query Methods
+
+### `searchCapabilities`
+
+Search for registered capabilities that satisfy a given requirement. Use this to discover which tools, APIs, skills, or agents are available for a given action family before submitting a mission.
+
+```typescript
+searchCapabilities(
+  requirement: CapabilityRequirement,
+  signal?: AbortSignal,
+): Promise<readonly JsonObject[]>
+```
+
+<ParamField path="requirement" type="CapabilityRequirement" required>
+  A structured query with three required fields:
+  - `actionFamily` (`string`) — the category of action, e.g. `"document.summarize"`.
+  - `purpose` (`string`) — a free-text description of why the capability is needed.
+  - `targetType` (`string`) — the kind of resource being acted on, e.g. `"text/markdown"`.
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+**Returns** `Promise<readonly JsonObject[]>` — an array of `CapabilityManifest`-shaped objects, each with `capabilityId`, `contractHash`, `healthState`, `kind`, and `version`.
+
+```typescript
+import type { CapabilityRequirement } from "@praxa/sdk";
+
+const requirement: CapabilityRequirement = {
+  actionFamily: "document.summarize",
+  purpose: "Condense weekly status reports",
+  targetType: "text/markdown",
+};
+
+const capabilities = await client.searchCapabilities(requirement);
+for (const cap of capabilities) {
+  console.log(cap["capabilityId"], cap["healthState"]);
+}
+```
+
+---
+
+### `queryMemory`
+
+Query the Praxa memory store for contextually relevant entries. The gateway performs semantic search and returns a ranked result set within the requested budget.
+
+```typescript
+queryMemory(
+  query: MemoryQuery,
+  signal?: AbortSignal,
+): Promise<JsonObject>
+```
+
+<ParamField path="query" type="MemoryQuery" required>
+  A structured memory query. Required fields: `classes` (string array), `compartment`, `purpose`, and `queryText`. Optional fields: `limit`, `maxContextBytes`, `maxContextTokens`, and `queryEmbedding` (float array for vector search).
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+```typescript
+import type { MemoryQuery } from "@praxa/sdk";
+
+const query: MemoryQuery = {
+  classes: ["document", "note"],
+  compartment: "project-alpha",
+  purpose: "Retrieve prior research for a status report",
+  queryText: "weekly review findings Q3",
+  limit: 10,
+  maxContextTokens: 2048,
+};
+
+const results = await client.queryMemory(query);
+```
+
+---
+
+### `listGoals`
+
+Retrieve all active goals from the context-twin. Goals represent the high-level objectives the Praxa governance layer is currently tracking.
+
+```typescript
+listGoals(
+  signal?: AbortSignal,
+): Promise<readonly JsonObject[]>
+```
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+```typescript
+const goals = await client.listGoals();
+goals.forEach((goal) => console.log(goal));
+```
+
+---
+
+### `listWorldModelCertificates`
+
+Retrieve the set of world-model certificates currently registered with the gateway. Certificates attest to the integrity and provenance of the world-model data used during mission execution.
+
+```typescript
+listWorldModelCertificates(
+  signal?: AbortSignal,
+): Promise<readonly JsonObject[]>
+```
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+```typescript
+const certs = await client.listWorldModelCertificates();
+console.log(`${certs.length} certificate(s) registered`);
+```
+
+---
+
+## Inspection Methods
+
+### `getSkill`
+
+Fetch the definition of a registered skill by its ID. Skills are reusable, versioned agent sub-routines that missions can invoke.
+
+```typescript
+getSkill(
+  skillId: string,
+  signal?: AbortSignal,
+): Promise<JsonObject>
+```
+
+<ParamField path="skillId" type="string" required>
+  The unique identifier of the skill to retrieve.
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+```typescript
+const skill = await client.getSkill("skill_summarize_v2");
+console.log(skill);
+```
+
+---
+
+### `getTrace`
+
+Retrieve a full execution trace by its trace ID. Traces contain the detailed step-by-step record of a mission's tool calls, decisions, and outcomes.
+
+```typescript
+getTrace(
+  traceId: string,
+  signal?: AbortSignal,
+): Promise<JsonObject>
+```
+
+<ParamField path="traceId" type="string" required>
+  The unique identifier of the trace to retrieve.
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+```typescript
+const trace = await client.getTrace("trace_xyz789");
+console.log(trace);
+```
+
+---
+
+### `getReferenceCoverage`
+
+Fetch the current reference coverage report from the gateway. This report describes which parts of the world model and capability registry are covered by active reference data.
+
+```typescript
+getReferenceCoverage(
+  signal?: AbortSignal,
+): Promise<JsonObject>
+```
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+```typescript
+const coverage = await client.getReferenceCoverage();
+console.log(coverage);
+```
+
+---
+
+## Retry Behavior
+
+`PraxaClient` automatically retries requests that fail with a retryable HTTP status code, provided the request is safe to replay. A request is considered safe to replay if it either:
+
+- Carries an **idempotency key** (mutating requests such as `createMission`, `signalMission`, and `cancelMission`), or
+- Is a **safe read** (all `GET` requests and `searchCapabilities` / `queryMemory`).
+
+Unkeyed mutations are **never** retried.
+
+**Retryable status codes:** `408 Request Timeout`, `425 Too Early`, `429 Too Many Requests`, `500 Internal Server Error`, `502 Bad Gateway`, `503 Service Unavailable`, `504 Gateway Timeout`.
+
+The SDK uses **exponential backoff**: before attempt `n` it waits `retryBaseDelayMs × 2^(n-1)` milliseconds. With the defaults of `retryBaseDelayMs: 100` and `maximumAttempts: 3`, the delays are 0 ms (first attempt), 100 ms, and 200 ms.
+
+The idempotency key is preserved unchanged across every retry attempt, so the gateway can detect and deduplicate replayed requests.
+
+```typescript
+// Custom retry configuration
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => getToken(),
+  maximumAttempts: 4,     // up to 4 total attempts
+  retryBaseDelayMs: 200,  // 200ms, 400ms, 800ms between retries
+});
+```
+
+If all attempts are exhausted or a non-retryable status code is returned, the SDK throws a `PraxaClientError`. See [Error Handling](/sdk/error-handling) for details.

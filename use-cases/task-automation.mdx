@@ -1,0 +1,228 @@
+---
+title: "Automate Tasks with Praxa AI Agent Missions"
+sidebarTitle: "Task Automation"
+description: "Use Praxa missions to automate recurring tasks like report generation, data summarization, and content creation without managing AI provider credentials in your application."
+---
+
+Praxa missions excel at automating discrete, goal-directed tasks that previously required direct integration with AI providers. Instead of embedding provider API keys in your codebase and wiring together model calls yourself, you describe the goal, set a resource budget, and let the Praxa Integration Gateway handle execution. Your application stays stateless with respect to provider credentials — you only ever hold a short-lived delegated access token.
+
+## Example: Automated Report Generation
+
+The example below submits a "generate weekly sales report" mission, then streams the resulting events to collect the completed output. Notice that `createMission` requires an idempotency key — if your worker restarts mid-flight and submits the same key again, Praxa returns the existing mission rather than creating a duplicate.
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+// Submit the mission
+const mission = await client.createMission(
+  {
+    goalSpec: {
+      task: "Generate the weekly sales report",
+      period: "2024-W48",
+      format: "markdown",
+      sections: ["executive-summary", "regional-breakdown", "top-products"],
+    },
+    resourceBudget: {
+      maximumSteps: 20,
+      maximumToolCalls: 12,
+      maximumElapsedMs: 180_000, // 3 minutes
+      maximumParallelism: 2,
+    },
+  },
+  crypto.randomUUID(),
+);
+
+console.log(`Mission created: ${mission.runId} — status: ${mission.status}`);
+
+// Stream events and collect the final result
+let reportContent: unknown = null;
+
+for await (const event of client.missionEvents(mission.runId)) {
+  console.log(`[${event.event}] id=${event.id}`);
+
+  if (event.event === "mission.completed") {
+    reportContent = event.data;
+    console.log("Report generation complete.");
+    break;
+  }
+
+  if (event.event === "mission.failed") {
+    console.error("Mission failed:", event.data);
+    break;
+  }
+}
+
+console.log("Result:", reportContent);
+```
+
+<Tip>
+  Set `maximumElapsedMs` generously for report-generation tasks. If the budget
+  is exhausted before the agent finishes, the mission transitions to `failed`.
+  You can inspect the partial steps via `getMission()` to understand how far
+  execution progressed.
+</Tip>
+
+## Example: Content Summarization
+
+Summarization missions follow the same pattern. Pass the document content or a reference to it inside `goalSpec`, and tune the resource budget to the expected length of the input.
+
+```typescript
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const documents = [
+  { id: "doc-001", title: "Q3 Earnings Call Transcript", wordCount: 8400 },
+  { id: "doc-002", title: "Analyst Coverage Report",     wordCount: 3200 },
+  { id: "doc-003", title: "Product Roadmap Memo",        wordCount: 1600 },
+];
+
+const mission = await client.createMission(
+  {
+    goalSpec: {
+      task: "Summarize each document into a 3-sentence executive brief",
+      documents,
+      outputFormat: "json-array",
+    },
+    resourceBudget: {
+      maximumSteps: 15,
+      maximumToolCalls: 10,
+      maximumElapsedMs: 120_000,
+      maximumParallelism: 3, // summarize documents concurrently
+    },
+  },
+  crypto.randomUUID(),
+);
+
+for await (const event of client.missionEvents(mission.runId)) {
+  if (event.event === "mission.completed") {
+    console.log("Summaries:", event.data);
+    break;
+  }
+  if (event.event === "mission.failed") {
+    throw new Error(`Summarization failed: ${JSON.stringify(event.data)}`);
+  }
+}
+```
+
+## Handling Results
+
+Every mission streams a sequence of server-sent events through `missionEvents()`. To extract the final result, listen for `mission.completed` — its `data` field contains the agent's output payload.
+
+```typescript
+for await (const event of client.missionEvents(mission.runId)) {
+  switch (event.event) {
+    case "mission.started":
+      console.log("Agent has begun execution.");
+      break;
+
+    case "mission.step.started":
+      console.log("Step started:", event.data);
+      break;
+
+    case "mission.step.completed":
+      console.log("Step completed:", event.data);
+      break;
+
+    case "mission.completed":
+      // event.data is the structured result produced by the agent
+      handleResult(event.data);
+      return;
+
+    case "mission.failed":
+      // event.data contains error details
+      throw new Error(`Mission failed: ${JSON.stringify(event.data)}`);
+
+    case "mission.cancelled":
+      console.warn("Mission was cancelled:", event.data);
+      return;
+  }
+}
+```
+
+<Note>
+  The event stream closes automatically once a terminal event (`mission.completed`,
+  `mission.failed`, or `mission.cancelled`) is emitted. You do not need to
+  explicitly close the connection.
+</Note>
+
+## Scheduling Missions
+
+Praxa missions are a natural fit for cron jobs and queue workers because `createMission` is idempotent — submitting the same idempotency key twice returns the original mission projection rather than starting a second execution.
+
+<Steps>
+  <Step title="Generate a stable idempotency key">
+    Derive the key from the job's logical identity (for example, a combination
+    of the task name and the time window) so that retries after worker failures
+    submit the same key.
+
+    ```typescript
+    // Stable key scoped to the task and the ISO week
+    const idempotencyKey = `weekly-sales-report:2024-W48`;
+    ```
+  </Step>
+
+  <Step title="Submit the mission in your cron handler">
+    ```typescript
+    import { PraxaClient } from "@praxa/sdk";
+
+    const client = new PraxaClient({
+      baseUrl: process.env.PRAXA_BASE_URL!,
+      accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+    });
+
+    export async function runWeeklyReportJob(isoWeek: string) {
+      const idempotencyKey = `weekly-sales-report:${isoWeek}`;
+
+      const mission = await client.createMission(
+        {
+          goalSpec: { task: "Generate the weekly sales report", period: isoWeek },
+          resourceBudget: {
+            maximumSteps: 20,
+            maximumToolCalls: 12,
+            maximumElapsedMs: 180_000,
+            maximumParallelism: 2,
+          },
+        },
+        idempotencyKey,
+      );
+
+      // If the job restarted, mission.status may already be 'succeeded'
+      if (mission.status === "succeeded") {
+        console.log(`Report for ${isoWeek} already complete.`);
+        return mission;
+      }
+
+      for await (const event of client.missionEvents(mission.runId)) {
+        if (event.event === "mission.completed") return mission;
+        if (event.event === "mission.failed") throw new Error("Report generation failed");
+      }
+
+      return mission;
+    }
+    ```
+  </Step>
+
+  <Step title="Store the runId for later retrieval">
+    Persist `mission.runId` in your database so you can fetch the mission status
+    later with `getMission(runId)` without re-streaming the event log.
+  </Step>
+</Steps>
+
+<Tip>
+  For ad-hoc or queue-driven tasks where no natural business key exists, use
+  `crypto.randomUUID()` as the idempotency key. It is available globally in
+  Node.js 20+ and all modern browsers — no import needed.
+
+  ```typescript
+  const mission = await client.createMission(input, crypto.randomUUID());
+  ```
+</Tip>

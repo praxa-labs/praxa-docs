@@ -1,0 +1,158 @@
+---
+title: "POST /v8/memory/query — Query Persistent Mission Memory"
+sidebarTitle: "Query Memory"
+description: "POST /v8/memory/query retrieves relevant entries from persistent mission memory using a natural language query. Requires memory:read scope."
+---
+
+The `POST /v8/memory/query` endpoint retrieves entries from the persistent memory store associated with your Praxa deployment. Memory entries are purpose-scoped and compartment-scoped — you specify both when querying so that the gateway returns only entries your principal is permitted to read for your stated purpose. You query using natural language text, and the gateway performs semantic retrieval against the stored entries. This is useful for grounding a new mission with relevant history, surfacing prior results, or carrying context across multiple mission runs.
+
+<Info>
+  The `principalId` field is injected automatically from your OAuth delegation token. You must not include it in the request body — the gateway rejects any request that contains it.
+</Info>
+
+## Endpoint
+
+```
+POST /v8/memory/query
+```
+
+**Required scope:** `memory:read`
+
+**Required headers:**
+
+| Header | Description |
+|---|---|
+| `Authorization` | `Bearer <access_token>` — short-lived Ed25519 delegated OAuth token |
+| `Content-Type` | `application/json` |
+
+---
+
+## Request Body
+
+<ParamField body="compartment" type="string" required>
+  The memory compartment to search within. Must be between 1 and 128 characters. Compartments are logical partitions of memory — entries written to one compartment are not visible in queries against another. Use compartment names that match the organizational boundaries in your deployment (e.g., `"team-emea"`, `"project-alpha"`, `"user-prefs"`).
+</ParamField>
+
+<ParamField body="purpose" type="string" required>
+  A description of why you are querying memory. Must be between 1 and 256 characters. The policy plane uses this value to enforce purpose-limitation controls — results are filtered to entries that were written under a compatible purpose.
+</ParamField>
+
+<ParamField body="queryText" type="string" required>
+  Your natural language query. Must be between 1 and 32,768 characters. The gateway performs semantic retrieval against stored memory entries using this text. Be specific to improve recall quality.
+
+  Example: `"Weekly review summaries for the EMEA region from the past 30 days"`
+</ParamField>
+
+<ParamField body="classes" type="array of strings" required>
+  One or more memory entry class labels to filter by. Must contain between 1 and 64 unique items; each item must be between 1 and 128 characters. Classes let you narrow retrieval to specific categories of memory (e.g., `["mission-result"]`, `["user-preference", "team-context"]`).
+</ParamField>
+
+<ParamField body="limit" type="integer">
+  Maximum number of results to return. Must be between `1` and `50`. Defaults to `10`. Results are returned in descending relevance order.
+</ParamField>
+
+<ParamField body="maxContextBytes" type="integer">
+  Maximum total byte size of all returned entries combined. Must be between `64` and `1,048,576` (1 MiB). The gateway truncates the result set to stay within this limit.
+</ParamField>
+
+<ParamField body="maxContextTokens" type="integer">
+  Maximum total token count of all returned entries combined. Must be between `16` and `262,144`. Useful for ensuring the context bundle fits in an LLM prompt window.
+</ParamField>
+
+<ParamField body="queryEmbedding" type="array of numbers">
+  Optional pre-computed embedding vector for the query. Must contain between 1 and 4,096 floating-point numbers. When provided, the gateway uses your embedding directly instead of computing one from `queryText`. This is useful when you want to control the embedding model or reuse an embedding computed elsewhere.
+</ParamField>
+
+---
+
+## Example Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://your-gateway.example/v8/memory/query \
+  -H "Authorization: Bearer $PRAXA_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "compartment": "team-emea",
+    "purpose": "Grounding a new weekly review mission with prior summaries",
+    "queryText": "Weekly review summaries for the EMEA region from the past 30 days",
+    "classes": ["mission-result"],
+    "limit": 5
+  }'
+```
+
+```typescript TypeScript SDK
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+
+const results = await client.queryMemory({
+  compartment: "team-emea",
+  purpose: "Grounding a new weekly review mission with prior summaries",
+  queryText: "Weekly review summaries for the EMEA region from the past 30 days",
+  classes: ["mission-result"],
+  limit: 5,
+});
+
+console.log(results);
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+**Status: `200 OK`**
+
+The response body is a purpose-filtered, bounded context bundle. The exact shape of each memory entry depends on how entries were written to the store, but the bundle respects the `limit`, `maxContextBytes`, and `maxContextTokens` constraints you specified.
+
+```json Example 200 response
+{
+  "entries": [
+    {
+      "entryId": "mem_01j3k2p...",
+      "class": "mission-result",
+      "content": "EMEA weekly review for week 28: Revenue up 4.2%...",
+      "score": 0.94,
+      "createdAt": "2025-07-08T09:00:00Z"
+    },
+    {
+      "entryId": "mem_01j2m1n...",
+      "class": "mission-result",
+      "content": "EMEA weekly review for week 27: Pipeline coverage at 112%...",
+      "score": 0.89,
+      "createdAt": "2025-07-01T09:00:00Z"
+    }
+  ],
+  "totalContextBytes": 1024,
+  "truncated": false
+}
+```
+
+---
+
+## Error Responses
+
+All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457).
+
+| HTTP Status | Typical cause |
+|---|---|
+| `400 Bad Request` | Missing required fields, `classes` array is empty, or field values exceed limits |
+| `401 Unauthorized` | Missing or expired `Authorization` bearer token |
+| `403 Forbidden` | Token lacks `memory:read` scope, `principalId` was included in the request body, or the stated purpose is not permitted for your principal |
+
+---
+
+## SDK Equivalent
+
+```typescript
+const results = await client.queryMemory(query);
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `query` | `MemoryQuery` | Object containing `compartment`, `purpose`, `queryText`, `classes`, and optional `limit`, `maxContextBytes`, `maxContextTokens`, `queryEmbedding` |
+
+**Returns:** `Promise<JsonValue>`
