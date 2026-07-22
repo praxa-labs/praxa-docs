@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "name": "Praxa",
-  "theme": "luma",
+  "theme": "mint",
   "favicon": "https://media.brand.dev/5bf0c599-8404-485e-a929-a6e148e92ef2.jpg",
   "colors": {
     "primary": "#909090",
