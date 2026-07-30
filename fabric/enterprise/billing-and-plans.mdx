@@ -1,0 +1,172 @@
+---
+title: "Billing and Plans"
+sidebarTitle: "Billing and Plans"
+description: "How execution is funded, how spend is governed at the org level, and what"
+---
+
+*How execution is funded, how spend is governed at the org level, and what
+to expect on an invoice.*
+
+Two things are true about pricing on this page: every dollar figure below
+comes directly from Praxa's published pricing proposal, and every dollar
+figure below is a **proposal**, not a locked price list. Nothing here has
+been validated against real conversion or usage data yet. Treat the tables
+as a starting point for a conversation, not a quote.
+
+---
+
+## Two ways to fund execution
+
+> **Status:** Developer preview
+
+The fabric supports two funding models side by side, at the same time, from
+day one. You are not locked into one.
+
+### Bundled (the default)
+
+Praxa's own provider keys run your tasks. You're priced through Praxa's
+existing credit machinery: a minimum margin floor (at least 25%) plus a
+payment-processing fee, with an **immutable price version locked to every
+run** — the price that applied when a run executed cannot change
+retroactively.
+
+### Bring your own keys (BYO)
+
+Your own provider credentials run your tasks instead. Keys are encrypted at
+rest using the same envelope-encryption pattern Praxa uses for connector
+credentials elsewhere, and they never leave the runtime boundary — Praxa's
+routing layer uses them to call the model provider, but the fabric doesn't
+expose them back out, and the model-routing failover ladder is constrained
+to only the lanes you've funded.
+
+Instead of a token margin, BYO is charged a platform fee targeted at
+**5–10% of routed spend**, plus a per-run fabric fee.
+
+### When each wins
+
+| | Bundled | BYO |
+|---|---|---|
+| Fastest to start | Yes — no vendor account or key setup | No — you provision and fund provider accounts first |
+| You want provider spend on Praxa's invoice | Yes | No — it lands on your own provider account |
+| You already have a committed-use or volume discount with a model vendor | Discount doesn't apply | Discount applies — you're paying that vendor directly |
+| You're contractually required to route inference through your own vendor agreement | Doesn't satisfy that requirement | Satisfies it |
+| Pricing model | Margin on top of token cost | Flat fee on routed spend, no margin |
+
+Routing quality doesn't change based on which you pick: routing telemetry
+— the data that makes model/tool selection better over time — is priced
+and collected identically in both modes.
+
+---
+
+## Budget policies at the org level
+
+> **Status:** Developer preview
+
+Every execute call carries an optional `policy` parameter — a constrained
+view of the same policy engine that gates approvals (see
+[Deployment and Isolation](/fabric/enterprise/deployment-and-isolation#approvals-fail-closed)).
+For budget purposes, that parameter can set:
+
+- A **budget cap** for the run or the tenant
+- A **risk ceiling** (which approval mode applies before spend-adjacent
+  actions execute)
+- A **model-lane pin** (constrain routing to specific cost/quality lanes)
+- A **tool allowlist**
+
+Underneath, spend is held against a **reservation before a run executes**,
+then settled against actual usage and reconciled — not billed after the
+fact with no prior hold. Per-key rate limits and org-level pooling (spend
+shared across a tenant's keys rather than tracked key-by-key) are part of
+the same build.
+
+**Be precise about enforcement today.** The reserve-settle-reconcile
+machinery itself already runs in production for Praxa's existing product.
+What is still in build is **fail-closed metering enforcement on the new
+paid API lane** specifically — moving billing enforcement out of shadow
+mode for `/v1/execute` traffic is a named gate before that lane is
+considered billing-complete. Until it lands, don't assume API-lane usage is
+being enforced against a cap in production; assume it is being built
+toward that, deliberately, before general availability.
+
+---
+
+## Usage readback API
+
+> **Status:** Developer preview
+
+`GET /v1/usage` returns tenant-scoped usage and spend — a programmatic way
+to pull what a tenant has consumed without waiting for an invoice. Usage is
+tracked from raw token counts down through fractional-currency units before
+settling into credits, which is what keeps reservation holds and
+reconciliation from drifting against the eventual charge.
+
+---
+
+## Invoice expectations
+
+> **Status:** Developer preview
+
+- **The API meters runs and spend — not raw model steps.** Raw step counts
+  remain an internal cost guardrail, never the customer-facing meter. A
+  more efficient agent that does the same job in fewer steps should not
+  cost more, and doesn't.
+- **Every run's price is version-locked at execution time.** Your invoice
+  ties back to the specific price version that was active when a run
+  executed, not a number that could move underneath you after the fact.
+- **Outcome-metered features are a separate layer.** Some Praxa product
+  surfaces (outside the execution-fabric API itself) are priced per
+  outcome — for example, per approved send or per generated report. Those
+  meters belong to the specific feature, not to `/v1/execute`; if you're
+  integrating against the fabric API directly, runs-and-spend is your
+  meter.
+
+---
+
+## Indicative pricing (proposal — subject to change)
+
+> **Status:** Developer preview (Solo–Team rows) / Planned, enterprise tier (Business–Enterprise governance rows)
+
+The table below is the current tier-ladder proposal. It has not been
+validated against real conversion data. Every figure is anchored to public
+competitor pricing as of mid-2026, not to Praxa's own measured costs or
+revenue. The "unlocks" column names the feature; it is not a claim that the
+feature is built — cross-reference [Deployment and Isolation](/fabric/enterprise/deployment-and-isolation#summary-whats-real-today-whats-building-whats-not-offered)
+for what's actually shipped versus planned.
+
+| Tier | Price (indicative) | What unlocks for an org buyer |
+|---|---|---|
+| Solo | $0 | Single-user only — no org tenancy |
+| Pro | $29/seat/mo annual, $39 m2m | Per-seat allowance; still not an org-level subscription |
+| Team | $59/seat/mo annual, 3-seat minimum | Org-level pooled usage; usage API; per-key limits |
+| Business | $99/seat/mo annual, 10-seat minimum | Policy packs; Evidence export (PDF); SSO |
+| Enterprise | Custom, from ~$40k/yr | SCIM; real-time Evidence/SIEM stream; custom policy authoring; committed-use economics |
+
+A note on how the Business row is priced: an earlier plan had a separate
+flat platform fee for governance features; the current proposal folds that
+into the per-seat price instead, on the reasoning that a single legible
+number reads better to a buyer than a seat price plus an opaque add-on fee.
+
+**On the funding-model fees above:** the bundled margin floor (≥25%) and
+the BYO platform fee (5–10% of routed spend) apply on top of whichever tier
+an org is on — tier price governs seats and feature access; funding-model
+fee governs how inference itself is priced.
+
+---
+
+## What's not enforced yet (say this plainly)
+
+> **Status:** Developer preview
+
+No metering exists in enforced form on the execution-fabric API today.
+Until fail-closed billing enforcement ships and is reconciled against real
+model, compute, and connector costs, usage revenue on this API is
+effectively zero and margins on it are unknown — this is a stated,
+first-class launch blocker, not a footnote. This is separate from approval
+enforcement, which **is** fail-closed today (see
+[Deployment and Isolation](/fabric/enterprise/deployment-and-isolation)); billing and
+approval are two different gates, and only one of them is complete.
+
+---
+
+*Related: [Teams and Organizations](/fabric/enterprise/teams-and-organizations) ·
+[Deployment and Isolation](/fabric/enterprise/deployment-and-isolation)*

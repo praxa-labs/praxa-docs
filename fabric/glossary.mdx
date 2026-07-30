@@ -1,0 +1,63 @@
+---
+title: "Glossary"
+sidebarTitle: "Glossary"
+description: "Terms used across these docs, in one place. Alphabetical."
+---
+
+Terms used across these docs, in one place. Alphabetical.
+
+**Action digest (approval digest)** — A hash that binds an approval decision to one exact action: the specific provider, operation, and arguments the server recorded when the run paused. Approving a digest approves that exact action and nothing else: not a similar action, not a future one, not an altered one. See [`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals).
+
+**API key (`praxa_sk_`)** — The fabric's tenant-scoped credential. Capable of executing arbitrary tasks under its tenant's policy, unlike the older `aura_agent_*` credential it's meant to eventually generalize. See [`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys).
+
+**Approval** — The mechanism that pauses a run before a risky action executes and resumes it once a decision is posted back. Which actions need one is decided by the policy engine's risk-tier outcome, not a hardcoded list. See [`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals).
+
+**`aura_agent_*` key** — The existing custom-agent deployment credential, scoped to a single agent. Available today, used by agent builders on the custom-agent platform, and unaffected by the fabric's rollout: it keeps working and migrates onto the tenant model later rather than being replaced outright.
+
+**Bundled inference** — A funding mode: your run executes on Praxa's own provider keys, billed as credits against fixed per-run pricing. The default. Compare BYO.
+
+**BYO (bring your own keys)** — A funding mode: you connect your own provider credentials, encrypted at rest and never leaving the runtime, and pay a platform fee on the spend that routes through them instead of a token margin. See [`how-to/bring-your-own-keys.md`](/fabric/how-to/bring-your-own-keys).
+
+**Canonical payload (canonical action envelope)** — The exact provider, action, and arguments recorded for a pending approval. Execution accepts only a byte-equivalent approved envelope; anything altered, expired, replayed, or attached to a different run fails closed.
+
+**Deny** — A policy engine outcome: the action does not run, under any circumstance, without a policy change.
+
+**Event (run event)** — One append-only, sequenced record of something that happened during a run: a tool call, an approval pause, a status change. Streamed from `GET /v1/runs/:id/events`; resumable by sequence number, so a dropped connection never means lost or duplicated history. See [`api/events.md`](/fabric/api/events).
+
+**Execute** — The core primitive. `POST /v1/execute` submits a task along with its context, the tools and policy it runs under, and how you want the result delivered. See [`api/execute.md`](/fabric/api/execute).
+
+**Funding mode** — Which of the two ways a run's inference gets paid for: bundled or BYO. See both.
+
+**Human approval** — A policy engine outcome: the action pauses until a person explicitly approves it.
+
+**Idempotency key** — A value sent with `/v1/execute` so a retried request never executes the same task twice.
+
+**Last-Event-ID** — The header used to resume a run's event stream exactly where it left off, by sequence number, instead of replaying from the beginning or missing events in between.
+
+**Mode: task** — An execution shape where the call returns a `run_id` immediately and the work continues durably server-side; you track progress through events or webhooks. Built for anything long-running or anything you need to walk away from and resume.
+
+**Mode: turn** — An execution shape where the call streams its result back synchronously over the same connection. Built for chat-shaped, immediate interactions.
+
+**Peer review** — A policy engine outcome between auto and human approval: someone other than the requester reviews the action before it runs.
+
+**Policy** — The request-level parameter that constrains a run: risk ceiling, budget caps, which model lane it's pinned to (if any), which tools it may use, and how approvals get handled.
+
+**Policy engine** — The system that decides, for every action a run wants to take, whether it runs automatically, needs peer review, needs human approval, or is denied outright, based on what the action does, what it costs, and the policy in force. See [`approvals-and-policy/policy-engine.md`](/fabric/approvals-and-policy/policy-engine).
+
+**Policy pack** — A versioned, named bundle of policy rules. The version that evaluated a given run is recorded in that run's receipt, so a past decision stays explainable even after the policy pack is later updated.
+
+**Principal** — The identity behind a call: an API key, a signed-in user, or a desktop session. One resolver handles all three; downstream authority is derived the same way no matter which kind made the call.
+
+**Receipt** — The record a finished run leaves behind: what ran, which policy pack version evaluated it, who approved what and when, and what the result was verified against. See [`security/receipts-and-audit.md`](/fabric/security/receipts-and-audit).
+
+**Reservation** — A hold placed on funds or budget before a paid step executes, so a budget ceiling stops new work before it happens instead of producing a surprise charge afterward.
+
+**Risk tier** — The four possible outcomes a policy engine decision can land on for a given action: auto, peer review, human approval, or deny.
+
+**Run** — One execution of a task through the fabric, from `/v1/execute` to a final outcome and receipt. Identified by a `run_id`.
+
+**Scope** — What an API key is allowed to do: which tools, which policy ceiling, which budget. Set when the key is created, enforced on every call it makes. See [`keys-and-access/scopes-and-tenancy.md`](/fabric/keys-and-access/scopes-and-tenancy).
+
+**Tenant** — The billing and policy boundary a run executes under: an organization or an individual, owning its own keys, policy packs, and usage. See [`keys-and-access/scopes-and-tenancy.md`](/fabric/keys-and-access/scopes-and-tenancy).
+
+**Webhook delivery** — An HMAC-signed, retried notification of a run event sent to an endpoint you register, as an alternative to holding a stream open. See [`how-to/receive-webhooks.md`](/fabric/how-to/receive-webhooks).

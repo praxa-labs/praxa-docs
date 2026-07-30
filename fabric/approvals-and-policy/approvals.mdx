@@ -1,0 +1,167 @@
+---
+title: "Approvals"
+sidebarTitle: "Approvals"
+description: "The fabric never lets a consequential action run unreviewed. When a run"
+---
+
+> **Status:** Developer preview.
+
+
+The fabric never lets a consequential action run unreviewed. When a run
+reaches a step your policy marks as gated, execution **pauses** — the run
+parks, waiting for a decision — instead of continuing on the assumption that
+someone would have said yes. Nothing gated executes without an explicit
+decision your application collects and posts back.
+
+This page walks the pause-and-resume lifecycle end to end, using one example
+that carries through this page, [policy-engine.md](/fabric/approvals-and-policy/policy-engine), and
+[budgets-and-limits.md](/fabric/approvals-and-policy/budgets-and-limits).
+
+## Worked example: a dunning email
+
+A finance-ops team has an agent task that chases overdue invoices. Partway
+through a run, the agent finds an invoice from **Meridian Fabrication**, 45
+days overdue, and drafts a payment-reminder email to
+`billing@meridianfab.example` naming the **$4,280.00** balance owed. Sending
+that email is a `send_email` call — outbound correspondence, to an external
+party, naming a specific amount owed. That combination is exactly what a
+policy pack gates rather than lets a run send unattended; see
+[policy-engine.md](/fabric/approvals-and-policy/policy-engine) for how that decision actually gets
+made.
+
+## The lifecycle, step by step
+
+**1. The run executes normally.** Whether it's `mode:"turn"` (a synchronous
+stream) or `mode:"task"` (a durable background run), the agent works through
+its steps the same way — look up the invoice, draft the email — until it
+proposes the one step that's gated.
+
+**2. The run parks.** Instead of calling `send_email`, the stream (or the
+run's event feed, `GET /v1/runs/:id/events`) emits an `approval.required`
+event and stops making progress on that action:
+
+```json
+{
+  "apiVersion": "v1",
+  "type": "approval.required",
+  "requestId": "req_5e93d0",
+  "sequence": 14,
+  "at": "2026-07-30T18:04:11Z",
+  "approvalId": "appr_8f21b9",
+  "toolCallId": "call_2c47a1",
+  "summary": "Send email to billing@meridianfab.example: \"Payment reminder — Invoice #4471, $4,280.00, 45 days overdue.\"",
+  "expiresAt": "2026-07-30T18:19:11Z"
+}
+```
+
+In `mode:"task"` the run's own state also flips to `waiting_approval` —
+visible on `GET /v1/runs/:id` — so polling the run instead of streaming it
+surfaces the same pause.
+
+**3. Your app renders the payload — exactly as given.** `summary` is the
+canonical payload: not a hint, not a category label, the actual thing that
+will happen if approved. Render it verbatim in your own UI — don't
+re-summarize it, truncate it, or paraphrase it into your own copy. What's
+shown to the approver, what the fabric recorded, and what the gate checks
+before resuming all have to be the same payload (render == record ==
+gate-match). See [How to build an approval UI](/fabric/how-to/build-an-approval-ui).
+
+**4. Someone decides.** Approve or deny, through whatever review process your
+application wraps around it — a tap, a Slack approval, a second reviewer,
+whatever the action warrants.
+
+**5. Approve: post the digest back.**
+
+```
+POST /v1/runs/:id/approve
+{
+  "action_digest": "c3a9f1e7b5d2408e6a1c9f3b7d5e0284a6c1f9b3d7e5082c4a9f1e6b3d7c5082",
+  "decision": "approve"
+}
+```
+
+The event itself hands you `approvalId` (which pending decision this is) and
+`summary` (what it's a decision about) — it doesn't carry a field literally
+named `action_digest`. The digest is the fingerprint the fabric computed for
+the exact parked action; it's what `POST /v1/runs/:id/approve` expects back,
+checked against the action that's still actually parked before anything
+resumes. See [the API reference](/fabric/api/approvals) for the full
+request/response schema.
+
+**6. The run resumes** from exactly where it paused. `send_email` executes,
+and the stream or event feed continues.
+
+## Why digest binding matters
+
+An approval is authority over *one specific action instance*, not a standing
+"yes, go ahead." Binding the decision to a digest of the exact action closes
+two gaps a plain `approved: true` flag would leave open:
+
+- **Nothing can be substituted underneath an approval.** If the agent's
+  draft changes after someone has looked at it — a different recipient, a
+  different amount, a retried attempt — the digest changes too, and an old
+  approval no longer matches. The digest is checked before resuming; a
+  mismatch is rejected, not silently applied to whatever is parked now.
+- **A stale or replayed approve call can't be repointed.** Because the
+  check is against the digest that's *currently* parked, replaying an old
+  approval call against a run that has since moved on fails closed instead
+  of executing something the approver never actually saw.
+
+Approval semantics are identical whether the run is a synchronous turn or a
+durable task — same event, same digest check, same resume.
+
+## Expiry and TTL
+
+Every parked approval carries an optional `expiresAt`; where it's present,
+treat it as authoritative. If no decision arrives in time, the pending
+request stops being valid on its own — a decision that arrives after the
+window closes is rejected, not applied retroactively. In a synchronous turn,
+a timed-out approval surfaces as a terminal `request.failed` event whose
+`problem.code` is `approval_timed_out`. In a durable task, the run's
+approval state moves to `expired` directly, visible on `GET /v1/runs/:id`.
+
+Windows are sized to the action's stakes, not fixed globally. Praxa's own
+production approval gates today range from 10 minutes — for time- and
+price-sensitive actions — up to 30 minutes for multi-step purchase flows:
+short enough that a stale approval can't fire against a world that's moved
+on, long enough that someone has a real chance to see it. The policy engine
+assigns the window per action (see [policy-engine.md](/fabric/approvals-and-policy/policy-engine));
+a longer window never authorizes anything *different*, only how long the
+same already-parked action stays approvable.
+
+If a run is also holding a spend reservation while parked, approving after
+that reservation itself has expired is rejected outright — the fabric won't
+resume a run against a funding hold that's no longer there. See
+[budgets-and-limits.md](/fabric/approvals-and-policy/budgets-and-limits).
+
+## Deny
+
+`{"decision": "deny"}` stops that action from ever executing. Denying is not
+a retry signal — the run does not treat "no" as "try again and ask a second
+time" on its own. What happens to the run afterward depends on whether it
+can make progress without that step; it may end in a stopped state that's
+labeled for exactly what it is, rather than pushed forward past a decision
+someone made on purpose. See "What happens at the ceiling" in
+[budgets-and-limits.md](/fabric/approvals-and-policy/budgets-and-limits) for how the fabric reports
+outcomes that didn't fully complete.
+
+## The pattern behind the preview label
+
+"Developer preview" describes the public surface — `/v1/runs`, the digest
+contract on `/v1/execute`, the SDK. It does not describe the underlying
+discipline. Fail-closed approval gates, where what's rendered, what's
+recorded, and what's checked at resume time are required to match, are the
+pattern Praxa's own consumer product runs today, in production, across
+eleven separate approval domains — purchases, browser actions, connector
+writes, social posts, credential changes, and more. The fabric's unified
+policy engine is what's consolidating those eleven gates into one; the gate
+itself, refusing to execute the unreviewed, is not new. See
+[Deployment and Isolation](/fabric/enterprise/deployment-and-isolation#approvals-fail-closed)
+for the full trust story.
+
+## See also
+
+- [Policy engine](/fabric/approvals-and-policy/policy-engine) — how an action's risk tier gets decided
+- [Budgets and limits](/fabric/approvals-and-policy/budgets-and-limits) — spend reservations and what happens at a ceiling
+- [Events](/fabric/api/events) — the full event catalog and stream framing
+- [Execute](/fabric/api/execute) — submitting the run that eventually parks

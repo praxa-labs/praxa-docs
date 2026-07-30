@@ -1,0 +1,151 @@
+---
+title: "Events"
+sidebarTitle: "Events"
+description: "Both POST /v1/execute (mode:"turn") and GET /v1/runs/:id/events"
+---
+
+> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+
+
+Both `POST /v1/execute` (`mode:"turn"`) and `GET /v1/runs/:id/events`
+(`mode:"task"`) stream the same envelope type, `AiPlatformEventV1`, as
+`text/event-stream` (`AI_PLATFORM_EVENT_MEDIA_TYPE`).
+
+## Endpoint
+
+```
+GET /v1/runs/:id/events
+```
+
+| Parameter | Location | Required | Description |
+|---|---|---|---|
+| `id` | path | Yes | Run identifier from [`GET /v1/runs/:id`](/fabric/api/runs). |
+| `Last-Event-ID` | header | No | Resume a dropped connection from the given `sequence` value (design spec §3.1: "SSE over `task_run_events.sequence`"). |
+
+> **Ambiguity.** The design spec asserts `Last-Event-ID` resume in one line;
+> the `@nexislabs/ai-platform` package in this corpus has no client method
+> for this endpoint (its only stream method, `streamChat`, calls `/v1/chat`
+> once, with no reconnect/resume logic). The `sequence` field below is the
+> only concrete evidence of a resume key. Resume mechanics here are
+> transcribed from spec prose, not verified against an implementation.
+
+## Stream framing
+
+Transcribed from the reference SSE parser (`parseAiPlatformEventStream`):
+
+- Response `Content-Type` must include `text/event-stream`.
+- Only lines beginning `data:` are read; other SSE fields (`event:`, `id:`,
+  `retry:`) are not parsed by the reference client.
+- A blank line dispatches the buffered `data:` lines, joined by `\n`, as one
+  JSON payload — standard multi-line SSE `data:` framing.
+- A literal `data: [DONE]` line ends the stream without emitting an event.
+- Every dispatched payload is parsed as JSON and validated against
+  `AiPlatformEventV1Schema`; a payload that fails validation throws.
+
+## Event envelope
+
+Every event shares this base shape, then adds the fields listed in the
+catalog below.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `apiVersion` | `"v1"` | Yes | |
+| `requestId` | Identifier | Yes | Must equal the originating request's `requestId`. |
+| `sequence` | integer ≥ 0 | Yes | Strictly increasing within a stream — the resume key. |
+| `at` | timestamp (RFC 3339, offset required) | Yes | |
+| `type` | string | Yes | Discriminator — see catalog below. |
+
+**Protocol invariants** (enforced by the reference client; treat as MUST for
+any implementation):
+
+- `sequence` strictly increases; a repeated or lower value is a protocol
+  violation.
+- Exactly one **terminal** event ends a stream: `response.final`,
+  `request.cancelled`, or `request.failed`. No event may follow a terminal
+  event, and a stream must not end without emitting one.
+
+## Event catalog
+
+Fields below are **in addition to** the envelope above.
+
+### Lifecycle
+
+| `type` | Fields | Description |
+|---|---|---|
+| `request.accepted` | `replayed`: boolean (default `false`) | First event of a stream. `replayed:true` signals the request matched a prior request under the same `Idempotency-Key` (see [Idempotency](/fabric/api/execute#idempotency)). |
+| `model.started` | `model`: string (1–128) | Model selected by the routing layer for this turn. |
+| `response.final` | `finishReason`: `stop \| length \| tool \| content_filter \| other` | Terminal — normal completion. |
+| `request.cancelled` | `reason`?: string (≤512) | Terminal — the run was cancelled, e.g. via [`POST /v1/runs/:id/cancel`](/fabric/api/runs#cancel-a-run). |
+| `request.failed` | `problem`: [Problem](/fabric/api/errors#the-problem-object) | Terminal — see [Errors](/fabric/api/errors). |
+
+### Generation
+
+| `type` | Fields | Description |
+|---|---|---|
+| `text.delta` | `delta`: string (1–64,000) | Incremental assistant text to append. |
+| `reasoning.status` | `status`: string (1–256) | Human-readable label for an in-progress reasoning step — not the reasoning content itself. |
+| `output.structured` | `schemaId`: Identifier, `value`: unknown | Structured output conforming to `schemaId`. The platform schema does not itself constrain `value`. |
+| `ui.component` | `component`: unknown | Generative-UI payload; shape is not constrained by the platform schema. |
+
+### Tools and approval
+
+| `type` | Fields | Description |
+|---|---|---|
+| `tool.proposed` | `toolCallId`: Identifier, `tool`: string (1–128), `summary`: string (1–1,024) | A tool call the run wants to make. |
+| `approval.required` | `approvalId`: Identifier, `toolCallId`: Identifier, `summary`: string (1–2,048), `expiresAt`?: timestamp | The run has parked pending a decision. `summary` is the canonical payload the caller must render verbatim (render == record == gate-match). See [Approvals](/fabric/api/approvals). |
+| `tool.started` | `toolCallId`: Identifier, `tool`: string (1–128) | |
+| `tool.completed` | `toolCallId`: Identifier, `result`: unknown | Tool output; shape is tool-specific. |
+| `tool.failed` | `toolCallId`: Identifier, `code`: [ErrorCode](/fabric/api/errors#error-codes), `retryable`: boolean | |
+
+### Memory
+
+| `type` | Fields | Description |
+|---|---|---|
+| `memory.read` | `count`: integer ≥ 0, `scope`: `user \| organization \| conversation` | |
+| `memory.write` | `memoryId`: Identifier, `scope`: `user \| organization \| conversation` | |
+
+### Telemetry
+
+| `type` | Fields | Description |
+|---|---|---|
+| `usage` | `inputTokens`, `outputTokens`, `modelCalls`, `toolCalls`: integer ≥ 0 | Per-run usage counters. Distinct from the tenant-level aggregate at [`GET /v1/usage`](/fabric/api/usage). |
+| `warning` | `code`: string (1–96), `message`: string (1–1,024) | Non-fatal condition; the run continues. |
+| `retry` | `attempt`: integer > 0, `reason`: string (1–512), `delayMs`: integer ≥ 0 | An internal step is being retried. |
+
+Note on `result` / `value` / `component`: these are typed `unknown` in the
+zod schema (not wrapped in `.optional()`), so this reference lists them as
+required keys. `z.unknown()` also validates a missing key at parse time —
+implementations should not assume the key is always present on the wire.
+
+## TypeScript
+
+```ts
+import type { AiPlatformEventV1 } from "@nexislabs/ai-platform";
+
+function handle(event: AiPlatformEventV1) {
+  switch (event.type) {
+    case "approval.required":
+      return renderApproval(event.summary, event.approvalId, event.expiresAt);
+    case "tool.failed":
+      return event.retryable ? scheduleRetry(event.toolCallId) : failRun(event.code);
+    case "usage":
+      return recordUsage(event.inputTokens, event.outputTokens);
+    case "response.final":
+    case "request.cancelled":
+    case "request.failed":
+      return closeStream();
+    default:
+      return; // text.delta, reasoning.status, tool.*, memory.*, output.structured, ui.component, warning, retry
+  }
+}
+```
+
+## Example
+
+```bash
+curl https://api.praxa.io/v1/runs/run_01j9example000000000000001/events \
+  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Accept: text/event-stream" \
+  -H "Last-Event-ID: 42" \
+  -N
+```

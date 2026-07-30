@@ -121,6 +121,98 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Execution Fabric",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "fabric/index",
+              "fabric/getting-started/overview",
+              "fabric/getting-started/concepts",
+              "fabric/getting-started/quickstart"
+            ]
+          },
+          {
+            "group": "API reference",
+            "pages": [
+              "fabric/api/execute",
+              "fabric/api/runs",
+              "fabric/api/events",
+              "fabric/api/approvals",
+              "fabric/api/usage",
+              "fabric/api/webhooks",
+              "fabric/api/errors"
+            ]
+          },
+          {
+            "group": "Keys & access",
+            "pages": [
+              "fabric/keys-and-access/api-keys",
+              "fabric/keys-and-access/scopes-and-tenancy",
+              "fabric/keys-and-access/rate-limits"
+            ]
+          },
+          {
+            "group": "Approvals & policy",
+            "pages": [
+              "fabric/approvals-and-policy/approvals",
+              "fabric/approvals-and-policy/policy-engine",
+              "fabric/approvals-and-policy/budgets-and-limits"
+            ]
+          },
+          {
+            "group": "Security",
+            "pages": [
+              "fabric/security/security-model",
+              "fabric/security/data-handling",
+              "fabric/security/receipts-and-audit"
+            ]
+          },
+          {
+            "group": "SDK",
+            "pages": [
+              "fabric/sdk/typescript",
+              "fabric/sdk/streaming",
+              "fabric/sdk/errors-and-retries"
+            ]
+          },
+          {
+            "group": "Use cases",
+            "pages": [
+              "fabric/use-cases/overview",
+              "fabric/use-cases/agent-builders",
+              "fabric/use-cases/coding-and-desktop",
+              "fabric/use-cases/business-workflows"
+            ]
+          },
+          {
+            "group": "How-to",
+            "pages": [
+              "fabric/how-to/build-an-approval-ui",
+              "fabric/how-to/receive-webhooks",
+              "fabric/how-to/bring-your-own-keys",
+              "fabric/how-to/migrate-from-provider-apis"
+            ]
+          },
+          {
+            "group": "Enterprise",
+            "pages": [
+              "fabric/enterprise/teams-and-organizations",
+              "fabric/enterprise/billing-and-plans",
+              "fabric/enterprise/deployment-and-isolation"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "fabric/faq",
+              "fabric/status-and-roadmap",
+              "fabric/glossary"
+            ]
+          }
+        ]
       }
     ]
   }

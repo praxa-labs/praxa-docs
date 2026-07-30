@@ -1,0 +1,283 @@
+---
+title: "Build an approval UI"
+sidebarTitle: "Build an approval UI"
+description: "When a run reaches an action your policy gates — a destructive tool call, a"
+---
+
+> **Status:** Developer preview.
+
+When a run reaches an action your policy gates — a destructive tool call, a
+spend over a threshold, a sensitive category — it parks and emits an
+`approval.required` event instead of executing. Your job is to show a person
+exactly what's about to happen and send their decision back. This guide
+covers the full loop for both execution shapes: `mode:"turn"`'s synchronous
+SSE stream and `mode:"task"`'s durable run.
+
+## The golden rule
+
+**Render the canonical payload exactly.** The `summary` field on
+`approval.required` *is* the action, described in full — not a hint for you
+to write your own copy from. What the person approves must be exactly what
+executes, byte for byte. Never:
+
+- Truncate `summary` to fit a card layout — use a scrollable or expandable
+  container instead.
+- Paraphrase, translate, "clean up," or reformat the wording.
+- Reorder or drop parts of it to make it more presentable.
+- Reuse a previous action's rendering for a new `approvalId` — always
+  re-render from the event you just received.
+
+`action_digest` binds a decision to one exact action. If your UI shows
+something other than what the digest was minted for, the thing the person
+approved and the thing that runs are no longer the same — and the entire
+point of the gate is defeated. This is the same render == record ==
+gate-match invariant every approval surface in Praxa holds to; the public API
+is not an exception to it.
+
+## 1. Listen for `approval.required`
+
+Events arrive on whichever stream carries your run's progress: the response
+body of `POST /v1/execute` for `mode:"turn"`, or `GET /v1/runs/:id/events`
+(resumable across reconnects via `Last-Event-ID`) for `mode:"task"`. Both
+surface the same event shape:
+
+```json
+{
+  "apiVersion": "v1",
+  "requestId": "req_8f21ac3e",
+  "sequence": 14,
+  "at": "2026-07-30T18:04:11.203Z",
+  "type": "approval.required",
+  "approvalId": "apr_5c9e0b71",
+  "toolCallId": "call_3a71fd02",
+  "action_digest": "5f1d2c9a4e7b0f3d6c8a1b2e9f4d7c0a3b6e9f2c5a8d1b4e7f0c3a6d9b2e5f8c",
+  "summary": "Send $240.00 USD from your connected Stripe balance to acct_1P3x... (invoice #4471, memo: \"July retainer\")",
+  "expiresAt": "2026-07-30T18:09:11.203Z"
+}
+```
+
+| Field | Notes |
+|---|---|
+| `approvalId` | Identifies this specific approval request. |
+| `toolCallId` | The gated action's call id — ties the approval back to the `tool.proposed` event you should already be rendering in your activity view. |
+| `action_digest` | A SHA-256 digest (64 lowercase hex characters). Copy it verbatim — never reformat, re-derive, or hand-type it. |
+| `summary` | The canonical payload. See the golden rule above. 1–2048 characters. |
+| `expiresAt` | ISO 8601 timestamp with an explicit offset. Optional — see step 2. |
+
+## 2. Render the payload and the expiry
+
+- Show `summary` verbatim in a scrollable or expandable container — never
+  clip it silently, and never run it through your own summarizer.
+- If `expiresAt` is present, show a live countdown and disable the decision
+  controls once it passes. The server is the real enforcer (see step 5), but
+  don't invite a person to click into a stale approval.
+- If `expiresAt` is absent, still show a clearly pending state; don't imply
+  there's no time pressure just because you can't render a countdown.
+
+## 3. Capture a decision
+
+Two explicit controls — Approve and Deny — with no default selection and no
+"approve all." Never auto-approve based on tool name, amount, or history: a
+policy that wants that already has `auto` available as a decision mode on
+the server, upstream of this UI ever rendering at all. If you're seeing
+`approval.required`, a human decision is exactly what the policy requires.
+
+## 4. POST the decision back
+
+```http
+POST /v1/runs/{run_id}/approve
+Authorization: Bearer praxa_sk_...
+Content-Type: application/json
+
+{
+  "action_digest": "5f1d2c9a4e7b0f3d6c8a1b2e9f4d7c0a3b6e9f2c5a8d1b4e7f0c3a6d9b2e5f8c",
+  "decision": "approved"
+}
+```
+
+```ts
+async function postDecision(
+  runId: string,
+  apiKey: string,
+  actionDigest: string,
+  decision: "approved" | "denied",
+): Promise<void> {
+  const response = await fetch(`https://api.praxa.io/v1/runs/${runId}/approve`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ action_digest: actionDigest, decision }),
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null);
+    throw new Error(problem?.detail ?? problem?.title ?? `approve failed (${response.status})`);
+  }
+  // A 2xx means the decision was recorded — it does not mean the action has
+  // finished. Keep reading the run's events (or wait for a webhook) to learn
+  // what happens next.
+}
+```
+
+`decision` is `"approved"` or `"denied"` — nothing else. `action_digest`
+must be the exact string from the event; a digest that doesn't match what
+the run is currently waiting on comes back as a `conflict` problem rather
+than a silent no-op.
+
+## 5. Handle expired and denied outcomes
+
+- **Expired.** If nobody decides before `expiresAt`, the run fails that step
+  with a `request.failed` event whose `problem.code` is
+  `"approval_timed_out"`. Stop showing the decision controls and surface the
+  timeout — don't let a person approve into a run that has already moved on.
+- **Denied.** A `"denied"` decision guarantees the gated action never
+  executes. It does not mean the interaction is over: keep listening to the
+  run's events (or webhooks) for what happens next — completion, failure, or
+  in some cases a new `approval.required` for an adjusted action — rather
+  than treating "denied" as itself a terminal UI state.
+- **Late decisions.** A decision posted after the run has already resolved
+  that approval (expired, already answered, or the run was cancelled) is
+  rejected, not silently dropped. Always check the response before assuming
+  your click landed.
+
+## 6. Put it together: a compact React example
+
+Plain React — no UI kit, no framework assumptions. It opens the run's event
+stream, renders the pending approval exactly as received, and posts the
+decision.
+
+```jsx
+import { useEffect, useState } from "react";
+
+const BASE_URL = "https://api.praxa.io";
+
+// Minimal SSE line reader for the v1 event stream: events are separated by
+// a blank line, only "data:" lines carry payload, and a stray "[DONE]"
+// closes the stream early. Mirrors the parsing rules used internally by
+// @nexislabs/ai-platform.
+async function* readEvents(response) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let dataLines = [];
+  const flush = () => {
+    if (dataLines.length === 0) return null;
+    const data = dataLines.join("\n");
+    dataLines = [];
+    return data === "[DONE]" ? null : JSON.parse(data);
+  };
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line === "") {
+        const event = flush();
+        if (event) yield event;
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).replace(/^ /, ""));
+      }
+    }
+    if (done) break;
+  }
+}
+
+export function ApprovalGate({ runId, apiKey }) {
+  const [pending, setPending] = useState(null); // the approval.required event
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    (async () => {
+      const response = await fetch(`${BASE_URL}/v1/runs/${runId}/events`, {
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: "text/event-stream" },
+        signal: controller.signal,
+      });
+      if (!response.ok || !response.body) throw new Error(`stream failed (${response.status})`);
+      for await (const event of readEvents(response)) {
+        if (event.type === "approval.required") {
+          setPending(event);
+        } else if (event.type === "request.failed" && event.problem?.code === "approval_timed_out") {
+          setPending(null);
+          setError("The approval window expired before a decision was made.");
+        } else if (event.type === "response.final" || event.type === "request.cancelled") {
+          setPending(null);
+        }
+      }
+    })().catch((err) => {
+      if (err.name !== "AbortError") setError(err.message);
+    });
+    return () => controller.abort();
+  }, [runId, apiKey]);
+
+  async function decide(decision) {
+    if (!pending) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`${BASE_URL}/v1/runs/${runId}/approve`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action_digest: pending.action_digest, decision }),
+      });
+      if (!response.ok) {
+        const problem = await response.json().catch(() => null);
+        throw new Error(problem?.detail ?? problem?.title ?? `approve failed (${response.status})`);
+      }
+      setPending(null); // the event stream reports what happens next
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!pending) return error ? <p role="alert">{error}</p> : null;
+
+  const expiresInMs = pending.expiresAt ? new Date(pending.expiresAt).getTime() - nowMs : null;
+  const expired = expiresInMs !== null && expiresInMs <= 0;
+
+  return (
+    <div role="group" aria-label="Approval required">
+      <h3>Approval required</h3>
+      {/* The golden rule: this is the canonical payload — render it verbatim. */}
+      <pre style={{ whiteSpace: "pre-wrap", overflowY: "auto", maxHeight: "12rem" }}>
+        {pending.summary}
+      </pre>
+      {expiresInMs !== null && (
+        <p>
+          {expired
+            ? "Expired — waiting for the run to update."
+            : `Expires in ${Math.max(0, Math.round(expiresInMs / 1000))}s`}
+        </p>
+      )}
+      <button onClick={() => decide("approved")} disabled={busy || expired}>
+        Approve
+      </button>
+      <button onClick={() => decide("denied")} disabled={busy || expired}>
+        Deny
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </div>
+  );
+}
+```
+
+## Next steps
+
+- If you're forwarding progress to a server instead of holding a stream
+  open, see [receive-webhooks.md](/fabric/how-to/receive-webhooks) —
+  `approval.required` deliveries follow the same rule: render `summary`
+  exactly.
+- Migrating from a direct OpenAI/Anthropic integration?
+  [migrate-from-provider-apis.md](/fabric/how-to/migrate-from-provider-apis) covers
+  what replaces your hand-rolled approval hooks.

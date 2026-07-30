@@ -1,0 +1,149 @@
+---
+title: "Scopes and tenancy"
+sidebarTitle: "Scopes and tenancy"
+description: "Execution Fabric tenancy is designed to mirror the ownership model already"
+---
+
+## Tenant model
+
+Execution Fabric tenancy is designed to mirror the ownership model already
+shipped for custom agents and their billing accounts: every tenant is owned
+by exactly one thing — a single user (**personal**) or a single
+**organization** — never both, and never neither.
+
+> **Status:** personal/organization ownership for custom agents —
+> **Available today.** The generalized `platform_tenants` table and
+> tenant-scoped `platform_api_keys` — **Developer preview.**
+
+- **Today**, this owner-XOR pattern is enforced at the database level for
+  `agent_billing_accounts` — `constraint agent_billing_accounts_owner_xor
+  check (num_nonnulls(user_id, organization_id) = 1)`
+  (`supabase/migrations/20260722130500_custom_agents_automations.sql`) — and
+  at the application level for custom agents themselves, which are always
+  either `personal` (owned by one authenticated user) or `organization`
+  (owned by one organization). The server derives that domain from the
+  authenticated actor and the stored agent row; request bodies never
+  establish it (`docs/custom-agents.md`, "Ownership and authorization").
+- **In developer preview**, the fabric generalizes this into a new
+  `platform_tenants` table, explicitly designed to mirror
+  `agent_billing_accounts`'s owner-XOR pattern (design spec §3.2).
+  `platform_api_keys` belong to a tenant, not directly to a user or an
+  organization.
+
+Org-level billing is part of the same build. `subscriptions` is a
+`user_id`-keyed table today, so an organization tenant is currently funded
+by one member's personal plan. Promoting the organization itself to a
+first-class billing subject is in scope for the same program (design spec
+§3.2, §4 workstream S1) — until it lands, org tenants remain dependent on a
+funding member.
+
+## Principal kinds
+
+Every authenticated request resolves to exactly one of three principal
+kinds, through one server-side principal resolver with identical downstream
+authority derivation — fail-closed and server-derived, regardless of which
+credential presented it (design spec §3.2):
+
+| Principal | Who uses it | Tenant it resolves to |
+|---|---|---|
+| Supabase JWT | Expo app, web, desktop/Control | The signed-in user, or an organization the user is a verified member of |
+| `aura_agent_*` API key | External callers of one custom-agent deployment | That deployment's owning agent (personal or organization) |
+| `praxa_sk_` API key (preview) | External callers of the Execution Fabric | The tenant the key was issued under |
+
+A run needs exactly one accountable origin regardless of which principal
+started it. The durable task engine enforces this structurally: `task_runs`
+is gaining a `CHECK` constraint requiring exactly one of `source_message_id`
+(a chat message) or an API-key principal — never both, never neither — so an
+API-key-originated run is traceable the same way a chat-originated one is
+(design spec §3.1, developer preview).
+
+## What a scope constrains
+
+A `praxa_sk_` key's scopes are a constrained view of the same policy engine
+that governs every execution path on the platform, not a separate
+permission system (design spec §3.3). Three axes:
+
+| Axis | What it limits | Source |
+|---|---|---|
+| Endpoints | Which `/v1/*` routes/actions the key may call — e.g. `execute`, `runs:read`, `runs:cancel`, `usage:read`, `webhooks:write` | Key CRUD console (§3.2) |
+| Tools | Which tool capabilities an execution the key starts is allowed to reach — a tool allowlist | Policy engine (§3.3) |
+| Spend | Budget caps and risk ceiling for runs the key starts, plus the key's own rate-limit tier | Policy engine (§3.3); key rate-limit tier (§3.2); see `rate-limits.md` |
+
+The design spec describes the external `policy` request parameter on
+`/v1/execute` as exactly this constrained view: "risk ceiling, budget caps,
+model-lane pin, tool allowlist, approval mode." A caller can request
+*tighter* limits than their key's ceiling for a single call — never looser
+ones than the key was issued with.
+
+## Origin allowlists (website embed channel)
+
+Available today, and paired with `aura_agent_*` as a companion scoping
+mechanism: a custom agent published to the website-embed channel is bound to
+an exact, normalized HTTP(S) origin allowlist — up to 20 origins, no
+wildcards (`normalizeAllowedEmbedOrigins()`,
+`src/lib/custom-agents/embed-token.server.ts`). Origin is checked twice: once
+when the browser exchanges the deployment's public credential for a
+short-lived visitor token, and again on every run
+(`embedOriginAllowed()`; `docs/custom-agents.md`, "Runtime channels"). A
+request from an origin outside the allowlist is refused the same way a bad
+credential is — the server does not disclose which check failed.
+
+## Server-derived authority
+
+The fabric's client boundary follows the same rule already adopted for the
+platform gateway underneath it
+(`docs/decisions/2026-07-24-ai-platform-extraction.md`, "Client boundary"):
+**a client may request capabilities, but cannot grant itself identity,
+tenant membership, tools, billing tier, memory consent, or approval.**
+Concretely:
+
+- Identity comes from the credential — JWT claims, or the tenant a key
+  resolves to — never from a request body field. The v1 chat request schema
+  deliberately has no `userId` field (`packages/ai-platform/src/index.ts`).
+- `organizationId` is a *requested* resource; the server still has to
+  authorize it against real membership before honoring it.
+- A key's scopes, tools, and spend ceilings are set when the key is issued,
+  by whoever administers the tenant — not by the caller at request time. A
+  request can ask for less than its key grants; it can never get more.
+- Idempotency keys are scoped to principal, tenant, API version, and a
+  normalized digest of the request, so a replay attempt under a different
+  identity is a digest mismatch, not a valid replay (same ADR, "Protocol
+  decisions").
+
+This is the same posture already governing custom agents in production:
+request bodies never establish tenant authority; the server derives
+`personal`/`organization` scope from the authenticated actor and the stored
+row (`docs/custom-agents.md`).
+
+## Multi-tenant isolation
+
+**Shipped today**, for custom agents: personal agents never fall back to
+organization resources, and organization agents never fall back to a
+member's personal memory, profile, connectors, direct messages, or another
+organization's data (`docs/custom-agents.md`, "Ownership and
+authorization"). Conversation and tenant authority for the chat runtime are
+derived server-side and fail closed (verified in
+`src/lib/chat/chat-turn-authority.server.ts`, cited in the platform
+extraction ADR's verified-facts table).
+
+**Still a gate, not yet audited**, for the fabric specifically: per-tenant
+isolation across memory/Vectorize namespaces, Durable Object naming, and RLS
+is explicit GA-hardening scope — workstream F7, phase P3 — which ships
+*after* the tenant/key model, not alongside it (design spec §4). Treat
+multi-tenant isolation guarantees for `praxa_sk_` traffic as unverified
+until that audit lands and is recorded here.
+
+Two isolation promises that are part of the design now, ahead of that audit:
+
+- **Learning is tenant-scoped by default.** Cross-tenant signal is metadata
+  only — task-class → model/tool success priors, latency/cost distributions
+  — never content, memory, or raw context (design spec §3.5).
+- **BYO provider credentials never leave the runtime boundary**, and a
+  BYO-funded tenant's routing is constrained to the lanes that tenant
+  funded — a BYO tenant never silently borrows another tenant's provider
+  spend (design spec §3.4).
+
+## See also
+
+- `api-keys.md` — key formats, lifecycle, storage.
+- `rate-limits.md` — per-key throttling, 429/503 handling, retry guidance.

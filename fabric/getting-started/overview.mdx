@@ -1,0 +1,40 @@
+---
+title: "Praxa Execution Fabric: Overview"
+sidebarTitle: "Praxa Execution Fabric"
+description: "The Praxa Execution Fabric is an API for delegated work. You send a task, Praxa routes it across models, tools, agents, and memory under a policy you set, ri"
+---
+
+> **Status:** Developer preview — the Fabric v1 API described here is contract-stable but not yet serving traffic. Contact us to join the first partner cohort.
+
+The Praxa Execution Fabric is an API for delegated work. You send a task, Praxa routes it across models, tools, agents, and memory under a policy you set, risky steps pause for approval, and every run finishes with a receipt that proves what happened.
+
+## What it is
+
+You submit a task. Praxa picks the models and tools to use, runs them under the policy you configured, and pauses before any step your policy marks as risky. A human approver, or another approver you designate, reviews the exact action and approves or denies it. The run finishes with an outcome and a receipt: what ran, which policy version applied, who approved what, and whether the result met the acceptance criteria you set. Every run is billed against a reservation, so cost is bounded up front and settled afterward.
+
+Model routing, picking the best model for a given step, is part of this, but it is not the point. Any provider can route a request to a cheaper or faster model. What Praxa adds is accountability: a neutral routing layer across vendors, plus a record of what was decided, who approved it, and what actually happened. Stripe routes payments. Praxa routes delegated work, and can prove what it did.
+
+## Who it's for
+
+**Agent builders.** If you already publish agents on Praxa's custom-agent platform, you hold an `aura_agent_*` key today and call your agent through the live custom-agent API. That surface is real and working now; see Track 1 in the [Quickstart](/fabric/getting-started/quickstart). The fabric is the next step for this audience: instead of calling one fixed agent, you submit any task and let Praxa route it under your policy.
+
+**Coding-tool developers.** Praxa Control, the desktop app that runs Codex and Claude Code sessions, already talks to Praxa's first-party versioned gateway. The fabric adds cloud execution lanes for research, browsing, media, connectors, and long-running tasks. A local coding session can call out to those lanes while your local model runs and your provider credentials stay on your machine.
+
+**Teams.** The same fabric backs organization-level workflows: role-based access, an evidence ledger, and policy packs your organization controls. It runs on the same runs-and-receipts substrate as the other two audiences, so a task started from a coding session and a task started from an internal workflow tool produce the same kind of receipt.
+
+## The five parts
+
+**One door.** A single endpoint, `POST /v1/execute`, admits any task: a quick synchronous turn or a long-running job. You do not pick a different API for different kinds of work.
+
+**Dispatcher.** Praxa routes the task across models and tools: choosing providers, retrying, and failing over, so you do not have to manage that yourself.
+
+**Permission system.** Before any risky step runs, a policy engine decides whether it proceeds automatically or waits for approval. Approvals are bound to the exact action, so a different action cannot be approved by mistake in its place.
+
+**Meter.** Every model call and tool use is measured and billed against a reservation, whether you are spending Praxa's provider credits or your own API keys.
+
+**Logbook.** Every run leaves a receipt: what ran, which policy version applied, who approved what, and how it was checked against your acceptance criteria.
+
+## Where to go next
+
+- [Concepts](/fabric/getting-started/concepts): the vocabulary behind runs, events, approvals, policies, receipts, tenants, keys, and billing.
+- [Quickstart](/fabric/getting-started/quickstart): call a published agent today, or preview your first `execute()` run.

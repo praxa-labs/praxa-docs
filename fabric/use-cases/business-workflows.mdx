@@ -1,0 +1,86 @@
+---
+title: "Business workflows: approval-gated ops, with receipts"
+sidebarTitle: "Business workflows"
+description: "For finance and ops workflows inside your organization — the same fabric, applied to recurring internal work instead of a customer-facing agent."
+---
+
+For finance and ops workflows inside your organization — the same fabric, applied to recurring internal work instead of a customer-facing agent.
+
+> **Status: Developer preview.** Everything below uses the execute API (`/v1/execute` and related `/v1/*` endpoints), developer preview: the wire contracts are stable and published, but no public endpoint serves them yet. Field names follow the design spec (§3.1); nested shapes it doesn't spell out are shown as reasonable illustrations, not a frozen contract. See [`api/execute.md`](/fabric/api/execute) for exactly what's confirmed today.
+
+A lot of internal ops work is a person following the same checklist on a schedule: check something, draft something, maybe send something. It's exactly the shape the fabric is built for — except nobody wants a recurring job quietly sending things, or quietly running up a bill. Two examples below: one where every risky step is approved, one where nothing is risky but spend still needs a ceiling.
+
+## Finance: an invoice-aging watcher
+
+**The problem.** Accounts receivable checks which invoices have gone overdue and nudges customers — 7 days, 30 days, 60 days, each nudge a little firmer than the last. By hand it's tedious and reminders slip. Nobody on finance wants an agent emailing customers unsupervised, and at month-end close, the controller needs to be able to point to proof of what went out and why.
+
+**What you build.** A daily job — your own scheduler, or anything you already run cron on — that calls the fabric once a day. (If this is your only use of the fabric, check whether today's custom-agent automations already cover it: they support native daily/weekly triggers, a built-in daily credit ceiling, and the same connector-approval gate, without you running your own scheduler — see `docs/custom-agents.md`'s automations section. The example below is for when the workflow needs more than one bound agent, or you want approvals and receipts to land in your own systems instead of Praxa's dashboard.)
+
+**The calls.**
+
+```http
+POST /v1/execute
+Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
+Idempotency-Key: invoice-watch-2026-07-30
+
+{
+  "task": "Find invoices overdue by 7, 30, or 60+ days and draft an escalating reminder for each. Do not send anything without approval.",
+  "context": { "asOf": "2026-07-30" },
+  "tools": { "allow": ["ar_lookup", "draft_email", "send_email"] },
+  "policy": {
+    "approvalMode": "human_approval",
+    "budgetCap": { "currency": "USD", "amount": 5 }
+  },
+  "delivery": { "mode": "task" }
+}
+```
+
+The call returns a run id immediately (`{ "run_id": "run_01j9invagng2026073000001" }`). This is the same gate walked through in full in [`agent-builders.md`](/fabric/use-cases/agent-builders) and in [the approvals reference](/fabric/api/approvals): every reminder that's ready to send parks as `approval.required`, carrying the exact recipient, subject, and body plus an `action_digest`. Nothing sends until someone posts that exact digest back:
+
+```http
+POST /v1/runs/run_01j9invagng2026073000001/approve
+Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
+Content-Type: application/json
+
+{ "action_digest": "adg_01j9invagng48213day7000001", "decision": "approved" }
+```
+
+**What the user experiences.** Each morning, AR has a queue of drafted reminders — one per overdue invoice, escalation tone already matched to how overdue it is. They approve the ones that look right. A reminder that shouldn't go out gets denied, not edited — there's no partial edit-and-approve. If the draft was wrong, the next day's run drafts again against whatever's changed.
+
+**What the receipt shows.** The run's event history is designed to show every invoice it found, every reminder it drafted, and — for each one — whether it was approved, denied, or never reviewed, tied to the exact digest that gated it. That run's spend rolls into the tenant's usage readback (`GET /v1/usage`), so the controller can see the automation's running cost, not just its output. A fuller exportable audit trail — a hash-chained ledger, PDF/SIEM export — is on the roadmap, not shipped; what's confirmed on the wire today is narrower — see [`api/runs.md`](/fabric/api/runs) and [`api/usage.md`](/fabric/api/usage).
+
+## Ops: weekly report compilation with a spend cap
+
+**The problem.** Someone spends an hour every Monday pulling usage, revenue, and support numbers from three places into a one-page update for leadership. None of it is risky — nothing external gets sent, nothing changes — but finance still wants a hard ceiling on what a routine task can spend, so a bad loop can't quietly run up a bill before anyone notices.
+
+**What you build.** The same kind of scheduled caller as the invoice watcher — your scheduler triggers one call a week — this time with a tight budget cap and no approval friction, since nothing here commits external state.
+
+**The calls.**
+
+```http
+POST /v1/execute
+Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
+Idempotency-Key: weekly-report-2026-07-27
+
+{
+  "task": "Compile this week's usage, revenue, and support-ticket metrics into a one-page summary.",
+  "tools": { "allow": ["read_dashboard", "read_ticket_stats", "read_revenue_report"] },
+  "policy": {
+    "approvalMode": "auto",
+    "budgetCap": { "currency": "USD", "amount": 2 }
+  },
+  "delivery": { "mode": "task" }
+}
+```
+
+**What the user experiences.** The summary lands wherever the webhook points — Slack, email, an internal status page, whatever's already in place. Nobody approves anything; nothing here is classified as risky, so there's nothing to approve. If the run is about to exceed its cap, it's designed to stop instead of continuing to spend — the same reserve-and-settle discipline that governs every paid run on the platform, applied here to a $2 ceiling instead of a production budget.
+
+**What the receipt shows.** `GET /v1/runs/:id` is designed to confirm the run finished within its `auto`-tier policy — nothing it did was classified as risky enough to need approval. `GET /v1/usage` shows the week's actual spend against the cap, so "the ops task quietly got expensive" is something you'd see promptly instead of at quarter-end.
+
+## See also
+
+- [`api/approvals.md`](/fabric/api/approvals) — how a run pauses and how you resume it
+- [`api/execute.md`](/fabric/api/execute) — the `policy` parameter and the rest of the `/v1/execute` request
+- [`api/usage.md`](/fabric/api/usage) — the tenant-scoped usage/spend readback, and what's still unconfirmed about its shape
+- [`api/webhooks.md`](/fabric/api/webhooks) — registering the endpoint these examples deliver to
+- [`enterprise/billing-and-plans.md`](/fabric/enterprise/billing-and-plans) — tiers and metering

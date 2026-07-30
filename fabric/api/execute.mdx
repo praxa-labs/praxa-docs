@@ -1,0 +1,255 @@
+---
+title: "Execute"
+sidebarTitle: "Execute"
+description: "durable run engine (HybridTaskWorkflow over taskruns /"
+---
+
+> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+
+
+`POST /v1/execute` admits a task into the Praxa execution fabric — the same
+durable run engine (`HybridTaskWorkflow` over `task_runs` /
+`task_run_events`) that powers Praxa's own product surfaces, opened to an
+**API-key principal** instead of a source chat message.
+
+> **Contract note.** The design spec (§3.1) describes this endpoint's body as
+> `task, context, tools, policy, delivery` plus a `mode` discriminator. The
+> only published wire schema for this surface, `AiPlatformChatRequestV1`
+> (`@nexislabs/ai-platform`), has no `mode`, `task`, `context`, `policy`, or
+> `delivery` keys, and is declared `.strict()` — a request carrying those
+> keys today fails validation against that schema. `tools` and the
+> idempotency key are the only vocabulary confirmed in both sources. This
+> page documents both layers separately and labels which is which.
+
+## Two execution shapes, one contract
+
+| Mode | Behavior |
+|---|---|
+| `"turn"` | Synchronous SSE stream for the lifecycle of one request — this **is** the ai-platform v1 chat protocol, backed by the headless chat seam. The connection stays open until a terminal event. |
+| `"task"` | Durable run. The call returns immediately with a run identifier; progress is delivered via [run events](/fabric/api/events) and/or [webhooks](/fabric/api/webhooks). |
+
+Approval semantics are identical in both modes: the stream/run parks on an
+[`approval.required`](/fabric/api/events#tools-and-approval) event carrying a
+canonical payload and an `action_digest`. The caller renders that payload
+in its own UI and posts the digest back via
+[`POST /v1/runs/:id/approve`](/fabric/api/approvals). See [Approvals](/fabric/api/approvals).
+
+## Endpoint
+
+```
+POST /v1/execute
+```
+
+## Authentication
+
+Bearer API key, prefix `praxa_sk_`. The gateway also accepts Supabase-JWT
+principals for Praxa's own desktop and Expo clients; this reference covers
+the API-key principal used by external integrations.
+
+```
+Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
+```
+
+## Headers
+
+| Header | Required | Description |
+|---|---|---|
+| `Authorization` | Yes | `Bearer <praxa_sk_...>` |
+| `Content-Type` | Yes | `application/json` |
+| `Accept` | Recommended | `text/event-stream` for `mode:"turn"` |
+| `X-AI-Platform-Version` | Recommended | `v1`. Sent by the reference client on every request. |
+| `Idempotency-Key` | Recommended | See [Idempotency](#idempotency). Principal-scoped. |
+
+## Request body — design-spec envelope
+
+Field names and one-line descriptions as given in the design spec §3.1.
+Sub-field shapes are **not published** for `task`, `context`, `policy`, or
+`delivery` as of this corpus snapshot (2026-07-30) — see the contract note
+above.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `mode` | `"turn" \| "task"` | Yes | Execution shape. Named in spec prose; no enum schema has been published. |
+| `task` | object | Yes | The work to execute. Shape not published. For `mode:"turn"` the equivalent payload is `messages`, below. |
+| `context` | object | No | Session/conversation/organization/memory scoping. Shape not published. For `mode:"turn"` the equivalent fields are `sessionId`, `conversationId`, `organizationId`, `memory`, below. |
+| `tools` | object | No | Allow/deny tool filter. Confirmed shape — identical to `tools` on the `mode:"turn"` body below (`allow`, `deny`). |
+| `policy` | object | No | Constrained view of the risk-tier policy engine: risk ceiling, budget caps, model-lane pin, tool allowlist, approval mode (design spec §3.3). Wire field names for these controls are not published. |
+| `delivery` | object | No | Progress-delivery preference (e.g. SSE vs. webhook) for `mode:"task"` runs. Not elaborated beyond the field name; presumably related to [webhook registration](/fabric/api/webhooks). |
+
+`Idempotency-Key` travels as a header, not a body field — see
+[Idempotency](#idempotency).
+
+## Request body — `mode:"turn"` (published contract)
+
+This is the literal `AiPlatformChatRequestV1` zod schema from
+`@nexislabs/ai-platform`. It is `.strict()`: unknown top-level keys are
+rejected.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `apiVersion` | `"v1"` | Yes | Must equal `AI_PLATFORM_API_VERSION`. |
+| `requestId` | Identifier | Yes | Echoed on every SSE event; the reference client rejects a stream whose events don't match it. |
+| `sessionId` | Identifier | No | |
+| `conversationId` | Identifier | No | |
+| `organizationId` | Identifier | No | |
+| `client` | [ClientInfo](#clientinfo) | Yes | |
+| `messages` | [Message](#message)[] (1–512) | Yes | |
+| `modelPreference` | string (1–128) | No | |
+| `tools` | [ToolsFilter](#toolsfilter) | No | |
+| `approvals` | [ApprovalReceipt](#approvalreceipt)[] (≤64) | No — default `[]` | Inline approval receipts. See [Approvals: inline receipts](/fabric/api/approvals#inline-approvals-mode-turn). |
+| `memory` | [MemoryPolicy](#memorypolicy) | No — default `{read:"inherit",write:"inherit"}` | |
+| `output` | [OutputPolicy](#outputpolicy) | No — default `{mode:"text"}` | |
+| `stream` | `true` | No — default `true` | Literal. Cannot currently be set to `false`. |
+| `timeoutMs` | integer (1,000–120,000) | No | Milliseconds. |
+| `idempotencyKey` | Identifier | No | Alternative to the `Idempotency-Key` header — see [Idempotency](#idempotency). |
+| `trace` | [Metadata](#metadata) | No | Opaque trace metadata, ≤32 keys. |
+
+Identifier = string, 1–128 chars, pattern `^[A-Za-z0-9][A-Za-z0-9._:-]*$`.
+
+### ClientInfo
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `kind` | `expo \| web \| nextjs \| macos \| ide \| cli \| backend \| external` | Yes | |
+| `name` | string (1–128) | Yes | |
+| `version` | string (1–64) | Yes | |
+| `capabilities` | string (1–96)[] (≤64) | No — default `[]` | |
+
+### Message
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | Identifier | Yes | |
+| `role` | `user \| assistant` | Yes | |
+| `parts` | [MessagePart](#messagepart)[] (1–64) | Yes | |
+
+### MessagePart
+
+Discriminated union on `type`.
+
+| `type` | Fields | Description |
+|---|---|---|
+| `text` | `text`: string (1–200,000) | Plain text content. |
+| `file_reference` | `fileId`: Identifier, `mediaType`: string (1–128), `name`?: string (1–255) | Reference to a previously uploaded file. |
+
+### ToolsFilter
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `allow` | string (1–128)[] (≤256) | No | Allowlist. Omitted = no allowlist restriction. |
+| `deny` | string (1–128)[] (≤256) | No — default `[]` | Denylist. |
+
+### ApprovalReceipt
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `approvalId` | Identifier | Yes | |
+| `receipt` | string (16–4,096) | Yes | Opaque. Relationship to `action_digest` is unspecified — see [Approvals: inline receipts](/fabric/api/approvals#inline-approvals-mode-turn). |
+
+### MemoryPolicy
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `read` | `inherit \| allow \| deny` | No — default `inherit` | |
+| `write` | `inherit \| allow \| deny` | No — default `inherit` | |
+
+### OutputPolicy
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `mode` | `text \| structured \| ui` | No — default `text` | |
+| `schemaId` | Identifier | No | Expected when `mode:"structured"`; not enforced by the schema itself. |
+
+### Metadata
+
+`Record<string, string \| number \| boolean \| null>`, ≤32 keys, each key
+1–64 chars, each string value ≤512 chars.
+
+## Idempotency
+
+- Supply a key via the `Idempotency-Key` header **or** the body's
+  `idempotencyKey` field. The reference client prefers the header/option
+  value over the body field when both are set.
+- Idempotency keys are **principal-scoped** — two different API-key
+  principals may reuse the same key value without colliding.
+- Replaying the same key with an **identical** request is safe: the run's
+  first event, `request.accepted`, carries `replayed: true`.
+- Replaying the same key with a **different** request body is a conflict:
+  the server rejects it with error code `conflict` (see [Errors](/fabric/api/errors)).
+- A separate code, `idempotency_replay`, also exists in the shared
+  error-code enum. Neither source clarifies how it relates to the
+  `request.accepted.replayed` signal above — flagged as an open question.
+
+## Response
+
+- `mode:"turn"`: `text/event-stream` — a stream of [events](/fabric/api/events).
+- `mode:"task"`: JSON. The design spec confirms only that a run identifier
+  (`run_id`) is returned immediately; the full response schema is not
+  published. Poll or stream progress via [`GET /v1/runs/:id`](/fabric/api/runs) or
+  [`GET /v1/runs/:id/events`](/fabric/api/events).
+
+## Errors
+
+Failures use `application/problem+json` — see [Errors](/fabric/api/errors) for the
+full code reference.
+
+## Example
+
+```bash
+curl https://api.praxa.io/v1/execute \
+  -X POST \
+  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -H "X-AI-Platform-Version: v1" \
+  -H "Idempotency-Key: 2026-07-30-example-001" \
+  -N \
+  -d '{
+    "apiVersion": "v1",
+    "requestId": "req_01j9example000000000000001",
+    "client": { "kind": "external", "name": "acme-integration", "version": "1.0.0" },
+    "messages": [
+      {
+        "id": "msg_001",
+        "role": "user",
+        "parts": [{ "type": "text", "text": "Summarize this quarters open support tickets." }]
+      }
+    ]
+  }'
+```
+
+## TypeScript
+
+```ts
+import { AiPlatformClient } from "@nexislabs/ai-platform";
+
+const client = new AiPlatformClient({
+  baseUrl: "https://api.praxa.io",
+  accessToken: () => process.env.PRAXA_API_KEY ?? null,
+});
+
+for await (const event of client.streamChat({
+  apiVersion: "v1",
+  requestId: crypto.randomUUID(),
+  client: { kind: "backend", name: "acme-integration", version: "1.0.0" },
+  messages: [
+    { id: "msg_001", role: "user", parts: [{ type: "text", text: "Summarize open tickets." }] },
+  ],
+})) {
+  switch (event.type) {
+    case "text.delta":
+      process.stdout.write(event.delta);
+      break;
+    case "approval.required":
+      // Render event.summary verbatim, obtain a decision, then POST it
+      // back via /v1/runs/:id/approve with the matching action_digest.
+      break;
+    case "response.final":
+      console.log(`\n[done: ${event.finishReason}]`);
+      break;
+  }
+}
+```
+
+The reference client's `streamChat` method posts to `/v1/chat`, not
+`/v1/execute` — see the accompanying report for this discrepancy.
