@@ -1,0 +1,124 @@
+---
+title: "Receipts and audit"
+sidebarTitle: "Receipts and audit"
+description: "Scope: what a fabric run receipt contains, why the approval evidence inside"
+---
+
+> **Status:** The public receipt object, the hash-chained evidence ledger,
+> and PDF/SIEM export — **Developer preview** (designed, not built). The
+> underlying approval-evidence property — opaque, server-issued, scoped,
+> expiring, single-use — **Available today**, as how the product's existing
+> fail-closed approval domains already behave; the fabric generalizes this
+> into a public receipt, it does not invent the property.
+
+Scope: what a fabric run receipt contains, why the approval evidence inside
+one is single-use and scoped, and how a receipt gets out of the platform.
+
+Sources: `docs/superpowers/specs/2026-07-30-maas-execution-fabric-design.md`
+(design spec) §§1, 2, 3.1, 3.3, 4 (workstreams S1, S3), 5;
+`docs/decisions/2026-07-24-ai-platform-extraction.md` ("Security decision").
+
+## What a receipt contains
+
+Per the design's core pitch (§1), every run returns a receipt recording:
+
+- **What ran** — the run's execution trace, drawn from the durable
+  `task_runs` / `task_run_events` state machine: leases, attempts, budgets,
+  the `waiting_approval` state, and any digest-bound resume.
+- **Which policy version** — policy packs are versioned, and the version
+  actually applied to that run is recorded on its receipt, so a decision
+  stays replayable and auditable even after the policy pack itself later
+  changes (§3.3).
+- **Who approved what** — each gated action's approval, referenced by its
+  `action_digest` rather than the approval payload being re-embedded inline
+  (§3.1: a paused run's `approval.required` event carries the canonical
+  payload plus the digest; `POST /v1/runs/:id/approve` takes
+  `{ action_digest, decision }` and resumes the run against it).
+- **What it was verified against** — the run's completion check against its
+  stated acceptance criteria, not merely that it finished (§1).
+- **Cost** — billed against a reservation (§1), using the same
+  reserve → settle → reconcile machinery, immutable price versions, and
+  margin-floor pricing that already run the product's existing billing path
+  (§2). Wiring this specific lane — the public API's paid usage — into that
+  machinery with fail-closed metering on the paid lane is named directly in
+  the design's own gap list as not yet done (§2), and is scheduled as
+  workstream S1 (§4).
+
+The ledger a receipt draws from is not entirely hypothetical. The product
+already has an execution ledger wrapping mutating tool calls
+(`wrapToolsWithLedger`) with idempotency tests, running today. The fabric's
+build item is fanning that ledger, plus run receipts, into one hash-chained
+evidence trail (design spec §4, workstream S3) — the ledger primitive
+exists; the hash-chained fan-in and the public receipt shape are what's
+being built.
+
+## Why approval evidence is single-use and scoped
+
+The parent ADR states the property directly: **approval receipts are opaque,
+server-issued, scoped, expiring, single-use evidence.** Each word carries
+weight:
+
+- **Opaque** — a client can present a receipt it was given. It cannot
+  construct one. Only the server that evaluated the policy can mint valid
+  evidence.
+- **Server-issued** — evidence of approval comes from the same authority
+  that decided the action needed approval, not from a caller's own assertion
+  that something was approved.
+- **Scoped** — a receipt proves approval for the exact action it names (its
+  `action_digest`) and nothing beyond it. It cannot be repurposed to wave
+  through a different action, even a similar-looking one.
+- **Expiring** — a receipt has a bounded lifetime. An intercepted or delayed
+  receipt stops being usable once its window closes.
+- **Single-use** — once consumed to resume a run
+  (`resume_task_after_approval`), that same receipt cannot resume anything
+  again. This is what makes replaying a captured digest harmless: reusing it
+  does nothing.
+
+Together, these properties bound the worst case for a leaked approval
+receipt: it authorizes exactly one already-specific action, once, inside a
+limited window — never standing authority over a tenant, a run, or any other
+action.
+
+**A limitation the ADR names outright, not one this document is smoothing
+over:** "the current model-set approval ceiling is not represented as a
+completed platform property." Read plainly, the receipt-evidence properties
+above describe what a receipt guarantees once one is issued — they are not a
+claim that every approval surface today has an independently verified
+human-confirmation cross-check wired in for how that receipt gets minted in
+the first place. That is an open item, and this document is not the place
+that closes it.
+
+## Export paths
+
+Evidence export is a named Business/Enterprise-tier capability on the
+design's pricing ladder (§5: "policy packs, Evidence export, SSO on
+Business/Enterprise"). Two concrete formats are named:
+
+- **PDF** — a human-readable export of the evidence ledger, sized for the
+  kind of audit packet a customer's own compliance reviewer would ask for.
+  Developer preview, not yet shipped. The design does not claim any
+  compliance certification for the platform itself, and this document makes
+  none either — the honest framing is that receipts and their export are
+  designed to support customer audits, not that Praxa holds a certification
+  on their behalf.
+- **SIEM** — a machine-consumable export for a customer's own security
+  tooling. Same status: named in the design, not yet shipped.
+
+The design also names a queryable audit API alongside these two export
+formats (design spec §4, workstream S3). The pricing ladder ties "Evidence
+export" specifically to the Business/Enterprise tier (§5); it does not state
+a tier for the audit API separately, and this document does not assume
+they're identical.
+
+Both export formats, and the audit API, read from the same hash-chained
+evidence ledger described in "What a receipt contains" above — an export
+reflects the same immutable record a receipt is drawn from, not a separate,
+divergent copy.
+
+## See also
+
+- `security-model.md` — trust boundaries, fail-closed enforcement, credential
+  handling.
+- `data-handling.md` — what is stored, PII pseudonymization, learning-data
+  policy.
+- `enterprise/billing-and-plans.md` — tiers, metering, and the plan ladder.

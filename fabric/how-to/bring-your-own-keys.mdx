@@ -1,0 +1,118 @@
+---
+title: "Bring your own provider keys"
+sidebarTitle: "Bring your own provider keys"
+description: "Every run needs an inference lane funded somehow. By default, Praxa funds it"
+---
+
+> **Status:** Developer preview.
+
+Every run needs an inference lane funded somehow. By default, Praxa funds it
+for you — **bundled** — and meters it against your credits. You can instead
+fund a lane with your own provider credentials — **BYO** — and pay a fee on
+what you route through it instead of a token margin. This guide covers when
+to choose BYO, how the credentials are protected, what it costs, and how
+routing behaves once you're on it.
+
+## 1. Decide whether BYO is the right call
+
+Stay bundled if you want the simplest path: one invoice, no credential of
+your own to protect, and every lane Praxa funds available without
+provisioning anything. Switch to BYO when at least one of these is true:
+
+- **You already have a committed-spend or enterprise agreement** directly
+  with a model provider (OpenAI, Anthropic, or others) and want inference
+  billed against that relationship instead of paying a margin on top of it.
+- **Compliance or procurement requires your own contractual relationship**
+  with the model vendor — the credential, and the data-handling terms that
+  come with it, need to be yours, not Praxa's.
+- **You need a specific provider account** you already trust for other
+  reasons — regional availability, an existing DPA, a fine-tuned deployment
+  only reachable under your own account.
+
+Funding mode is a tenant-level setting, not something baked into your task
+or tool code — the same `task`/`tools`/`policy` shape you send to
+`/v1/execute` works either way. Only which lane pays for the model call
+changes.
+
+## 2. What BYO actually means
+
+- You supply per-tenant provider credentials (for example, your own OpenAI
+  or Anthropic API key), scoped to your tenant only — never shared across
+  other Praxa customers.
+- You're charged a platform fee on **routed spend** instead of a token
+  margin. Calls made on a BYO lane don't burn Praxa credits.
+- Routing telemetry — what worked, what was slow, what failed — is priced
+  and collected identically to bundled, so the fabric's routing quality
+  doesn't depend on which funding mode you're on.
+
+## 3. How your keys are stored and protected
+
+- **Encrypted at rest, at the application layer**, before anything touches
+  the database — the same pattern Praxa already uses to store connected
+  OAuth account tokens.
+- **Never returned by any API response, and never logged.** Once submitted,
+  the plaintext value doesn't come back to you — not even to yourself. If
+  you need to confirm which key is active, you'll see metadata (provider,
+  date added, last used), never the secret.
+- **Never leaves the runtime boundary.** The credential is decrypted only
+  inside the execution runtime, at the moment a call on your funded lane is
+  made — no intermediate service, log line, or API response ever sees the
+  plaintext.
+- Treat it like any other production secret on your side too: scope the
+  underlying provider key to the narrowest permission and spend cap your
+  provider allows, and rotate it the way you'd rotate any credential —
+  supply the new one, confirm it's live, then revoke the old one both in
+  Praxa and at the provider.
+
+## 4. Fee model: BYO vs. bundled
+
+| | Bundled (default) | BYO |
+|---|---|---|
+| Who pays the provider | Praxa | You, directly |
+| What you're charged | Credits, priced at a fixed margin + payment fee per price version | A platform fee on routed spend (target 5–10%) plus a per-run fabric fee — no token margin |
+| Where the bill lands | One Praxa invoice / credit balance | Your provider's bill, plus Praxa's fee separately |
+| Reservation model | A credit hold, released or settled per run | The same run-level accounting, priced against spend instead of a token table |
+
+## 5. Add a BYO credential
+
+1. Open your tenant's developer console — the same surface you already use
+   to manage your `praxa_sk_...` API keys.
+2. Choose the provider and paste in your key. It's write-only from this
+   point forward: the console confirms it was added, not what it is.
+3. Confirm the lane is funded — the console shows which providers and
+   models are now reachable under your tenant.
+4. Keep calling `/v1/execute` exactly as before. Nothing about `task`,
+   `tools`, or `policy` changes — only which credential pays for the model
+   call.
+5. To rotate, add the replacement credential and confirm it's active before
+   revoking the old one — don't revoke first and create a funding gap
+   mid-run.
+
+## 6. How routing constrains to funded lanes
+
+- The routing layer normally has a failover ladder across many models and
+  providers, so a run keeps moving if one lane degrades.
+- Under BYO, that ladder is constrained to the lanes **you've funded**.
+  Praxa will not silently fail a call over to a provider you haven't given
+  it a credential for.
+- Practical effect: if you've only added an OpenAI key, a run's routing
+  stays within OpenAI's models — it will not reach for Anthropic or anyone
+  else on your behalf, even as a fallback. Fund every provider you want in
+  the failover path, or accept a narrower ladder.
+- If your only funded lane is unavailable — rate-limited, an outage, a
+  revoked or invalid key — and there's no other funded lane to fail over
+  to, the run fails closed rather than silently spending against a lane you
+  didn't authorize. Check `/v1/usage` and the run's own events to see what
+  happened.
+- `modelPreference` and the `policy` parameter's model-lane pin still
+  express intent the same way as on bundled — they just resolve only
+  against the set of lanes you've funded.
+
+## What doesn't change
+
+Task submission, tool execution, approvals, receipts, and webhooks are
+identical either way. BYO only changes who funds the inference call, not
+the execution or governance model around it — see
+[build-an-approval-ui.md](/fabric/how-to/build-an-approval-ui) and
+[receive-webhooks.md](/fabric/how-to/receive-webhooks), both of which work the same
+regardless of funding mode.

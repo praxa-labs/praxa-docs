@@ -1,0 +1,144 @@
+---
+title: "Rate limits"
+sidebarTitle: "Rate limits"
+description: "Each praxask key carries its own rate-limit tier, tracked alongside its"
+---
+
+## Per-key tiers (developer preview)
+
+Each `praxa_sk_` key carries its own rate-limit tier, tracked alongside its
+scopes, expiry, and last-used timestamp (design spec §3.2). The build
+workstream for this is explicit about the mechanism: "per-key rate limits
+(new `AGENT_API_RL`-style policies keyed by key id, fail-closed)" (design
+spec §4, workstream F2) — the same Cloudflare Workers Rate Limiting binding
+mechanism already used across the platform, but keyed by key id instead of
+user id, and fail-closed by construction rather than inheriting the app's
+fail-open default.
+
+> **Status:** per-key rate-limit tiers — **Developer preview.** No
+> `AGENT_API_RL`-style binding is declared anywhere yet; the name is the
+> design spec's own illustrative naming, not a committed API surface. The
+> fail-closed pattern it will extend is **available today** — see below.
+
+## Today's fail-closed public-surface pattern
+
+Praxa runs two different rate-limit postures side by side, and the
+distinction matters for anyone building against the API:
+
+| | Fail-open (default, in-app) | Fail-closed (public/external surfaces) |
+|---|---|---|
+| Helper | `checkRateLimit()` (`src/lib/quota/rate-limit.server.ts`) | `checkPublicAgentRateLimit()` / `checkPublicAgentDeploymentBurstLimit()` (`src/lib/custom-agents/public-abuse.server.ts`) |
+| On a missing/erroring binding | **Allows** the request — a limiter outage never blocks a signed-in user | **Denies** the request (`503`) — an outage never becomes an open door on public traffic |
+| Used for | Per-user chat turns, tool budgets, social writes | Custom-agent embed sessions, and any External-API-key-authenticated run traffic |
+| Keyed by | `user_id` | A SHA-256 hash of Cloudflare's trusted `cf-connecting-ip` header plus a server-selected scope string — never a request-supplied identifier |
+
+Any traffic authenticated by an API key — `aura_agent_*` today, `praxa_sk_`
+in preview — sits on the **fail-closed** side. That's the posture per-key
+tiers extend, not the general per-user one.
+
+Both postures are documented in one registry, `RATE_LIMIT_POLICIES`
+(`src/lib/quota/rate-limit-policy.ts`), specifically so a limiter can't ship
+fail-open by omission — that already happened once in production (a route
+referenced an undeclared binding and ran unlimited until a later pass
+declared it), and the registry's own test now asserts every policy against
+the live Wrangler config.
+
+A binding name alone doesn't tell you the fail posture — it's a property of
+*which helper calls it*, not the binding itself. `CHAT_RL`, for example,
+backs the ordinary fail-open per-user chat-turn check
+(`checkRateLimit("CHAT_RL", userId)`) *and* is reused as the underlying
+counter for the fail-closed, IP-keyed public-embed-session check
+(`checkPublicAgentRateLimit`, which wraps it in a fail-closed helper that
+denies on a missing or erroring binding). Read the call site, not just the
+binding name, when you need to know what happens on a limiter outage.
+
+Representative limits shipped today (Cloudflare Workers `ratelimits`,
+`simple: { limit, period }`):
+
+| Binding | Limit | Fail mode | Scope | Guards |
+|---|---|---|---|---|
+| `CUSTOM_AGENT_EMBED_RL` | 120 / 60s | Closed | `deployment_id` | Public website-embed burst, shared across every visitor to one deployment |
+| `CHAT_RL` | 30 / 60s | Open (also reused fail-closed via `checkPublicAgentRateLimit`) | `user_id` / IP hash | Chat turns; public agent-run traffic |
+| `PUBLISH_RL` | 5 / 60s | Open | `user_id` | Agent create/update mutations (`src/app/api/custom-agents+api.ts`) |
+| `BRIDGE_OUTBOUND_RL` / `BRIDGE_INBOUND_RL` | 30 / 60s each | Closed | `bridge_owner` / `flood_source` | Cross-platform bridge egress/ingress |
+
+(Full registry: `src/lib/quota/rate-limit-policy.ts`.)
+
+## 429 and 503 responses
+
+A caller hitting a fail-closed public limit gets one of two responses today,
+distinguished by *why* the request was denied — being over-limit and the
+limiter itself being unavailable are different failures and shouldn't be
+handled identically by a client:
+
+| Status | Meaning | Retry behavior |
+|---|---|---|
+| `429` | Over the limit | Back off, then retry after the window (60s for every limit above) |
+| `503` | Rate-limit protection itself is unavailable | Back off; this is a platform-side signal, not a quota signal |
+
+(`src/lib/custom-agents/run-rate-limit.server.ts`,
+`src/app/api/custom-agent-embed-token+api.ts`.)
+
+These responses carry a plain JSON `{ "error": "..." }` body today and do
+**not** currently set a `Retry-After` header — use the 60-second window
+above as the retry hint until one is added.
+
+The platform does have an established `Retry-After` convention elsewhere,
+and it's the one the Execution Fabric gateway is expected to follow once
+`/v1/*` is live: the existing `/api/v1/*` desktop gateway forwards a numeric
+`Retry-After` header on `429`s (`src/lib/desktop-platform/ai-turn-http.server.ts`),
+and the shared RFC 9457 problem contract both gateways build on has
+first-class fields for exactly this — `code: "rate_limited"`,
+`retryable: boolean`, and an optional `retryAfterMs`
+(`packages/ai-platform/src/index.ts`, `AiPlatformProblemSchema`). Expect
+fabric `429`s to arrive as `application/problem+json` with those fields once
+the gateway is live; this shape is not yet observed in production.
+
+```json
+{
+  "type": "https://api.praxa.io/problems/rate-limited",
+  "title": "Rate limit exceeded",
+  "status": 429,
+  "code": "rate_limited",
+  "retryable": true,
+  "retryAfterMs": 42000,
+  "requestId": "req_01hxyz..."
+}
+```
+
+Illustrative — follows the `AiPlatformProblemSchema` shape used elsewhere in
+the platform contracts package; the exact `type` URL is not yet confirmed.
+
+## Idempotent retry guidance
+
+- **Send an `Idempotency-Key` on every `/v1/execute` call that can have a
+  side effect.** Keys are scoped to the authenticated principal, tenant, API
+  version, and a normalized digest of the request — a retry with the same
+  key and the same request replays the original result; a retry with the
+  same key and a *different* request is a conflict, not a replay
+  (`docs/decisions/2026-07-24-ai-platform-extraction.md`, "Protocol
+  decisions"). A replayed acceptance event carries `replayed: true` so a
+  client can tell the difference (`AiPlatformEventV1Schema`,
+  `request.accepted` event).
+- **Don't build a retry loop around a streaming `POST`.** The client
+  performs no automatic retry of streamed requests by design — retry only by
+  re-sending the identical request with the same idempotency key, after
+  reading back the stable error/reconciliation state (same ADR).
+- **Cancellation is not rollback.** Aborting a stream stops delivery, but a
+  durable action already committed — an approval, a connector write — needs
+  its own status check or reconciliation; it does not silently undo (same
+  ADR).
+- **For `mode:"task"` runs**, prefer `GET /v1/runs/:id` (or resuming
+  `GET /v1/runs/:id/events` from your last `Last-Event-ID`) over blindly
+  re-POSTing to `/v1/execute` after a dropped connection — the run may
+  already be in flight, parked on an approval, or finished (design spec
+  §3.1).
+- **A `429` or `503` is always safe to retry with the same idempotency
+  key** — nothing was accepted yet. A `409` from an idempotency mismatch is
+  not: it means the key was reused for a different request, and retrying
+  won't fix that; issue a new key.
+
+## See also
+
+- `api-keys.md` — key formats, lifecycle, storage.
+- `scopes-and-tenancy.md` — what a key's scope constrains.

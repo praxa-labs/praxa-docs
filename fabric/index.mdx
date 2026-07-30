@@ -1,0 +1,106 @@
+---
+title: "Praxa Execution Fabric"
+sidebarTitle: "Praxa Execution Fabric"
+description: "Stripe routes payments. Praxa routes work — and can prove what it did."
+---
+
+**Stripe routes payments. Praxa routes work — and can prove what it did.**
+
+Praxa Execution Fabric is an API for delegating real work to an AI agent and getting proof of what happened. You submit a task. Praxa routes it across models, tools, and agents under a policy you set. Anything risky (a purchase, a message sent on your behalf, a destructive change) pauses for your approval before it executes. When the run finishes, you get an outcome and a receipt: what ran, which policy version evaluated it, who approved what, and what it was verified against.
+
+It's the same execution runtime that already runs Praxa's own custom agents and its desktop coding tool, opened up as an API you can build on.
+
+Model routing is table stakes now. Every major provider ships a router. What we bill you for is the part that's hard to fake: a policy that actually gates the risky step, and a receipt that proves it did.
+
+## How a task moves through the fabric
+
+```
+POST /v1/execute                submit a task, under a policy
+        |
+        v
+   run starts                   routed across models and tools under that policy
+        |
+        v   (only if the policy calls for it)
+   approval.required             event carries the exact action plus an approval digest
+        |
+        v
+   you decide                   POST /v1/runs/:id/approve  { action_digest, decision }
+        |
+        v
+   run finishes                 outcome + receipt: what ran, which policy, who approved, verified how
+```
+
+That's the whole shape. Request fields, event types, and the error format live in the API reference below.
+
+## Status legend
+
+Every capability in these docs carries one of three labels. They tell you what you can build on now versus what to plan around.
+
+| Status | Meaning |
+|---|---|
+| **Available today** | Shipped and callable now. Build on it in production. |
+| **Developer preview** | The wire contracts are stable and published, but the serving endpoints are still in active build and not yet publicly callable. Interfaces can still change before general availability. |
+| **Planned** | Designed and sequenced, not yet built. See [`status-and-roadmap.md`](/fabric/status-and-roadmap) for what has to happen first: timing is phase-gated, not date-committed. |
+
+## Documentation
+
+### Getting started
+- [`getting-started/overview.md`](/fabric/getting-started/overview) — what the fabric is and how a request flows end to end
+- [`getting-started/concepts.md`](/fabric/getting-started/concepts) — runs, events, receipts, policy, and tenancy in one page
+- [`getting-started/quickstart.md`](/fabric/getting-started/quickstart) — make your first authenticated call
+
+### API reference
+- [`api/execute.md`](/fabric/api/execute) — `POST /v1/execute`: submit a task, choose turn or task mode
+- [`api/runs.md`](/fabric/api/runs) — `GET /v1/runs/:id`: read a run's current state
+- [`api/events.md`](/fabric/api/events) — `GET /v1/runs/:id/events`: stream a run's events, resume with `Last-Event-ID`
+- [`api/approvals.md`](/fabric/api/approvals) — `POST /v1/runs/:id/approve`: resume a paused run
+- [`api/usage.md`](/fabric/api/usage) — `GET /v1/usage`: tenant-scoped usage and spend readback
+- [`api/webhooks.md`](/fabric/api/webhooks) — `POST /v1/webhooks`: register a delivery endpoint
+- [`api/errors.md`](/fabric/api/errors) — the RFC 9457 error format every endpoint shares
+- [`api/openapi.yaml`](/fabric/api/openapi.yaml) — machine-readable OpenAPI 3.1 specification
+
+### Keys & access
+- [`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys) — creating, scoping, and rotating `praxa_sk_` keys
+- [`keys-and-access/scopes-and-tenancy.md`](/fabric/keys-and-access/scopes-and-tenancy) — tenants, scopes, and the three principal types
+- [`keys-and-access/rate-limits.md`](/fabric/keys-and-access/rate-limits) — per-key limits and response headers
+
+### Approvals & policy
+- [`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals) — how a run pauses and how you resume it
+- [`approvals-and-policy/policy-engine.md`](/fabric/approvals-and-policy/policy-engine) — the `policy` parameter and how risk tiers get decided
+- [`approvals-and-policy/budgets-and-limits.md`](/fabric/approvals-and-policy/budgets-and-limits) — budget ceilings and what happens when a run hits one
+
+### Security
+- [`security/security-model.md`](/fabric/security/security-model) — tenant isolation and credential handling
+- [`security/data-handling.md`](/fabric/security/data-handling) — what's stored, for how long, and whether any of it trains a model
+- [`security/receipts-and-audit.md`](/fabric/security/receipts-and-audit) — receipts and the hash-chained evidence trail behind them
+
+### SDK
+- [`sdk/typescript.md`](/fabric/sdk/typescript) — the TypeScript client
+- [`sdk/streaming.md`](/fabric/sdk/streaming) — consuming a run's event stream in code
+- [`sdk/errors-and-retries.md`](/fabric/sdk/errors-and-retries) — client-side retry and error-handling semantics
+
+### Use cases
+- [`use-cases/overview.md`](/fabric/use-cases/overview) — the three markets the fabric is built for
+- [`use-cases/agent-builders.md`](/fabric/use-cases/agent-builders) — upgrading an existing custom agent onto the fabric
+- [`use-cases/coding-and-desktop.md`](/fabric/use-cases/coding-and-desktop) — cloud execution lanes for desktop coding sessions
+- [`use-cases/business-workflows.md`](/fabric/use-cases/business-workflows) — internal org workflows on the same substrate
+
+### Enterprise
+- [`enterprise/teams-and-organizations.md`](/fabric/enterprise/teams-and-organizations) — org-level tenancy and billing
+- [`enterprise/billing-and-plans.md`](/fabric/enterprise/billing-and-plans) — tiers, metering, and the plan ladder
+- [`enterprise/deployment-and-isolation.md`](/fabric/enterprise/deployment-and-isolation) — dedicated isolation, and why there's no self-hosted option
+
+### How-to guides
+- [`how-to/build-an-approval-ui.md`](/fabric/how-to/build-an-approval-ui) — render an approval payload correctly (render == record == what actually runs)
+- [`how-to/receive-webhooks.md`](/fabric/how-to/receive-webhooks) — verify signatures and handle retries
+- [`how-to/bring-your-own-keys.md`](/fabric/how-to/bring-your-own-keys) — connect your own provider credentials
+- [`how-to/migrate-from-provider-apis.md`](/fabric/how-to/migrate-from-provider-apis) — moving from a direct model API to the fabric
+
+### Reference
+- [`faq.md`](/fabric/faq) — common questions, answered honestly
+- [`status-and-roadmap.md`](/fabric/status-and-roadmap) — what's shipped and what's next, in customer terms
+- [`glossary.md`](/fabric/glossary) — terms used across these docs
+
+## Support
+
+Questions, feedback, or partner-preview access: *(support contact placeholder — add before publish, e.g. a support address or partner-intake form)*.

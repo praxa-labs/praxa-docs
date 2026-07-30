@@ -1,0 +1,128 @@
+---
+title: "Migrate from a direct provider API"
+sidebarTitle: "Migrate from a direct provider API"
+description: "If you're calling the OpenAI or Anthropic SDKs directly today — with your"
+---
+
+> **Status:** Developer preview.
+
+If you're calling the OpenAI or Anthropic SDKs directly today — with your
+own model-switch logic, your own retry ladder, your own ad hoc "pause and
+ask a human" hooks around specific tool calls — this guide maps what you
+have to the Execute API's v1 contract, and is honest about what changes and
+what you give up.
+
+## 1. Map the request
+
+- OpenAI: `openai.chat.completions.create({ model, messages, tools, stream: true })`
+- Anthropic: `anthropic.messages.stream({ model, messages, tools })`
+- Praxa: `POST /v1/execute` with `mode: "turn"`, sending a `task` (plus
+  optional `context`, `tools`, and `policy`) instead of a `model`. Routing
+  picks the model — and can fail over between models — on your behalf; there
+  is no `model` field to get right up front.
+
+## 2. Map the stream
+
+Both direct APIs and Praxa stream over SSE, but the event vocabulary and
+what executes where are different. This table lines up the closest
+equivalents:
+
+| OpenAI chunk | Anthropic SSE event | Praxa v1 event | Notes |
+|---|---|---|---|
+| *(connection opens, first chunk)* | `message_start` | `request.accepted` + `model.started` | Praxa tells you which model was actually picked — you don't choose it upfront. |
+| `choices[].delta.content` | `content_block_delta` (`text_delta`) | `text.delta` | Same idea: incremental output text. |
+| *(no equivalent)* | `content_block_delta` (`thinking_delta`, extended thinking only) | `reasoning.status` | Not a like-for-like swap. Praxa emits a status string (e.g. "researching"), not a token stream of the model's reasoning — don't build a UI that expects token-by-token thinking text. |
+| `choices[].delta.tool_calls[]` | `content_block_start` / `content_block_delta` (`input_json_delta`) on a `tool_use` block | `tool.proposed` → `tool.started` → `tool.completed` / `tool.failed` | The biggest structural change — see §3. |
+| *(you execute the tool yourself; no provider event for this)* | *(same — no provider event)* | `approval.required` | Only fires for actions your policy gates. No provider equivalent at all: this is what you're buying. |
+| `choices[].finish_reason` | `stop_reason` (on `message_delta`) | `response.final.finishReason` | Value mapping below. |
+| `usage` (final chunk) | `usage` (on `message_delta` / `message_stop`) | `usage` event: `inputTokens`, `outputTokens`, `modelCalls`, `toolCalls` | Praxa also counts the internal model/tool calls one "turn" made — a raw provider call never has this, because it never makes more than one. |
+| Stream drops / provider error | Stream error | `request.failed` (RFC 9457 `problem`, machine-readable `code`) | A structured `code` (`provider_failed`, `rate_limited`, …) instead of a string you have to pattern-match. |
+| `data: [DONE]` | Stream just ends | An explicit terminal event: `response.final`, `request.cancelled`, or `request.failed` | You never have to infer "done" from a closed socket — exactly one of these three always arrives. |
+
+### `finish_reason` / `stop_reason` → `finishReason`
+
+| OpenAI `finish_reason` | Anthropic `stop_reason` | Praxa `finishReason` |
+|---|---|---|
+| `stop` | `end_turn` | `stop` |
+| `length` | `max_tokens` | `length` |
+| `tool_calls` | `tool_use` | `tool` |
+| `content_filter` | `refusal` | `content_filter` |
+| `function_call` (deprecated) / n/a | `stop_sequence` / `pause_turn` | `other` |
+
+## 3. `tool_calls` becomes a server-side lifecycle, not a round-trip
+
+Today, you get `tool_calls`, execute them yourself against your own function
+implementations, and send a new request with the results appended to
+`messages`. That loop — and everything you built to make it safe (a
+confirmation prompt before a destructive call, retry-on-429, your own tool
+registry) — is Praxa's job now:
+
+`tool.proposed` (what's about to run, with a rendered summary) → *(if your
+policy gates it)* `approval.required` → `tool.started` → `tool.completed`
+(with the result) or `tool.failed` (a structured `code` and `retryable`
+flag).
+
+You still see every tool call and its result in your event stream, for
+logging or UI — you just don't execute it yourself anymore.
+
+## 4. What you delete
+
+- **Model-switch / failover logic.** Routing and degrade floors live
+  server-side; you send a `task`, not a `model`.
+- **Retry ladders around transient provider failures.** These surface to
+  you as `retry` events (`attempt`, `reason`, `delayMs`) if you want to show
+  progress — not exceptions you catch and re-drive yourself.
+- **Hand-rolled approval plumbing.** Whatever you built to intercept
+  specific tool names or arguments and pause for a human is replaced by the
+  `policy` request field (risk ceiling, budget caps, tool allowlist,
+  approval mode) plus the `approval.required` protocol event. Delete the
+  special-casing; express it as policy instead.
+- **Per-provider billing reconciliation.** One `/v1/usage` readback against
+  your reservation, instead of stitching together separate provider
+  dashboards for whatever you're funding today.
+
+## 5. What changes conceptually
+
+- **Approvals are a first-class protocol event**, not an app-level
+  convention you maintain yourself. Render == record == gate-match: what a
+  person approved is exactly, byte for byte, what runs — see
+  [build-an-approval-ui.md](/fabric/how-to/build-an-approval-ui).
+- **Every run returns a receipt**: what ran, which policy version was
+  applied, who approved what, and what it was verified against — not just a
+  completion you have to take on faith.
+- **You stop being the tool executor.** Your integration surface shrinks to:
+  submit a task, render events, answer approvals, read the receipt.
+
+## 6. What you give up — honestly
+
+- **Provider beta features arrive on a lag.** A new experimental endpoint or
+  provider-exclusive preview has to be integrated and routed by Praxa before
+  it's reachable through the fabric — you're not first in line for it the
+  way a direct SDK integration would be.
+- **You don't pin the exact model or SDK version for a call.** Routing picks
+  for you, constrained by `policy` / `modelPreference` — or, under BYO
+  funding, by which providers you've funded (see
+  [bring-your-own-keys.md](/fabric/how-to/bring-your-own-keys)). If pinning an exact
+  model and version matters more to you than routing, approvals, and
+  receipts, direct integration still has a place.
+- **One more moving part sits between you and the model.** Praxa's
+  routing/policy layer is in the path — that's the point, but it also means
+  a provider-side incident and a Praxa-side incident both need to be ruled
+  out when something looks wrong.
+
+## 7. Migration checklist
+
+1. Replace your model-selection config with a `task` and a `policy` (risk
+   ceiling, budget cap, approval mode) — stop picking a model per call.
+2. Delete your tool-execution loop. Keep your tool *definitions*, register
+   them via `tools`, and update your UI to render `tool.proposed` /
+   `tool.completed` / `tool.failed` instead of calling functions yourself.
+3. Replace any hand-built "pause and ask a human" logic with
+   `approval.required` handling.
+4. Swap your `finish_reason` / `stop_reason` branches for
+   `response.final.finishReason`, using the mapping table in §2.
+5. Point your billing reconciliation at `/v1/usage` and drop the
+   per-provider invoice stitching.
+6. If you have committed spend with a provider you don't want to walk away
+   from, read [bring-your-own-keys.md](/fabric/how-to/bring-your-own-keys) before
+   assuming bundled is your only option.

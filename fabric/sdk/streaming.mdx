@@ -1,0 +1,183 @@
+---
+title: "Streaming events"
+sidebarTitle: "Streaming events"
+description: "Consume the fabric SSE event stream in TypeScript: the full event union, approval parking, and reconnect semantics."
+---
+
+> **Status:** Developer preview — the SDK (`@nexislabs/ai-platform`) is source-available in the Praxa repo and contract-stable; npm publication follows the public API launch and its security review.
+
+`AiPlatformClient.streamChat()` returns `AsyncGenerator<AiPlatformEventV1>`. Every event shares an envelope on top of its own fields:
+
+```typescript
+{
+  apiVersion: "v1";
+  requestId: string;  // matches the request's requestId for the whole stream
+  sequence: number;   // strictly increasing within the stream
+  at: string;          // ISO 8601 datetime, always with an explicit offset
+  type: /* one of the 19 literals below */;
+  // ...fields specific to that type
+}
+```
+
+## The event union
+
+`AiPlatformEventV1` is a Zod discriminated union on `type`. These are the only 19 values that exist in `v1` — an unrecognized `type` fails schema validation rather than passing through as an unknown event (see `typescript.md`):
+
+| `type` | Fields beyond the envelope | Meaning |
+|---|---|---|
+| `request.accepted` | `replayed: boolean` | The run started. `replayed: true` means this is a clean idempotent replay of an already-processed request with the same `Idempotency-Key` and body — see `errors-and-retries.md`. |
+| `model.started` | `model: string` | A model call began. |
+| `text.delta` | `delta: string` (1–64,000 chars) | An assistant text chunk. Concatenate in order. |
+| `reasoning.status` | `status: string` | A bounded status string only — the protocol deliberately never streams private chain-of-thought (enforced structurally: an event carrying an extra field like `chainOfThought` fails `.strict()` validation). |
+| `tool.proposed` | `toolCallId, tool, summary` | The model wants to call a tool. |
+| `approval.required` | `approvalId, toolCallId, summary, expiresAt?` | The run is parked on a human decision — see below. |
+| `tool.started` | `toolCallId, tool` | An admitted tool call began executing. |
+| `tool.completed` | `toolCallId, result: unknown` | A tool call finished. |
+| `tool.failed` | `toolCallId, code: AiPlatformErrorCode, retryable: boolean` | A tool call failed. |
+| `memory.read` | `count: number, scope` | A memory read happened. `scope` is `"user" \| "organization" \| "conversation"`. |
+| `memory.write` | `memoryId, scope` | A memory write happened. |
+| `output.structured` | `schemaId, value: unknown` | Structured output, for requests with `output.mode: "structured"`. |
+| `ui.component` | `component: unknown` | Generative UI payload, for requests with `output.mode: "ui"`. |
+| `usage` | `inputTokens, outputTokens, modelCalls, toolCalls` | Usage accounting. |
+| `warning` | `code, message` | Non-fatal — doesn't end the stream. |
+| `retry` | `attempt: number, reason: string, delayMs: number` | The **server** retried something internally (a provider fallback, for example). Nothing for you to act on, and unrelated to the SDK's own client-side retry policy — see `errors-and-retries.md`. |
+| `response.final` | `finishReason: "stop" \| "length" \| "tool" \| "content_filter" \| "other"` | Terminal: the run finished normally. |
+| `request.cancelled` | `reason?: string` | Terminal: the run was cancelled. |
+| `request.failed` | `problem: AiPlatformProblem` | Terminal: the run ended in an error. This is a normal yielded event, not a thrown exception — see `errors-and-retries.md`. |
+
+`response.final`, `request.cancelled`, and `request.failed` are the only terminal types. `streamChat()` enforces that exactly one of them ends the stream, and that nothing follows it (`typescript.md`).
+
+## Consuming with a switch
+
+```typescript
+import type { AiPlatformEventV1 } from "@nexislabs/ai-platform";
+
+let text = "";
+const toolActivity: string[] = [];
+
+for await (const event of client.streamChat(request, { signal: controller.signal })) {
+  switch (event.type) {
+    case "request.accepted":
+      if (event.replayed) console.info(`replay of ${event.requestId}`);
+      break;
+    case "model.started":
+      console.info(`model: ${event.model}`);
+      break;
+    case "text.delta":
+      text += event.delta;
+      break;
+    case "reasoning.status":
+      console.info(`status: ${event.status}`);
+      break;
+    case "tool.proposed":
+      toolActivity.push(`proposed ${event.tool} (${event.toolCallId})`);
+      break;
+    case "approval.required":
+      await parkForApproval(event); // defined below
+      break;
+    case "tool.started":
+      toolActivity.push(`started ${event.tool}`);
+      break;
+    case "tool.completed":
+      toolActivity.push(`completed ${event.toolCallId}`);
+      break;
+    case "tool.failed":
+      toolActivity.push(`failed ${event.toolCallId}: ${event.code}`);
+      break;
+    case "memory.read":
+    case "memory.write":
+      break; // observability only; nothing to render by default
+    case "output.structured":
+      console.info(`structured output (${event.schemaId})`, event.value);
+      break;
+    case "ui.component":
+      console.info("generative UI payload", event.component);
+      break;
+    case "usage":
+      console.info(
+        `usage: ${event.inputTokens}in/${event.outputTokens}out, ${event.modelCalls} model calls`,
+      );
+      break;
+    case "warning":
+      console.warn(`${event.code}: ${event.message}`);
+      break;
+    case "retry":
+      console.info(`server retry #${event.attempt}: ${event.reason}`);
+      break;
+    case "response.final":
+      console.info(`done: ${event.finishReason}`);
+      break;
+    case "request.cancelled":
+      console.info(`cancelled: ${event.reason ?? "no reason given"}`);
+      break;
+    case "request.failed":
+      console.error(`failed: ${event.problem.code}`, event.problem);
+      break;
+  }
+}
+```
+
+Because `AiPlatformEventV1` is a discriminated union, TypeScript narrows `event` inside each `case` to that variant's exact shape, and the switch is exhaustively checkable: adding `default: { const exhaustive: never = event; throw new Error("unhandled event"); }` will fail to compile if a future SDK version adds a case you haven't handled yet (only after you deliberately upgrade — see the versioning note in `errors-and-retries.md`).
+
+## Handling `approval.required`
+
+```typescript
+import type { AiPlatformEventV1 } from "@nexislabs/ai-platform";
+
+const pendingApprovals = new Map<string, "approved" | "denied">();
+
+async function parkForApproval(
+  event: Extract<AiPlatformEventV1, { type: "approval.required" }>,
+): Promise<void> {
+  // showApprovalCard is your own UI, not part of the SDK. Render event.summary
+  // verbatim — it is the canonical, server-issued payload the person is
+  // approving. Never paraphrase, truncate, or re-derive it for display.
+  const decision = await showApprovalCard({
+    approvalId: event.approvalId,
+    toolCallId: event.toolCallId,
+    summary: event.summary,
+    expiresAt: event.expiresAt,
+  });
+  pendingApprovals.set(event.approvalId, decision);
+}
+```
+
+`approval.required` is **not** a terminal event — nothing in the schema or the client stops more events from following it. What happens to the underlying connection while a person is deciding (held open vs. closed by the server) isn't specified by this package; design for either. If the approval window lapses before a decision is made, the run ends with a `request.failed` event whose `problem.code` is `"approval_timed_out"`.
+
+Resuming is a **new** `streamChat()` call — not a call back into the same generator. Once your application has a decision and a server-issued receipt for it (obtaining that receipt happens outside this package, through whatever endpoint your platform exposes for submitting approval decisions), attach it to a fresh request on the same conversation:
+
+```typescript
+import {
+  AiPlatformChatRequestV1Schema,
+  type AiPlatformChatRequestV1,
+} from "@nexislabs/ai-platform";
+
+function buildApprovalResumeRequest(
+  original: AiPlatformChatRequestV1,
+  approvalId: string,
+  receipt: string,
+): AiPlatformChatRequestV1 {
+  return AiPlatformChatRequestV1Schema.parse({
+    ...original,
+    requestId: crypto.randomUUID(), // a new turn gets a new requestId
+    approvals: [{ approvalId, receipt }],
+  });
+}
+
+const resumed = buildApprovalResumeRequest(request, approvalId, receiptFromYourApprovalEndpoint);
+for await (const next of client.streamChat(resumed)) {
+  // ...
+}
+```
+
+`approvals[].receipt` is an opaque string (16–4096 characters) — treat it as a single-use bearer credential for that one approval decision, not as something you construct or inspect. `conversationId`/`sessionId` carry the thread forward from `original`; `requestId` is per-call and must be fresh.
+
+## Reconnect with Last-Event-ID (task mode)
+
+> **Planned — not implemented in this package version.** The Praxa Execution Fabric design (`docs/superpowers/specs/2026-07-30-maas-execution-fabric-design.md` §3.1) adds a second, durable execution shape — `mode: "task"` — with `GET /v1/runs/:id/events` streaming `task_run_events` and supporting `Last-Event-ID`-based resume after a disconnect, plus `POST /v1/runs/:id/cancel`. The design spec itself lists "external SSE for `task_run_events`" and the public run/event projections as unbuilt gaps, not shipped capability.
+
+`AiPlatformClient` has no `run_id` concept, no `GET /v1/runs/:id/events` method, and no reconnect/resume helper today — it only speaks the synchronous turn-mode `POST /v1/chat` call documented above and in `typescript.md`. The SSE parser in this package (`parseAiPlatformEventStream`) also only reads `data:` lines off the wire; it does not read or emit an `id:` framing line, so there is nothing today that a browser-native `EventSource`'s automatic `Last-Event-ID` reconnection could latch onto even if this client used `EventSource` instead of `fetch` (it doesn't — it reads the response body as a raw `ReadableStream`). `sequence` is presently a payload field you can compare yourself, not a resumable stream cursor.
+
+Once task mode ships, the design doc's shape is: track the highest `sequence` you've successfully processed for a run, and send it back as the `Last-Event-ID` request header when reopening `GET /v1/runs/:id/events` after a disconnect, so the server resumes from `task_run_events.sequence` instead of replaying the whole run. Until then, track `sequence` defensively in turn mode too — it's your signal that events arrived in order and without gaps, per the invariants `typescript.md` documents.
+
+Continue with [`errors-and-retries.md`](/fabric/sdk/errors-and-retries) for how `request.failed`, thrown errors, and cancellation fit together, or back to [`typescript.md`](/fabric/sdk/typescript) for the client and request contract.

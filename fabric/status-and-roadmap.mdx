@@ -1,0 +1,56 @@
+---
+title: "Status and roadmap"
+sidebarTitle: "Status and roadmap"
+description: "This page describes sequencing, not a calendar. Each phase below is gated on the one before it holding up in practice: a specific set of things being provabl"
+---
+
+This page describes sequencing, not a calendar. Each phase below is gated on the one before it holding up in practice: a specific set of things being provably true, not a date on a schedule. Where a phase's capabilities map to the three-tier legend from [`README.md`](/fabric#status-legend), that label is shown; foundation work that isn't itself a callable capability is marked complete instead.
+
+## P0 — Foundation
+
+**Status: complete.** Nothing new to call yet from this phase. It's the ground the rest of the fabric stands on.
+
+- A versioned contract for how tasks, runs, and events are described, shared by every client that will ever speak to the fabric, including the one Praxa's own apps already use.
+- A locked baseline of current behavior, checked continuously, so nothing about how existing agents run can drift while the fabric is built alongside them.
+- An internal-only gateway, not reachable from outside Praxa, proving the request path end to end before anything is exposed publicly.
+
+**Cleared to move on:** the contract holds under real traffic, the behavior baseline stays provably unchanged, and the internal gateway passes its own health and safety checks.
+
+## P1 — Partner preview
+
+**Status: next up.** The P0 foundation is complete; P1 is the build that opens the API to the first partner cohort.
+
+- The gateway opens to a small, invited cohort of partners, not a public signup yet.
+- Tenants and API keys (`praxa_sk_`) exist as a real, manageable thing, not a placeholder.
+- `/v1/execute` and the run, event, and approval endpoints work end to end, including approvals that genuinely pause a run and resume it only on a matching decision.
+- Usage is metered and billing is enforced on every call through this lane: not logged for later, enforced at the time.
+
+**Cleared to move on:** metering and billing enforcement hold up under real partner usage, not just test traffic, and a rollback path has been proven, not just documented.
+
+## P2 — General availability
+
+**Status: planned.** This is the phase most people reading these docs are waiting for.
+
+- The SDK and this documentation site come out of preview and open to everyone.
+- The policy engine becomes something you configure, not just fixed platform defaults.
+- Webhooks: register an endpoint and get delivery, instead of only polling or holding a stream open.
+- Desktop lanes: Praxa Control calls the fabric for cloud work directly from local coding sessions.
+- Bring-your-own provider keys becomes available alongside bundled inference, priced and routed on equal footing.
+
+**Cleared to move on:** real external clients, not only Praxa's own surfaces, are running production traffic on the fabric, and the routing-quality feedback loop is live and evaluated on a schedule, not tuned by hand.
+
+## P3 — Enterprise governance
+
+**Status: planned.** The governance layer for organizations that need to prove control over what their agents did, not just get the work done.
+
+- Dedicated isolation for enterprise tenants: their own account and region, not shared infrastructure.
+- Full evidence export, so an organization's own audit and compliance tooling doesn't have to trust Praxa's dashboard.
+- Org-wide policy packs, single sign-on, and the access controls that come with operating at that scale.
+
+No phase adds a self-hosted deployment option. See the FAQ entry "Can I self-host Praxa?" and [`enterprise/deployment-and-isolation.md`](/fabric/enterprise/deployment-and-isolation) for why, and what dedicated isolation gives you instead.
+
+## What stays true across every phase
+
+- A receipt is never optional. Every run that executes anything produces one, from P1 onward.
+- Approvals fail closed at every phase. A slow or broken approval integration on your side blocks execution; it never becomes an accidental approval.
+- Existing `aura_agent_*` custom-agent keys and integrations keep working through every phase of this rollout. Nothing here deprecates them out from under you.

@@ -1,0 +1,127 @@
+---
+title: "Errors"
+sidebarTitle: "Errors"
+description: "HTTP-level failures use RFC 9457 application/problem+json"
+---
+
+> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+
+
+HTTP-level failures use RFC 9457 `application/problem+json`
+(`AI_PLATFORM_ERROR_MEDIA_TYPE`). A failure surfaced mid-stream instead
+arrives as a terminal [`request.failed`](/fabric/api/events#lifecycle) event whose
+`problem` field is the same object.
+
+The reference client (`AiPlatformClient`) treats the problem body as
+best-effort: on a non-2xx response it tries to parse and validate a
+`application/problem+json` body; if that fails or is absent, it falls back
+to an error with message `AI platform request failed (<status>)` and a
+`null` problem. Do not assume every non-2xx response carries a valid
+problem body.
+
+## The `Problem` object
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | string (URL) | Yes | A URI identifying the problem type. |
+| `title` | string (1–256) | Yes | Short, human-readable summary. |
+| `status` | integer (400–599) | Yes | HTTP status code, repeated in the body. |
+| `detail` | string (≤2,048) | No | Human-readable explanation specific to this occurrence. |
+| `instance` | string | No | Free-form string. Not required to be a URI, unlike `type`. |
+| `code` | [ErrorCode](#error-codes) | Yes | Machine-readable code — see below. |
+| `requestId` | Identifier | No | Correlates the failure to a request/event stream. |
+| `retryable` | boolean | Yes | Authoritative retry signal for this specific response — see the guidance column below for what it usually reflects, but `retryable` on the actual response always wins. |
+| `retryAfterMs` | integer ≥ 0 | No | Present alongside `retryable:true` when the server has a specific backoff in mind. |
+| `fieldErrors` | [FieldError](#fielderror)[] (≤64) | No | Present on validation failures. |
+
+### FieldError
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `path` | string (1–256) | Yes | Location of the offending field in the request. |
+| `code` | string (1–96) | Yes | Machine-readable sub-code. |
+| `message` | string (1–512) | Yes | Human-readable explanation. |
+
+## Error codes
+
+`retryable` on each response is authoritative. The guidance column reflects
+what the code's name and the surrounding architecture imply about its
+*typical* cause — it is not a fixed status/retryability table encoded in
+the schema itself.
+
+| `code` | Typical cause | Retry guidance |
+|---|---|---|
+| `authentication_failed` | Missing, malformed, or invalid `Authorization` bearer key. | Not retryable without fixing credentials. |
+| `authorization_failed` | The principal is authenticated but not permitted for this resource/action. | Not retryable without a grant/scope change. |
+| `entitlement_failed` | The tenant's plan/entitlement does not cover the request. | Not retryable without a plan change. |
+| `rate_limited` | The key's per-key rate-limit tier was exceeded. | Retryable — honor `retryAfterMs` when present. |
+| `invalid_request` | Request failed schema validation. | Not retryable without fixing the request — see `fieldErrors`. |
+| `provider_failed` | An upstream model/inference provider failed. | Often retryable. |
+| `tool_failed` | A tool invocation failed. Compare against a `tool.failed` event on the same `toolCallId`. | Situational — see that event's own `retryable`. |
+| `tool_timed_out` | A tool call exceeded its timeout. | Often retryable. |
+| `approval_timed_out` | An `approval.required` pause's `expiresAt` passed before a decision was posted. | Not retryable as-is — the action must be re-proposed. |
+| `memory_failed` | A memory read/write failed. | Often retryable. |
+| `stream_interrupted` | The SSE connection dropped mid-run. | Retryable — resume via `Last-Event-ID` on [run events](/fabric/api/events). |
+| `cancelled` | The run was cancelled (e.g. via [`POST /v1/runs/:id/cancel`](/fabric/api/runs#cancel-a-run)). | Terminal — not retryable. |
+| `conflict` | Includes: an `Idempotency-Key` was reused with a **different** request body than the original. | Not retryable without changing the key or matching the original request. |
+| `idempotency_replay` | An `Idempotency-Key` was reused. Overlaps with the `request.accepted.replayed` event field — see the note below. | Not an error to retry; informational. |
+| `internal_failed` | Unexpected server-side failure. | Generally retryable with backoff. |
+
+### `conflict` vs. `idempotency_replay` vs. `request.accepted.replayed`
+
+Three distinct signals exist for idempotency-key reuse, and the sources do
+not fully reconcile them:
+
+1. `AiPlatformChatRequestV1`/`Execute` request carries an `idempotencyKey`.
+2. On a **matching** replay, the design spec and this reference document
+   `request.accepted.replayed: true` as the signal (event field, not an
+   error).
+3. `idempotency_replay` is nonetheless a member of the **shared** error/problem
+   `code` enum used by `Problem.code`.
+
+Documented, not resolved: whether `idempotency_replay` fires for a
+concurrent in-flight duplicate (original request still running) while
+`replayed:true` is reserved for replaying a request whose original already
+reached a terminal state, or whether one of the two is legacy/unused
+vocabulary. `conflict` is unambiguous by contrast — the task instructions
+for this reference confirm mismatched-body replay maps to `conflict`.
+
+## Example
+
+```bash
+curl -i https://api.praxa.io/v1/execute \
+  -X POST \
+  -H "Authorization: Bearer praxa_sk_bad_key" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+```http
+HTTP/1.1 401 Unauthorized
+Content-Type: application/problem+json
+
+{
+  "type": "https://api.praxa.io/problems/authentication_failed",
+  "title": "Authentication failed",
+  "status": 401,
+  "code": "authentication_failed",
+  "retryable": false
+}
+```
+
+## TypeScript
+
+```ts
+import { AiPlatformHttpError } from "@nexislabs/ai-platform";
+
+try {
+  // ... call the API ...
+} catch (err) {
+  if (err instanceof AiPlatformHttpError) {
+    console.error(err.status, err.problem?.code, err.problem?.detail);
+    if (err.problem?.retryable) {
+      // back off err.problem.retryAfterMs, if present, then retry
+    }
+  }
+}
+```

@@ -1,0 +1,108 @@
+---
+title: "Webhooks"
+sidebarTitle: "Webhooks"
+description: "POST /v1/webhooks"
+---
+
+> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+
+
+```
+POST /v1/webhooks
+```
+
+Registers an outbound delivery endpoint for run progress. This is Praxa's
+first **outbound** webhook lane — every existing integration in this corpus
+is inbound. Backed by two new tables, `webhook_endpoints` and
+`webhook_deliveries`.
+
+## Confirmed behavior
+
+- Deliveries are **HMAC-signed**.
+- Failed deliveries are retried with **exponential backoff**.
+- Deliveries that exhaust retries land in a **dead-letter** state.
+- Signing secrets are **rotatable per tenant**.
+
+## Authentication
+
+Bearer API key, prefix `praxa_sk_`.
+
+## Request body
+
+> **Gap.** Neither source publishes field-level names for the registration
+> request or response. The table below is this reference's best-effort,
+> clearly-flagged reconstruction from the confirmed behavior above and
+> conventional webhook-registration shape — **not** a confirmed contract.
+> Verify against the actual implementation before relying on exact field
+> names.
+
+| Field | Type | Required | Description (illustrative — not confirmed) |
+|---|---|---|---|
+| `url` | string (URL) | Yes | Delivery target. Must be HTTPS. |
+| `events` | string[] | No | Event-type filter. Omitted is presumed to mean "all." |
+
+### Response (illustrative — not confirmed)
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Webhook endpoint identifier. |
+| `secret` | string | HMAC signing secret for this endpoint — shown once. |
+
+## Delivery payload
+
+Not specified by either source. The most defensible assumption is that
+deliveries carry the same `AiPlatformEventV1` envelope documented in
+[Events](/fabric/api/events), since that is the platform's one existing event
+schema — but this is an assumption, not a confirmed contract.
+
+## What is genuinely unresolved
+
+- Exact request/response field names for `POST /v1/webhooks`.
+- The HMAC signature scheme (header name, algorithm, canonicalization).
+- The retry schedule (attempt count, backoff base/cap) and how a
+  dead-lettered delivery is surfaced to the tenant.
+- Secret-rotation mechanics (single active secret vs. overlap window).
+
+## Example
+
+```bash
+curl https://api.praxa.io/v1/webhooks \
+  -X POST \
+  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/hooks/praxa",
+    "events": ["response.final", "approval.required"]
+  }'
+```
+
+## TypeScript
+
+```ts
+// Field names are illustrative — see the Gap note above.
+type WebhookRegistration = {
+  url: string;
+  events?: string[];
+};
+
+type WebhookEndpoint = {
+  id: string;
+  secret: string;
+} & Record<string, unknown>;
+
+async function registerWebhook(
+  registration: WebhookRegistration,
+  apiKey: string,
+): Promise<WebhookEndpoint> {
+  const res = await fetch("https://api.praxa.io/v1/webhooks", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(registration),
+  });
+  if (!res.ok) throw new Error(`webhook registration failed: ${res.status}`);
+  return res.json();
+}
+```

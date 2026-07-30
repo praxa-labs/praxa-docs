@@ -1,0 +1,44 @@
+---
+title: "Use cases: which guide fits you"
+sidebarTitle: "Use cases"
+description: "The fabric is one substrate — models, tools, policy, approvals, billing — built for three different kinds of builder. This page covers the pattern they all s"
+---
+
+The fabric is one substrate — models, tools, policy, approvals, billing — built for three different kinds of builder. This page covers the pattern they all share, then points you at the guide for your situation. For the product pitch and the full vocabulary, start at [`getting-started/overview.md`](/fabric/getting-started/overview) and [`getting-started/concepts.md`](/fabric/getting-started/concepts) instead — this page assumes you already know roughly what the fabric is and want to know which of these three guides to read.
+
+> **Status:** this page spans two surfaces at different maturities. The custom-agent surface referenced below (`aura_agent_*` keys, `POST /api/custom-agent-run`) is **Available today** — shipped, working code. The execute API (`POST /v1/execute` and the rest of `/v1/*`) is **Developer preview** — the wire contracts are stable and published, but no public endpoint serves them yet. Each guide restates which applies to which part. See the [status legend](/fabric#status-legend) for what the labels mean.
+
+## The pattern: delegate, gate, receipt
+
+Every use case in these guides is the same three-step shape, whether it's a support agent, a research job, or a finance workflow.
+
+**1. Delegate.** You hand Praxa a task instead of doing it yourself, or instead of scripting it against a raw model API. Today that's a call to a published custom agent (`POST /api/custom-agent-run`). On the fabric it's `POST /v1/execute`, in one of two modes — a quick synchronous turn, or a durable task you check back on later. See [Concepts: Runs](/fabric/getting-started/concepts#runs) for the full distinction.
+
+**2. Gate.** Praxa routes the task across models and tools under a policy. Anything that reads or drafts runs on its own. Anything that commits external state — sending a message, scheduling something, spending money, changing a record — stops first. The run parks with an `approval.required` event carrying the exact action and an `action_digest`. Someone reviews the *exact* action, not a summary of it, and either approves that exact digest or rejects it. There's no partial edit-and-approve: an altered action doesn't match the digest and won't execute.
+
+**3. Receipt.** A run is designed to leave behind a record of what happened: what ran, which policy version gated which step, who approved what, and what it cost. That's the difference between "the agent probably did the right thing" and being able to show your controller, your customer, or your own audit trail exactly what it did. (What's confirmed on the wire today for run/usage readback is narrower than that full picture — see [`api/runs.md`](/fabric/api/runs) and [`api/usage.md`](/fabric/api/usage).)
+
+## The three markets
+
+The fabric serves three kinds of builder, in this order of priority:
+
+1. **Agent builders** already using Praxa's custom-agent platform — publishing agents with `aura_agent_*` keys today. The fabric upgrades you from "call my one agent" to "execute arbitrary tasks under my tenant's policy," with approvals and receipts that can land in your own product instead of Praxa's dashboard. → [`agent-builders.md`](/fabric/use-cases/agent-builders)
+2. **Developers coding in Praxa Control**, the desktop app running Codex and Claude Code locally. Your local coding session and its provider credentials never leave your desktop — that doesn't change. The fabric adds cloud execution lanes you can call *from* a session for work that should outlive it: research, browsing, durable multi-step jobs. → [`coding-and-desktop.md`](/fabric/use-cases/coding-and-desktop)
+3. **Internal org workflows** — finance, ops, anything currently done by a person following a checklist on a schedule. Same fabric, applied to work that stays inside your organization, with every risky step approved and every run receipted. → [`business-workflows.md`](/fabric/use-cases/business-workflows)
+
+## Which guide fits you
+
+| If you... | Read | Status |
+|---|---|---|
+| Run a product with a Praxa custom agent embedded in it, or want to embed one | [`agent-builders.md`](/fabric/use-cases/agent-builders) | Custom-agent surface: Available today. Fabric upgrade: Developer preview. |
+| Work inside a Praxa Control coding session and want to hand off something longer than you want to wait around for | [`coding-and-desktop.md`](/fabric/use-cases/coding-and-desktop) | Developer preview |
+| Run a recurring internal workflow (finance, ops, reporting) that should stop and ask before it does anything risky | [`business-workflows.md`](/fabric/use-cases/business-workflows) | Developer preview |
+
+## What these guides don't cover
+
+These are narrative walkthroughs, not reference docs — request/response fields are shown as illustrations of the shape, not a frozen schema. For the confirmed contract, authentication, and error handling:
+
+- [`getting-started/quickstart.md`](/fabric/getting-started/quickstart) — your first authenticated call
+- [`api/execute.md`](/fabric/api/execute), [`api/runs.md`](/fabric/api/runs), [`api/events.md`](/fabric/api/events) — the execute API, including exactly what's confirmed vs. illustrative
+- [`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys) — creating and scoping `aura_agent_*` and `praxa_sk_` keys
+- [`api/approvals.md`](/fabric/api/approvals) — the `approval.required` → `POST /v1/runs/:id/approve` contract in full

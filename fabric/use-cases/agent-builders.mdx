@@ -1,0 +1,115 @@
+---
+title: "Agent builders: upgrading a custom agent onto the fabric"
+sidebarTitle: "Agent builders"
+description: "For teams that already run a Praxa custom agent inside their product and want more than one fixed agent's worth of tools, budget, and approvals — with approv"
+---
+
+> **Status:** Mixed. The publish-and-call flow is available today; the fabric upgrade path is developer preview.
+
+For teams that already run a Praxa custom agent inside their product and want more than one fixed agent's worth of tools, budget, and approvals — with approvals showing up in your own product instead of Praxa's dashboard.
+
+If you already embed a Praxa custom agent, you're on the first wedge of the fabric already. This guide covers what you have today, what the fabric adds, and a full worked example — a support-ticket triage agent — showing both.
+
+## Today: the custom-agent surface
+
+> **Status: Available today.** `aura_agent_*` deployment keys and `POST /api/custom-agent-run` are shipped, working code, not a roadmap description.
+
+- **Publish.** Build the agent in the agent builder (instructions, knowledge, bound connectors), publish a version, and Praxa mints a deployment credential for the External API channel — an `aura_agent_*` key — tied to one `deploymentId`.
+- **Call it.** Your backend calls `POST /api/custom-agent-run` with that key and a stable `externalSessionId` you generate — a ticket id, a customer id, whatever concept you already key sessions on — so repeated calls land in the same conversation.
+- **Approvals.** Any step that would send, schedule, change, or purchase through a bound connector doesn't fire automatically. It produces a pending action instead — the exact provider, action, and arguments, frozen — reviewed inside Praxa's own agent workspace by someone with review access on that agent.
+- **Receipts.** Conversations, per-agent operational analytics, and cost/charge/contribution-margin — all inside Praxa's dashboard.
+
+## The fabric upgrade
+
+> **Status: Developer preview.** `/v1/execute` and the rest of `/v1/*` are developer preview: the wire contracts are stable and published, but no public endpoint serves them yet. `task`, `context`, `tools`, `policy`, `delivery`, `mode`, `run_id`, `action_digest`, `decision`, and the `Idempotency-Key` header are the vocabulary the design spec (§3.1) gives; `tools` as an `{ allow, deny }` filter is independently confirmed against the published wire schema. Anything else shown below (webhook registration fields, the keys inside `policy`) is a reasonable illustration, not a frozen contract — see [`api/execute.md`](/fabric/api/execute).
+
+- Instead of (or alongside) one fixed agent, you call `POST /v1/execute` with a task, a tool allowlist, and a policy (risk tier plus budget cap) — under a `praxa_sk_` tenant key instead of an `aura_agent_*` deployment credential. See [`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys) for how the two key families differ and coexist — `aura_agent_*` isn't being retired.
+- Approvals move into your product. Register a webhook once (`POST /v1/webhooks`), and a pending action reaches your backend directly as a signed `approval.required` event instead of sitting in Praxa's dashboard. You render it in your own UI and post the decision back to `POST /v1/runs/:id/approve`.
+- The trust rule doesn't change, only where you see it: an approval only ever matches the exact action it was issued for.
+
+## Worked example: support-ticket triage
+
+**The problem.** TicketFlow's support agent drafts replies to incoming tickets and, for routine ones, sends them. Nobody wants it sending anything unsupervised — every outbound reply needs a human's okay — and TicketFlow's ops lead doesn't want to leave their own helpdesk to give it.
+
+**What you build.**
+
+- Today: one custom agent ("Ticket Triage"), instructions for tone and scope, a connector bound for sending replies, published, with a deployment credential.
+- Upgrade: the same logic as an execute-API task — a tool allowlist of `read_ticket_history`, `draft_reply`, `send_reply`; a budget cap; `send_reply` classified to require approval — plus one webhook endpoint registered in TicketFlow's own backend.
+
+**The calls.**
+
+Today, TicketFlow's backend calls this once per ticket, using the ticket id as the external session so replies to the same ticket land in the same conversation:
+
+```http
+POST /api/custom-agent-run
+Authorization: Bearer aura_agent_0000000000000000000000000000000000000000000000000000000000000000
+Content-Type: application/json
+
+{
+  "deploymentId": "4b7b8b3e-2f0a-4e31-9d2c-7a1e6b6a9c31",
+  "externalSessionId": "ticket-48213",
+  "message": "Customer: My order #8821 hasn't arrived and it's been 2 weeks."
+}
+```
+
+`externalSessionId` is TicketFlow's own identifier (8–200 characters, letters/numbers/`_.:-`). The agent drafts a reply. Because the deployment's connector binding can send messages, that step parks as a pending action instead of firing — reviewed today inside Praxa's own agent workspace, approved or denied as-is, never edited in place.
+
+Upgrade — TicketFlow registers a webhook once:
+
+```http
+POST /v1/webhooks
+Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
+Content-Type: application/json
+
+{
+  "url": "https://api.ticketflow.example/webhooks/praxa",
+  "events": ["approval.required", "response.final"]
+}
+```
+
+Then calls `/v1/execute` per ticket instead of `/api/custom-agent-run`:
+
+```http
+POST /v1/execute
+Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
+Idempotency-Key: ticket-48213-2026-07-30T09:00Z
+Content-Type: application/json
+
+{
+  "task": "Draft a reply to this support ticket and send it once approved.",
+  "context": {
+    "ticketId": "48213",
+    "customerMessage": "My order #8821 hasn't arrived and it's been 2 weeks."
+  },
+  "tools": { "allow": ["read_ticket_history", "draft_reply", "send_reply"] },
+  "policy": {
+    "approvalMode": "human_approval",
+    "budgetCap": { "currency": "USD", "amount": 0.50 }
+  },
+  "delivery": { "mode": "task" }
+}
+```
+
+The call returns immediately with a run id: `{ "run_id": "run_01j9tcket48213000000001" }`. `read_ticket_history` and `draft_reply` run on their own. `send_reply` still parks — same rule as today — but now the `approval.required` event lands on TicketFlow's own webhook, HMAC-signed and retried if their endpoint is briefly down, instead of sitting in Praxa's dashboard. When their ops lead approves it in TicketFlow's own queue, TicketFlow's backend posts the decision back:
+
+```http
+POST /v1/runs/run_01j9tcket48213000000001/approve
+Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
+Content-Type: application/json
+
+{ "action_digest": "adg_01j9tcket48213send0000001", "decision": "approved" }
+```
+
+Only that exact reply, to that exact ticket, is allowed to send. Nothing else matches the digest — if the draft needs to change, the agent has to draft again.
+
+**What the user experiences.** TicketFlow's customer sees no difference — a reply arrives once it's approved, same as before. TicketFlow's ops lead is the one who feels the upgrade: instead of leaving their helpdesk to approve something in Praxa's dashboard, the pending reply shows up in the same queue as everything else they triage.
+
+**What the receipt shows.** Today: the conversation record, plus Praxa's own per-agent cost, charge, and contribution-margin analytics. On the fabric: the run and usage endpoints are designed to carry which tools ran, the policy version that gated `send_reply`, and the decision and digest that authorized the send, rolled into TicketFlow's tenant-level usage — see [`api/runs.md`](/fabric/api/runs) and [`api/usage.md`](/fabric/api/usage) for exactly what's confirmed on the wire today versus what's still firming up. A fuller exportable audit trail is on the roadmap, not shipped.
+
+## See also
+
+- [`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys) — creating and scoping `praxa_sk_` keys
+- [`keys-and-access/scopes-and-tenancy.md`](/fabric/keys-and-access/scopes-and-tenancy) — what a key's scope actually constrains
+- [`api/execute.md`](/fabric/api/execute) — the full `/v1/execute` reference, including the mode:"turn"/mode:"task" contract-status note
+- [`api/approvals.md`](/fabric/api/approvals) — the `approval.required` → `approve` contract in full
+- [`api/webhooks.md`](/fabric/api/webhooks) — webhook registration and delivery, including what's still unconfirmed

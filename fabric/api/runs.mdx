@@ -1,0 +1,91 @@
+---
+title: "Runs"
+sidebarTitle: "Runs"
+description: "A run is a durable execution admitted via POST /v1/execute(./execute.md)"
+---
+
+> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+
+
+A run is a durable execution admitted via [`POST /v1/execute`](/fabric/api/execute)
+with `mode:"task"`. It is backed by the existing `task_runs` /
+`task_run_events` state machine (leases, attempts, budgets,
+`waiting_approval` as a first-class state, run-recovery crons). `RunResource`
+is the **public projection** of that internal entity — internal fields
+(lease hashes, margin micros, pricing refs) never cross the API boundary.
+
+For the event stream and the approval/cancel actions, see
+[Events](/fabric/api/events) and [Approvals](/fabric/api/approvals).
+
+## Get a run
+
+```
+GET /v1/runs/:id
+```
+
+| Parameter | Location | Required | Description |
+|---|---|---|---|
+| `id` | path | Yes | Run identifier returned by `POST /v1/execute` with `mode:"task"`. |
+
+### Response — `RunResource`
+
+Neither source publishes a field-level schema for `RunResource`. What is
+confirmed:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | Yes | The run identifier. |
+| `status` | string | Yes | Run lifecycle state. Only one member is confirmed by the sources: `waiting_approval`. The full enum (e.g. `running`, `completed`, `failed`, `cancelled`) is implied by the run engine but not enumerated in either source. |
+
+**Confirmed exclusions** — these internal fields are explicitly stated to
+never appear in the public projection: lease hashes, margin micros, pricing
+references.
+
+Everything else about this resource (timestamps, the task/context echoed
+back, usage totals, links to events) is unspecified in the sources in scope
+for this reference.
+
+## Cancel a run
+
+```
+POST /v1/runs/:id/cancel
+```
+
+| Parameter | Location | Required | Description |
+|---|---|---|---|
+| `id` | path | Yes | Run identifier. |
+
+No request body fields are specified in the sources. Cancelling a run is
+expected to emit a terminal
+[`request.cancelled`](/fabric/api/events#lifecycle) event on that run's stream.
+Operations attempted against an already-cancelled run should expect the
+`cancelled` error code (see [Errors](/fabric/api/errors#error-codes)).
+
+## Example
+
+```bash
+curl https://api.praxa.io/v1/runs/run_01j9example000000000000001 \
+  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx"
+
+curl https://api.praxa.io/v1/runs/run_01j9example000000000000001/cancel \
+  -X POST \
+  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx"
+```
+
+## TypeScript
+
+```ts
+type RunResource = {
+  id: string;
+  status: "waiting_approval" | (string & {}); // remaining members unpublished
+  // additional fields are not specified by the sources in scope
+};
+
+async function getRun(runId: string, apiKey: string): Promise<RunResource> {
+  const res = await fetch(`https://api.praxa.io/v1/runs/${runId}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) throw new Error(`run fetch failed: ${res.status}`);
+  return res.json();
+}
+```

@@ -1,0 +1,71 @@
+---
+title: "FAQ"
+sidebarTitle: "FAQ"
+description: "Straight answers, including to the questions whose honest answer is "not yet." Status labels below match the legend in README.md(README.md#status-legend)."
+---
+
+Straight answers, including to the questions whose honest answer is "not yet." Status labels below match the legend in [`README.md`](/fabric#status-legend).
+
+### Is the Execute API live today?
+
+No. `/v1/execute` and the rest of the run, event, and approval endpoints are **developer preview**: the wire contracts are stable and published, but no public endpoint serves them yet. What you can call today is the custom-agent API. See [`status-and-roadmap.md`](/fabric/status-and-roadmap) for what has to be true before that changes.
+
+### What can I actually build on today, before the Execute API opens up?
+
+Custom agents. The agent-builder platform is **available today**: create an agent, publish it, call it through an `aura_agent_*` API key or embed it on a website, with approvals gating any action that writes. That's the product the fabric is generalizing: from "call my one agent" to "execute arbitrary tasks under my tenant's policy." See [`use-cases/agent-builders.md`](/fabric/use-cases/agent-builders).
+
+### How do approvals actually block an action?
+
+The policy engine classifies each action before it runs. Anything it marks as needing a person pauses the run instead of executing: the event stream emits `approval.required` carrying the exact action and an approval digest, and the run sits there until your system posts that digest back to `/v1/runs/:id/approve` with a decision. There's no path where the model decides on its own that an action was "probably fine." Execution only accepts the exact, byte-equivalent action it paused on. Altered arguments, an expired approval, or a replay all fail closed. Details: [`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals).
+
+### What happens when a run hits its budget ceiling?
+
+The run stops before the step that would exceed the ceiling runs, not after. Funds are reserved ahead of a paid step, not billed after the fact, so hitting a ceiling means the run halts and you get a receipt showing what did complete and where it stopped. Not a surprise charge. Not a silent downgrade to a cheaper model to sneak under the limit. See [`approvals-and-policy/budgets-and-limits.md`](/fabric/approvals-and-policy/budgets-and-limits).
+
+### Do you train on my data?
+
+Learning is per-tenant by default. Anything that crosses tenant boundaries is metadata only: which model or tool tended to work for a given kind of task, typical latency and cost. It's aggregated, and opt-out-able. Your content, memory, and raw context are never part of that cross-tenant signal. Any change to how routing decisions get made ships versioned and evaluated before it rolls out, never silently, and every receipt records whether that run was even eligible for training use in the first place. Details: [`security/data-handling.md`](/fabric/security/data-handling).
+
+### Should I bring my own provider keys, or use bundled inference?
+
+Both are supported at general availability, and neither is a second-class option. Bundled means you run on Praxa's provider keys, billed as credits against fixed per-run pricing. Simplest way to start. BYO means you connect your own provider credentials, which stay encrypted and never leave the runtime, and you pay a platform fee on the spend that runs through them instead of a token margin. Routing quality is priced and delivered the same way in both modes. See [`how-to/bring-your-own-keys.md`](/fabric/how-to/bring-your-own-keys).
+
+### What models do you route to?
+
+The fabric is model-neutral by design. That's deliberate, not a gap waiting to be filled in. Which specific providers and models sit in the routing ladder for a given kind of task will keep evolving as the market does; that's not the part of the contract we're asking you to pin your integration to. What is pinned: you submit a task and constraints, you can pin a model lane yourself through `policy` if you need to, and the receipt always records which model actually ran, every time.
+
+### Can I self-host Praxa?
+
+No. The runtime is built on Cloudflare's platform primitives (Durable Objects, Workflows, Vectorize), and self-hosting would mean forking that substrate, not deploying a container. What you get instead at the enterprise tier: a dedicated Cloudflare account and region so your workload isn't sharing infrastructure with anyone else's, BYO provider keys so your inference spend never has to touch Praxa's, and full evidence export so your audit tooling doesn't have to trust Praxa's UI either. See [`enterprise/deployment-and-isolation.md`](/fabric/enterprise/deployment-and-isolation).
+
+### How do `aura_agent_*` keys relate to `praxa_sk_` keys?
+
+`aura_agent_*` is the credential you already have if you've deployed a custom agent: it's scoped to that one agent. `praxa_sk_` is the new fabric key: scoped to a tenant, able to execute arbitrary tasks rather than just call one pinned agent. Existing `aura_agent_*` keys keep working. They are not being deprecated out from under anyone, and they migrate onto the tenant model later rather than being replaced in place. See [`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys).
+
+### What's the difference between `mode: "turn"` and `mode: "task"`?
+
+Same contract, two shapes. `turn` is synchronous: you get a stream back on the same request, which fits chat-shaped work where you're waiting on the result anyway. `task` is durable: the call returns a `run_id` immediately and the work continues server-side, with progress delivered through the events endpoint or webhooks. Built for anything long-running, or anything you need to walk away from and come back to. Approval behavior is identical either way. See [`api/execute.md`](/fabric/api/execute).
+
+### What exactly is in a receipt?
+
+What ran, which policy pack version evaluated it, who approved which action and when, and what the result was verified against. It's built to be the thing you hand to an auditor without having to also hand over trust in Praxa's dashboard. See [`security/receipts-and-audit.md`](/fabric/security/receipts-and-audit).
+
+### Is usage billed per token, per run, or per seat?
+
+Metered on runs and spend, not on raw model steps. Steps are an internal guardrail we use to keep a run from running away; they're not the number that shows up on your invoice. Bundled inference bills as credits against fixed per-run pricing; BYO bills a platform fee on the spend that routes through your own keys. See [`enterprise/billing-and-plans.md`](/fabric/enterprise/billing-and-plans).
+
+### What happens if my system doesn't respond to an approval in time?
+
+Approvals carry a TTL. If it expires before you post a decision, the run treats that the same as "not approved" and closes out rather than executing by default. Fail closed, not fail open: a slow or broken approval endpoint on your side can never become an accidental auto-approve. See [`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals).
+
+### Is the policy engine the same thing as approvals?
+
+Related, but not the same layer. The policy engine is what decides whether an action needs an approval at all: auto, peer review, human approval, or deny, based on what the action does and what it costs. Approvals are the mechanism that actually pauses and resumes a run once the engine has decided a human needs to weigh in. You configure the policy; the engine's decision is what produces, or skips, an approval pause. See [`approvals-and-policy/policy-engine.md`](/fabric/approvals-and-policy/policy-engine).
+
+### Can I use this from Praxa Control, the desktop coding tool?
+
+Yes. That's one of the three use cases the fabric is built for from day one. Praxa Control calls the fabric for cloud lanes (research, browsing, media, connectors, anything durable) from local coding sessions, while your local Codex or Claude Code sessions and your provider credentials stay on your machine. See [`use-cases/coding-and-desktop.md`](/fabric/use-cases/coding-and-desktop).
+
+### What happens if my connection drops mid-run?
+
+Nothing is lost. Events are sequenced and replayable: reconnect to `/v1/runs/:id/events` with a `Last-Event-ID` header and you pick up exactly where you left off, with nothing re-delivered and nothing skipped. A `task`-mode run keeps going server-side regardless of whether anything is listening. See [`api/events.md`](/fabric/api/events).
