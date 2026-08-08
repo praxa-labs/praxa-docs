@@ -55,10 +55,10 @@ const result = await response.json();
 ## Track 2: Your first `execute()` run
 
 > **Status:** Production partner preview. Admitted accounts can create a
-> personal key in the current signed-in console. The portal's email-link/OTP
-> fragment callback, persisted browser session, durable legal gate, and canonical
-> routing are deployed. The deep link remains pending its authenticated
-> production-host canary.
+> personal key in the signed-in console at
+> [`https://platform.praxa.io`](https://platform.praxa.io) (password or Google
+> sign-in; key creation requires MFA step-up). The console publishes a
+> deployment receipt at `/api/deploy-version`.
 
 The live preview accepts the minimal durable-task envelope. It returns
 `400 invalid_request` for `mode: "turn"` and request-level agent, tool, policy,

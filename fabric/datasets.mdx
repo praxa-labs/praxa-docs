@@ -4,11 +4,13 @@ sidebarTitle: "Datasets"
 description: "Build immutable, tenant-scoped evaluation inputs with resumable ingest and revision receipts without implying a live experiment runner."
 ---
 
-> **Status:** Source-ready. The portal, authenticated API route, additive
-> database migration, row-level security policies, and contract tests exist in
-> the Praxa source tree. This documentation does not claim that the migration or
-> Worker release is deployed. Treat the surface as unavailable until the status
-> page records migration, deployment, and production canary evidence.
+> **Status:** Activation-gated. The developer console's dataset surfaces —
+> immutable revisions and items with SHA-256 receipts, revision-addressable
+> exports, and resumable server-validated JSONL ingest — are deployed at
+> `https://platform.praxa.io`. Remaining shared-database production canaries
+> (cross-organization isolation, retention, and receipt binding) gate
+> organization-scope and production claims; the status page records that
+> evidence when it lands.
 
 A dataset is a customer-owned collection of evaluation inputs attached to one
 Praxa custom agent. The source-ready authority supports personal and

@@ -22,10 +22,10 @@ authority; it is not a separately self-hostable agent runtime.
 Automatic signed webhooks and bearer webhook management are active for admitted
 personal tenants. Exact browser-action approval remains pending. Separate
 production canaries have proved cancellation final states and authenticated
-canonical-host, alias, and deep-link preservation. The deployed portal
-authentication path is limited to email-link/OTP fragment callbacks, a
-persisted browser session, and durable legal acceptance; it does not activate
-the unavailable enterprise surfaces below.
+canonical-host, alias, and deep-link preservation. The deployed console
+authenticates with email/password and Google OAuth and requires MFA step-up
+(AAL2) before credential-sensitive mutations; none of that activates the
+unavailable enterprise surfaces below.
 
 ## Approval truth
 

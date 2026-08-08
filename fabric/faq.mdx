@@ -24,29 +24,35 @@ channel. Its product-specific safety gates do not create generic public fabric
 tool/policy authority. See
 [`use-cases/agent-builders.md`](/fabric/use-cases/agent-builders).
 
-### Can I manage agents, workflows, teams, and billing in the developer portal?
+### Can I manage agents, workflows, teams, and billing in the developer console?
 
-The portal-native personal agent/workflow routes, draft preview playground,
-profile/avatar/preferences, organization membership controls, subscription
-display, and eligible Stripe Checkout are source-ready. They are not documented
-as live until a compatible Worker deployment and authenticated production
-canaries are recorded. Organization API keys and execution remain unavailable.
-See [Studio and developer console](/fabric/studio-and-console).
+In the console at `https://platform.praxa.io`: personal agent list, detail,
+and create are live (management actions stay with the authoritative
+custom-agent service); workflows are read-only evidence; organization and
+membership management is deployed but activation-gated on its upstream
+authorization proof; and billing opens an AAL2-gated Stripe Customer Portal
+session for the mapped account. Organization `/v1` API keys and execution
+remain unavailable. See
+[Studio and developer console](/fabric/studio-and-console) for the per-surface
+truth table.
 
 ### Can I upload a dataset and compare models?
 
-Agent-scoped datasets are source-ready, pending their additive database
-migration, Worker deployment, and production isolation/immutability canary.
-Customer experiment execution and model comparison remain unavailable. A
-published dataset is immutable input evidence; it is not permission to call a
-model or spend credits. See [Agent evaluation datasets](/fabric/datasets).
+The console's dataset surfaces — revisions, receipts, and resumable ingest —
+are deployed and activation-gated on their remaining shared-database canaries.
+Experiment definitions are live and pin an immutable dataset revision plus a
+configuration snapshot; customer experiment execution and model comparison
+remain unavailable. A published dataset is immutable input evidence; it is not
+permission to call a model or spend credits. See
+[Agent evaluation datasets](/fabric/datasets) and
+[Experiments](/fabric/experiments).
 
 ### Is the typed workflow DSL public?
 
 No. The strict plan/compiler/interpreter foundation exists in source, but there
 is no public route, published package, deployed customer-definition authority,
-or connection to `/v1/execute`. The portal's workflow page rehosts Praxa's
-existing automation system; it is not the public DSL. See
+or connection to `/v1/execute`. The console's workflow page shows read-only
+evidence from Praxa's existing automation system; it is not the public DSL. See
 [Typed workflow DSL](/fabric/workflows).
 
 ### How do approvals actually block an action?
