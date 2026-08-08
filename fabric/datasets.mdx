@@ -1,0 +1,117 @@
+---
+title: "Agent evaluation datasets"
+sidebarTitle: "Datasets"
+description: "Build immutable, tenant-scoped evaluation inputs with resumable ingest and revision receipts without implying a live experiment runner."
+---
+
+> **Status:** Source-ready. The portal, authenticated API route, additive
+> database migration, row-level security policies, and contract tests exist in
+> the Praxa source tree. This documentation does not claim that the migration or
+> Worker release is deployed. Treat the surface as unavailable until the status
+> page records migration, deployment, and production canary evidence.
+
+A dataset is a customer-owned collection of evaluation inputs attached to one
+Praxa custom agent. The source-ready authority supports personal and
+organization ownership. Datasets provide immutable input evidence for future
+experiments. They do not authorize a model call, reserve credits, execute an
+agent, or compare models.
+
+## Source-ready workflow
+
+Once activated, an authorized agent manager can:
+
+1. create or archive a dataset for an agent;
+2. edit the current mutable item set;
+3. begin an idempotent ingest bound to the current item revision;
+4. upload ordered JSONL chunks for server-side parsing and validation;
+5. atomically finalize or explicitly abort the ingest;
+6. publish an immutable numbered revision; and
+7. retain item digests, item count, and the canonical revision content digest
+   as immutable evidence.
+
+Publishing does not start an experiment. Later edits stay mutable until another
+numbered revision is published.
+
+## Item format
+
+Each JSONL line is one strict item object:
+
+```json
+{
+  "input": {
+    "prompt": "Summarize the support request in one sentence."
+  },
+  "expected_output": {
+    "must_include": "refund"
+  },
+  "metadata": {
+    "case": "billing",
+    "priority": 2
+  }
+}
+```
+
+| Field | Contract |
+|---|---|
+| `input` | Required JSON value, at most 32 KiB when serialized. |
+| `expected_output` | Optional JSON value, at most 32 KiB when serialized. |
+| `metadata` | Optional string-keyed JSON object, at most 8 KiB when serialized. |
+
+A dataset can contain at most 5,000 items. Each raw ingest chunk carries at
+most 100 complete JSONL records and 56,000 characters. Praxa parses and
+validates every chunk at the trusted server boundary before staging it. Chunks
+must arrive in order, and replaying the same chunk is idempotent. Finalization
+checks the expected item count and commits the staged set atomically, so an
+interrupted upload does not become a partial published revision.
+
+## Revision receipts and export
+
+Publishing creates an immutable revision with a UUID, revision number, item
+count, per-item SHA-256 digests, and a canonical 64-character content digest.
+Revision exports are RLS-scoped, private, no-store JSONL responses. They expose
+the immutable identity in these response headers:
+
+| Header | Meaning |
+|---|---|
+| `X-Praxa-Dataset-Revision` | Immutable revision UUID. |
+| `X-Praxa-Revision-Digest` | Canonical SHA-256 revision digest. |
+| `X-Praxa-Revision-Item-Count` | Item count bound to the digest. |
+
+The legacy full export traverses the current mutable item set. Use a
+revision-addressed export when you need reproducible evaluation input.
+
+## Authority and isolation
+
+The browser sends an authenticated request. The database derives the actor from
+the session and reuses the existing agent-management authority. The client
+cannot nominate a different owner.
+
+The additive storage design:
+
+- links every dataset, revision, item, and ingest receipt to the exact agent
+  and personal or organization tenant;
+- permits authenticated reads only when the caller can manage that agent;
+- revokes direct authenticated writes and funnels mutations through bounded
+  database functions;
+- allows at most one draft revision per dataset;
+- prevents changes to published revisions and published items;
+- binds ingest to the expected mutable revision so stale uploads fail; and
+- archives a dataset instead of presenting destructive deletion as normal
+  management.
+
+Cross-tenant refusal, published-revision immutability, migration activation,
+and authenticated portal behavior still require production canaries before the
+feature can move to the live lane.
+
+## Relationship to experiments
+
+Datasets and experiments are separate authorities. Praxa has source-ready
+experiment execution authority that pins dataset, configuration, evaluator,
+runtime, and billing identities before dispatch. Its migrations, Worker release,
+shared-capacity proof, customer controls, and authenticated production canaries
+remain pending. Experiments and model comparison therefore remain unavailable
+to customers even though the backend authority exists in source.
+
+See [Studio and developer console](/fabric/studio-and-console) for the portal
+surface and [Status and roadmap](/fabric/status-and-roadmap) for activation
+evidence.

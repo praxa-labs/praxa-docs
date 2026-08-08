@@ -1,95 +1,67 @@
 ---
-title: "Coding and desktop: cloud lanes from a coding session"
+title: "Coding and desktop: cloud task handoff"
 sidebarTitle: "Coding and desktop"
-description: "For developers working in Praxa Control (Codex or Claude Code, running locally) who want to hand off work that shouldn't be tied to keeping a laptop open."
+description: "Start a durable cloud task while keeping the local coding session boundary explicit."
 ---
 
-For developers working in Praxa Control (Codex or Claude Code, running locally) who want to hand off work that shouldn't be tied to keeping a laptop open.
+> **Status:** Minimal personal-tenant durable execution is live for admitted
+> partner-preview tenants. Praxa Control integration, automatic repo/context
+> transfer, caller-selected tools, BYO provider routing, and turn mode are not
+> public execution features.
 
-> **Status: Developer preview.** Everything below uses the execute API (`/v1/execute` and related `/v1/*` endpoints), developer preview: the wire contracts are stable and published, but no public endpoint serves them yet. Field names follow the design spec (§3.1); nested shapes it doesn't spell out are shown as reasonable illustrations, not a frozen contract. See [`api/execute.md`](/fabric/api/execute) for exactly what's confirmed today.
+A local Codex or Claude Code session and a Praxa cloud task are separate
+systems. Starting a cloud task does not upload your repository or grant the
+runtime access to local files unless a future capability explicitly does so.
 
-## The problem
-
-You're in a Praxa Control session — Codex or Claude Code, running locally against your repo — and you hit something that's really research, not an edit. "What breaks across this codebase if we bump react-native from 0.83 to 0.84" is a slow, wide search, not a quick local diff. You don't want to keep the session open and your laptop awake just to babysit it.
-
-## What you build
-
-Nothing in your repo. You call the fabric's execute API for this one task instead of running the research as local tool calls in the session. Praxa Control is built to surface this directly from the session composer; until that lands in your build, the same call works from a script or terminal with your own key. Optionally, register a webhook once so you hear about completion without polling.
-
-## The calls
-
-Kick off the research and walk away:
+From a trusted local script or backend, submit only the supported envelope:
 
 ```http
 POST /v1/execute
-Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
-Idempotency-Key: rn-084-impact-2026-07-30
+Authorization: Bearer praxa_sk_...
+Content-Type: application/json
+X-AI-Platform-Version: v1
+Idempotency-Key: rn-084-impact-2026-08-01
 
 {
-  "task": "Assess the impact of upgrading react-native from 0.83.2 to 0.84 in this repo: which native modules and patches likely break, what needs re-verification, and a rough migration size estimate.",
-  "context": { "repo": "acme/storefront", "ref": "main" },
-  "tools": { "allow": ["web_search", "read_repo_docs"] },
-  "policy": {
-    "approvalMode": "auto",
-    "budgetCap": { "currency": "USD", "amount": 3 }
+  "apiVersion": "v1",
+  "requestId": "rn-084-impact-2026-08-01",
+  "mode": "task",
+  "task": {
+    "input": "Produce a migration checklist for upgrading React Native 0.83 to 0.84 using only information available to the cloud task."
   },
-  "delivery": { "mode": "task" }
+  "idempotencyKey": "rn-084-impact-2026-08-01"
 }
 ```
 
-The call returns immediately:
+Do not add `context`, `tools`, `policy`, `delivery`, or `task.agentId`; the
+current handler rejects them. A successful response contains a UUID `run_id`:
 
 ```json
-{ "run_id": "run_01j9rnimpact000000000001" }
+{
+  "apiVersion": "v1",
+  "run_id": "2f47a86e-72ce-4f27-8ff0-7dc0c959fd35",
+  "requestId": "rn-084-impact-2026-08-01",
+  "mode": "task",
+  "status": "queued",
+  "createdAt": "2026-08-01T12:00:00.000Z",
+  "updatedAt": "2026-08-01T12:00:00.000Z",
+  "links": {
+    "self": "/v1/runs/2f47a86e-72ce-4f27-8ff0-7dc0c959fd35",
+    "events": "/v1/runs/2f47a86e-72ce-4f27-8ff0-7dc0c959fd35/events"
+  }
+}
 ```
 
-Close the laptop. The run isn't a process on your machine — it's admitted into Praxa's durable run engine, the same `task_runs` state machine that already handles leases, retries, and recovery for every run on the platform, so a dead laptop doesn't kill it. If you retry the same call with the same `Idempotency-Key` — say, your connection dropped and you're not sure it went through — it's safe: an identical retry returns the original run instead of starting a second one.
+Poll the run, resume its SSE feed with `Last-Event-ID`, or configure an automatic
+signed webhook. The cloud task continues independently of the laptop; the
+webhook notifies your server and does not execute work on the closed device.
 
-Check back by polling:
-
-```http
-GET /v1/runs/run_01j9rnimpact000000000001
-Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
-```
-
-Or, if you reopen the session mid-run, resume the event stream instead of starting over:
-
-```http
-GET /v1/runs/run_01j9rnimpact000000000001/events
-Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
-Last-Event-ID: 41
-```
-
-Or skip polling entirely — register a webhook once and reuse it for every run:
-
-```http
-POST /v1/webhooks
-Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx
-
-{ "url": "https://example.com/hooks/praxa", "events": ["response.final"] }
-```
-
-Praxa posts a signed, retried event to that URL when the run finishes.
-
-## Local coding stays local
-
-This cloud research run and your local coding session are deliberately separate systems — worth being explicit about, since they sit right next to each other in the same product:
-
-- Your Codex/Claude Code session, and the provider credentials it authenticates with, run entirely on your desktop. Praxa's remote-coding design states this directly: provider credentials for Codex and Claude never leave the desktop. The fabric doesn't proxy or see those calls.
-- The research run above doesn't use your local provider key either. It runs on Praxa's own inference supply — the platform's bundled provider keys by default, or your organization's separately configured BYO keys if you've set those up — the same as any other execute-API call.
-- It's also separate from phone-to-desktop pairing, if you use the Praxa AI mobile app to watch a live local session: that traffic goes directly from your phone to your desktop, after a one-time pairing handshake, and doesn't traverse Praxa's Worker or a hosted relay. The execute API is a different, opt-in path you call *from* a session for work that should outlive it — not a channel into your local session.
-
-## What you experience
-
-Kick off the research from wherever's comfortable — the session composer or a terminal — close the laptop, and get a webhook ping when it's done, or check back and poll if you didn't register one. Bring the findings back into your local session however you'd bring in any other reference material.
-
-## What the receipt shows
-
-The run and usage endpoints are designed to carry the finished run's outcome: which tools it called, the policy version that governed it — `auto` here, since research doesn't commit external state, so nothing needed approval — and what it cost, rolled into your tenant's usage readback. See [`api/runs.md`](/fabric/api/runs) and [`api/usage.md`](/fabric/api/usage) for exactly what's confirmed on the wire today. Either way, a habit of "let it research overnight" becomes something you can see the cost of, not just assume is cheap.
+The cloud task uses Praxa's bundled execution supply. It does not proxy the
+local coding session's provider credentials. BYO funding is planned, not live.
 
 ## See also
 
-- [`api/execute.md`](/fabric/api/execute), [`api/events.md`](/fabric/api/events), [`api/runs.md`](/fabric/api/runs) — the full execute, events, and runs reference
-- [`api/webhooks.md`](/fabric/api/webhooks) — webhook registration and delivery, including what's still unconfirmed
-- [`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys) — issuing and scoping the `praxa_sk_` key your session uses
-- [`keys-and-access/scopes-and-tenancy.md`](/fabric/keys-and-access/scopes-and-tenancy) — BYO credential isolation and the fabric's server-derived authority model
+- [Execute](/fabric/api/execute)
+- [Runs](/fabric/api/runs)
+- [Streaming events](/fabric/api/events)
+- [Usage](/fabric/api/usage)

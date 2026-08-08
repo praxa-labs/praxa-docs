@@ -1,114 +1,67 @@
 ---
 title: "Budgets and limits"
 sidebarTitle: "Budgets and limits"
-description: "Every run is admitted with a fixed budget, set once and frozen for its"
+description: "Understand server-owned task funding and the unavailable request-level budget controls."
 ---
 
-> **Status:** Developer preview.
+> **Status:** Live partner-preview tasks pass server-owned fail-closed funding
+> reservation and settlement authority. Caller-defined step, time, spend, model,
+> tool, and approval limits are unavailable.
 
+## Current authority
 
-Every run is admitted with a fixed budget, set once and frozen for its
-entire lifetime. Nothing about a run's ceilings gets renegotiated
-mid-flight — not by the agent, not by a retry, not by a task that's taking
-longer than expected. This page covers the three per-run ceilings, the
-reserve-settle model behind the spend ceiling, and — the part that matters
-most — what the fabric actually does when a run hits one. For org-level
-budget policy, spend pooled across a tenant's keys, and invoicing, see
-[Billing and Plans](/fabric/enterprise/billing-and-plans).
+The authenticated personal tenant and server admission path choose the task's
+funding authority. The public handler rejects the `policy` field, including
+`maxSpendMicros`, risk ceilings, model lanes, and approval modes. A key scope is
+an endpoint permission; it is not a customer-defined budget.
 
-## Three ceilings, set at admission
+An admitted paid task has a reservation before execution and authoritative
+settlement afterward. `GET /v1/usage` reads completed provider and settled
+retail evidence. It does **not** report reserved spend or replace reservation,
+settlement, reconciliation, or invoice authority.
 
-A run is admitted with three limits, fixed before its first action runs:
+## Public outcome projection
 
-- **Step ceiling** — the maximum number of committed actions the run may
-  take.
-- **Time ceiling** — the maximum wall-clock duration the run may run for.
-- **Spend ceiling** — the maximum it may reserve against your balance.
-
-All three are immutable for the life of the run, the same guarantee that
-keeps a run's policy version from drifting mid-run (see
-[Versioning and receipts](/fabric/approvals-and-policy/policy-engine#versioning-and-receipts)). A
-task that turns out to need more room than it was admitted with isn't
-extended mid-flight — that's a new run.
-
-Back to the dunning-email example from [approvals.md](/fabric/approvals-and-policy/approvals): a
-task shaped like "look up the invoice, draft the reminder, wait for
-approval, send it" doesn't need much room to do that, so it's admitted with
-a small step ceiling and a short time ceiling. A task with a tight,
-well-understood shape gets a tight budget — the ceiling isn't a formality,
-it's what keeps one agent step from turning into an unbounded loop.
-
-## Reserve, settle, reconcile
-
-Spend is never charged after the fact on trust. It moves through three
-phases:
-
-1. **Reserve.** Before a run is allowed to do anything, funds are held
-   against its spend ceiling — a real hold against your balance, not an
-   estimate. A run can't execute without an active reservation, and can
-   never spend more than what's reserved.
-2. **Settle.** When the run reaches a terminal state — completed, partial,
-   failed, cancelled, whatever shape it actually ends in — actual usage is
-   charged against the hold, and whatever wasn't used is released back
-   automatically. You're never charged for reserved headroom the run didn't
-   spend.
-3. **Reconcile.** On the rare occasion actual usage can't be settled
-   automatically and cleanly, the run is flagged for reconciliation instead
-   of a guessed number — its own visible state, never hidden inside a
-   `completed` result.
-
-This machinery already runs in production for Praxa's own product today;
-what's still developer preview is exposing and enforcing it cleanly on the
-new `/v1/execute` lane specifically. See
-[Billing and Plans](/fabric/enterprise/billing-and-plans) for exactly what
-that distinction means for your invoice.
-
-A parked approval doesn't pause billing safety. If a run is sitting in
-`waiting_approval` and its underlying funding hold expires before someone
-decides, resuming is refused outright rather than resuming against a hold
-that's no longer there — see
-[Expiry and TTL](/fabric/approvals-and-policy/approvals#expiry-and-ttl). `GET /v1/usage` gives you a
-tenant-scoped readback of reserved and settled spend outside a run's own
-event stream.
-
-## What happens at the ceiling
-
-Hitting a ceiling is an expected, designed stop, not an error condition.
-
-When a run reaches its step ceiling or its time ceiling, it does not attempt
-one more action past it. It stops taking new actions and moves to close
-out — the same close-out path every run goes through, whether it stopped
-because it genuinely finished or because it ran out of room. That close-out
-independently checks what the run actually, verifiably accomplished before
-it's allowed to report a result.
-
-The terminal status says which of these it actually was:
-
-| Status | What it means |
+| Internal outcome | Public v1 projection |
 |---|---|
-| `completed` | The full outcome was verified. |
-| `partial` | Some, but not all, of the intended outcome was verifiably accomplished. If the Meridian run's step ceiling were hit right after the email sent but before send confirmation could be independently verified, this is the label it gets — not `completed`, because that specific claim was never checked. |
-| `failed` | The run did not accomplish its outcome. |
-| `cancelled` | Stopped on request, before completion. |
-| `expired` | Timed out without resolving. |
-| `outcome_unknown` | Something was plausibly executed, but the run can't independently confirm what — reported as genuinely uncertain, never guessed in either direction. |
-| `reconcile_required` | The billing exception described above. |
+| verified completion | `completed` / `run.completed` |
+| ordinary failure, partial, or expiry | `failed` / `run.failed` with `run_failed` |
+| confirmed cancellation | `cancelled` / `run.cancelled` |
+| reconciliation in progress | `running` / non-terminal `run.progress` |
+| unverifiable committing outcome | `failed` / `run.failed` with `run_outcome_unknown`, `retryable:false` |
 
-No ceiling stop is silently reported as a clean success. A `partial` result
-says exactly that instead of rounding up.
+The cancellation-reconciliation migration and compatible Workers are deployed.
+The last two final-status behaviors remain pending a separate live canary. Once
+that gate clears, the exact no-retry message during reconciliation is:
 
-## Setting a tighter budget per run
+```text
+The run is reconciling an uncertain execution outcome. Do not retry or resubmit it.
+```
 
-The `policy` field on `POST /v1/execute` lets a caller set a tighter spend
-ceiling for a specific run than the tenant default allows — one of the same
-constrained dials described in
-[Trigger inputs, in plain language](/fabric/approvals-and-policy/policy-engine#trigger-inputs-in-plain-language),
-alongside risk ceiling, model-lane pin, tool allowlist, and approval mode.
-It can only tighten the ceiling for that run, never loosen it past what your
-tenant's policy pack allows.
+Successful recovery emits:
+
+```text
+Run reconciliation completed; execution is resuming.
+```
+
+An unknown terminal outcome uses:
+
+```text
+A committing action may have happened, but the final outcome could not be verified. Do not retry automatically.
+```
+
+Do not retry or resubmit based on a non-terminal cancellation response. A
+cancellation request is cooperative and cannot roll back an already committed
+action.
+
+## Roadmap controls
+
+Customer-configurable immutable step/time/spend ceilings, organization pooling,
+per-key budgets, policy packs, and request-level tightening remain planned.
+Their SDK schema fields are reserved contracts, not active behavior.
 
 ## See also
 
-- [Approvals](/fabric/approvals-and-policy/approvals) — what happens to a run's reservation while it's parked
-- [Policy engine](/fabric/approvals-and-policy/policy-engine) — the `policy` field's other dials
-- [Billing and Plans](/fabric/enterprise/billing-and-plans) — org-level budget policy, pooling, and invoicing
+- [Execute](/fabric/api/execute)
+- [Usage](/fabric/api/usage)
+- [Billing and plans](/fabric/enterprise/billing-and-plans)

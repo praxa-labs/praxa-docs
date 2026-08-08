@@ -1,192 +1,319 @@
 ---
 title: "Receive webhooks"
 sidebarTitle: "Receive webhooks"
-description: "Webhooks let you receive a run's progress — including approval.required —"
+description: "Verify, persist, deduplicate, and order signed Praxa task-event webhooks."
 ---
 
-> **Status:** Developer preview.
+> **Status:** Production partner preview for admitted personal tenants.
+> Production migration history records the forward-projection migration
+> `20260801092339 platform_task_webhook_projection` and authority migration
+> `20260801092356 platform_webhook_api_authority`. Projection starts with events
+> inserted after the projection migration and does not backfill earlier task
+> events.
 
-Webhooks let you receive a run's progress — including `approval.required` —
-without holding a stream connection open. Register an HTTPS endpoint once;
-Praxa signs and retries every delivery to it. This is Praxa's first
-*outbound* webhook lane, so treat every delivery as untrusted until you've
-verified it: nothing enforces that a `POST` to your endpoint actually came
-from Praxa except the signature you check yourself.
+Webhooks let your server receive durable run progress without holding an SSE
+connection open. Praxa signs every request, retries failed deliveries, and may
+deliver the same event more than once or out of order. Your handler must verify
+the raw request, persist each event idempotently, and order changes within each
+run.
 
 ## 1. Register an endpoint
 
+The signed-in developer portal uses `POST /api/platform/webhooks`. The bearer
+SDK contract uses this active partner-preview operation:
+
+<Note>
+  This operation is available only to keys issued to admitted personal tenants.
+  It is not generally available.
+</Note>
+
 ```http
 POST /v1/webhooks
-Authorization: Bearer praxa_sk_...
+Authorization: Bearer praxa_sk_<64 lowercase hex characters>
 Content-Type: application/json
 
 {
   "url": "https://your-service.example.com/webhooks/praxa",
-  "events": ["approval.required", "response.final", "request.failed"]
+  "event_types": ["approval.required", "run.completed", "run.failed"]
 }
 ```
 
-The response includes a signing secret. It is shown once — store it in your
-own secret manager immediately, the same way you'd store any other API
-credential:
+The gateway requires `runs:write`. The backend reauthorizes both `runs:read`
+and `runs:write`, so the key must carry both scopes. The response status is
+`201`.
+
+The response includes `signing_secret` once. Store it immediately in your
+secret manager; Praxa will not show it again.
 
 ```json
 {
-  "id": "whe_2f9a7c10",
-  "url": "https://your-service.example.com/webhooks/praxa",
-  "secret": "praxa_whsec_9c1a...",
-  "createdAt": "2026-07-30T18:00:00.000Z"
+  "endpoint": {
+    "apiVersion": "v1",
+    "id": "73f700a8-5367-4c78-9d13-8b60c9bb9374",
+    "url": "https://your-service.example.com/webhooks/praxa",
+    "event_types": ["approval.required", "run.completed", "run.failed"],
+    "status": "active",
+    "createdAt": "2026-08-01T12:00:00.000Z",
+    "updatedAt": "2026-08-01T12:00:00.000Z"
+  },
+  "signing_secret": "praxa_whsec_..."
 }
 ```
 
-Each delivery's body is one run event, in the same `AiPlatformEventV1` shape
-(`type`, `sequence`, `at`, plus type-specific fields) you'd see on
-`GET /v1/runs/:id/events` — just pushed to you instead of streamed. Only
-subscribe to the event types you'll actually act on; every subscribed type
-is a delivery you're committing to verify and acknowledge.
+The automatic projection migration is forward-only. An endpoint receives
+matching events created after the production projection migration; creating an
+endpoint does not backfill earlier run history.
 
-## 2. Verify the signature
+## 2. Verify the signature before parsing
 
-Every delivery carries three headers: `Praxa-Signature`, `Praxa-Timestamp`,
-and `Praxa-Delivery-Id`. The signature is an HMAC-SHA256 over
-`{delivery id}.{timestamp}.{raw body}`, keyed with your endpoint's secret —
-**always sign and verify the raw, unparsed body**. If you `JSON.parse` first
-and re-serialize before checking, whitespace and key-ordering differences
-will make a legitimate delivery fail verification.
+Every delivery carries:
 
-The timestamp guards against replay: reject anything more than a few minutes
-old, using a clock you control rather than trusting the header alone.
+```text
+Praxa-Webhook-Id: <event-id>
+Praxa-Webhook-Timestamp: <unix-timestamp>
+Praxa-Webhook-Signature: v1=<lowercase hex digest>
+```
+
+Praxa computes HMAC-SHA-256 over:
+
+```text
+<event-id>.<unix-timestamp>.<raw-request-body>
+```
+
+Verify the exact raw bytes. Parsing and re-serializing JSON first can change
+whitespace or key order and invalidate the signature.
 
 ```ts
-const REPLAY_WINDOW_MS = 5 * 60 * 1000; // reject deliveries older/newer than 5 minutes
+const REPLAY_WINDOW_SECONDS = 5 * 60;
 
-function timingSafeEqual(a: string, b: string): boolean {
-  // Compare the full length of both strings — no early return — so timing
-  // doesn't leak how many leading characters matched.
-  let diff = a.length ^ b.length;
-  const len = Math.max(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
-  }
-  return diff === 0;
-}
-
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+function hexBytes(value: string): Uint8Array | null {
+  if (!/^[a-f0-9]{64}$/.test(value)) return null;
+  return Uint8Array.from(value.match(/../g)!, (pair) => Number.parseInt(pair, 16));
 }
 
 export async function verifyPraxaWebhook(input: {
-  rawBody: string; // the EXACT bytes you received — never a re-serialized parse
-  signature: string | null; // Praxa-Signature header, e.g. "v1=3a5c..."
-  timestamp: string | null; // Praxa-Timestamp header, unix seconds as a string
-  deliveryId: string | null; // Praxa-Delivery-Id header
-  secret: string; // your endpoint's praxa_whsec_... secret
-  nowMs?: number; // inject the clock so this stays testable; defaults to Date.now()
+  rawBody: string;
+  eventId: string | null;
+  timestamp: string | null;
+  signature: string | null;
+  secret: string;
+  nowSeconds?: number;
 }): Promise<boolean> {
-  const { rawBody, signature, timestamp, deliveryId, secret } = input;
-  const nowMs = input.nowMs ?? Date.now();
-  if (!signature || !timestamp || !deliveryId || !secret) return false;
-  if (!signature.startsWith("v1=")) return false;
+  const { rawBody, eventId, timestamp, signature, secret } = input;
+  if (!eventId || !timestamp || !signature || !secret) return false;
 
   const seconds = Number(timestamp);
-  if (!Number.isFinite(seconds)) return false;
-  if (Math.abs(nowMs - seconds * 1000) > REPLAY_WINDOW_MS) return false;
+  const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(seconds)) return false;
+  if (Math.abs(now - seconds) > REPLAY_WINDOW_SECONDS) return false;
 
-  // WebCrypto only — no external HMAC library, runs identically on Workers,
-  // Node 19+, Deno, and the browser.
+  const digest = signature.startsWith("v1=")
+    ? hexBytes(signature.slice(3))
+    : null;
+  if (!digest) return false;
+
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"],
+    ["verify"],
   );
-  const mac = await crypto.subtle.sign(
+  const signed = `${eventId}.${timestamp}.${rawBody}`;
+  return crypto.subtle.verify(
     "HMAC",
     key,
-    new TextEncoder().encode(`${deliveryId}.${timestamp}.${rawBody}`),
+    digest,
+    new TextEncoder().encode(signed),
   );
-  return timingSafeEqual(signature.slice(3), toHex(new Uint8Array(mac)));
 }
 ```
 
-Wire it into your handler before any parsing happens:
+Use it before `JSON.parse`:
 
 ```ts
 export async function handlePraxaWebhook(request: Request): Promise<Response> {
-  const rawBody = await request.text(); // read raw text BEFORE JSON.parse
-  const ok = await verifyPraxaWebhook({
+  const rawBody = await request.text();
+  const eventId = request.headers.get("Praxa-Webhook-Id");
+  const valid = await verifyPraxaWebhook({
     rawBody,
-    signature: request.headers.get("Praxa-Signature"),
-    timestamp: request.headers.get("Praxa-Timestamp"),
-    deliveryId: request.headers.get("Praxa-Delivery-Id"),
+    eventId,
+    timestamp: request.headers.get("Praxa-Webhook-Timestamp"),
+    signature: request.headers.get("Praxa-Webhook-Signature"),
     secret: process.env.PRAXA_WEBHOOK_SECRET!,
   });
-  if (!ok) return new Response("invalid signature", { status: 401 });
+  if (!valid) return new Response("invalid signature", { status: 401 });
 
-  const deliveryId = request.headers.get("Praxa-Delivery-Id")!;
   const event = JSON.parse(rawBody);
-  await handleDelivery(deliveryId, event); // see step 3
-  return new Response(null, { status: 200 });
+  if (event.apiVersion !== "v1" || event.event_id !== eventId) {
+    return new Response("invalid event", { status: 400 });
+  }
+
+  await persistOnceAndQueue(event.event_id, event.run_id, event.sequence, event);
+  return new Response(null, { status: 204 });
 }
 ```
 
-## 3. Handle deliveries idempotently
+`persistOnceAndQueue` should atomically insert `event_id` under a unique
+constraint and enqueue any slower work. Return 2xx only after that transaction
+commits. If the id already exists, acknowledge the duplicate without repeating
+its effects.
 
-Retries WILL resend a delivery — a failed attempt, a slow response, a
-network blip on either side all look identical to Praxa and all get retried.
-`Praxa-Delivery-Id` stays the same across every retry of the *same*
-delivery, so use it as your dedup key rather than trying to derive one from
-the event body:
+## 3. Deduplicate and order per run
+
+Praxa provides at-least-once delivery. Retries and manual replay preserve the
+same immutable `event_id`, so use that as the deduplication key.
+
+Delivery order is not guaranteed. A retry of sequence 11 can arrive after
+sequence 12. Use `(run_id, sequence)` to process or reconstruct one run's
+ordered history:
 
 ```ts
-async function handleDelivery(deliveryId: string, event: unknown) {
-  if (await store.has(deliveryId)) return; // already processed
-  await store.markSeen(deliveryId, { ttlDays: 14 });
-  await processEvent(event);
+type PraxaWebhookEvent = {
+  event_id: string;
+  run_id: string;
+  sequence: number;
+};
+
+function compareWithinRun(a: PraxaWebhookEvent, b: PraxaWebhookEvent): number {
+  if (a.run_id !== b.run_id) throw new Error("events belong to different runs");
+  return a.sequence - b.sequence;
 }
 ```
 
-Mark the delivery seen *before* you do slow or side-effecting work, and make
-`processEvent` itself safe to no-op on a second call if you can — a crash
-between "processed" and "marked seen" should not be able to double-apply an
-effect like sending a notification twice.
+Do not treat `sequence` as global, and do not use HTTP arrival order as run
+state. You may receive a later event before an earlier one.
 
-## 4. Know the retry and dead-letter behavior
+## 4. Parse the strict v1 body
 
-- Acknowledge fast: return a 2xx as soon as you've durably queued the
-  delivery, and do slow processing afterward. A handler that blocks on slow
-  work looks like a timeout to Praxa, and a timeout is indistinguishable
-  from a failure — it gets retried.
-- A non-2xx response or a timeout counts as a failed attempt. Praxa retries
-  on an exponential backoff schedule; check your endpoint's delivery history
-  in the developer console for the exact schedule and current attempt count
-  for any given delivery.
-- A delivery that keeps failing past its final retry moves to a dead-letter
-  state instead of disappearing. Inspect and manually replay dead-lettered
-  deliveries from the console rather than assuming a run's history is
-  complete without them.
-- Delivery order is best-effort, not guaranteed — a retried delivery can
-  land after a newer one. If ordering matters to you, key your handling off
-  the event's own `sequence` field, not the order deliveries arrive in.
+The body contains exactly seven top-level fields:
 
-## 5. Rotate your signing secret
+```json
+{
+  "apiVersion": "v1",
+  "event_id": "864d6901-0de1-4fcf-9c9d-1a1f9d60cb4a",
+  "created_at": "2026-08-01T12:45:18.430Z",
+  "run_id": "3b7e72a9-8607-4e99-9acc-71b81cf7742b",
+  "sequence": 12,
+  "type": "run.progress",
+  "data": {
+    "status": "running"
+  }
+}
+```
 
-Request a new secret for the endpoint when you need to rotate — on a
-schedule, after a suspected leak, or as part of offboarding anyone who had
-access to it. During rotation, the previous secret keeps validating
-deliveries for a short overlap window so in-flight retries signed before the
-rotation don't start failing the instant you switch: verify against both the
-old and new secret until you've confirmed the new one is live in your
-deployment, then delete the old one from your code and let it lapse.
+The `data` object is strict and depends on `type`. Reconciliation notifications
+are `run.progress` with exactly `{ "status": "running" }`. A permanently
+unknown committing outcome is:
 
-Never log a secret while you're debugging a rotation — treat it exactly like
-the API key you use to call `/v1/execute`, because a leaked webhook secret
-lets anyone forge deliveries to your endpoint.
+```json
+{
+  "apiVersion": "v1",
+  "event_id": "1d530fb7-ed06-46d4-b24d-345210623bc2",
+  "created_at": "2026-08-01T12:49:20.101Z",
+  "run_id": "3b7e72a9-8607-4e99-9acc-71b81cf7742b",
+  "sequence": 13,
+  "type": "run.failed",
+  "data": {
+    "status": "failed",
+    "error_code": "run_outcome_unknown"
+  }
+}
+```
+
+Do not automatically retry or resubmit that run. See
+[Webhooks](/fabric/api/webhooks) for every type-specific shape.
+
+## 5. Fetch the approval before rendering it
+
+An `approval.required` webhook is a notification, not the approval
+presentation. Its `data` contains only:
+
+```json
+{
+  "status": "waiting_approval",
+  "action_digest": "5f1d2c9a4e7b0f3d6c8a1b2e9f4d7c0a3b6e9f2c5a8d1b4e7f0c3a6d9b2e5f8c"
+}
+```
+
+Fetch `GET /v1/runs/:id`, require `pendingApproval`, and verify its digest
+equals the webhook digest. Only then render the exact
+`pendingApproval.summary` and allow a human to approve or deny. If the run no
+longer exposes that exact pending approval, fail closed and acknowledge the
+webhook without showing active decision controls.
+
+Submit the public decision with the unchanged digest:
+
+```http
+POST /v1/runs/{runId}/approve
+Authorization: Bearer praxa_sk_<64 lowercase hex characters>
+Content-Type: application/json
+
+{
+  "action_digest": "5f1d2c9a4e7b0f3d6c8a1b2e9f4d7c0a3b6e9f2c5a8d1b4e7f0c3a6d9b2e5f8c",
+  "decision": "approve"
+}
+```
+
+The public request accepts `approve` or `deny`. The later
+`approval.resolved.data.decision` webhook deliberately preserves the internal
+event values `approved` or `denied`. Do not send those past-tense values in the
+public approval request.
+
+## 6. Understand retries and dead letters
+
+- Return 2xx after durable acceptance, then process slow work asynchronously.
+- Timeouts, `408`, `409`, `425`, `429`, and 5xx responses are retryable.
+- Praxa makes at most five attempts, delayed by 30 seconds, 5 minutes,
+  30 minutes, and 2 hours.
+- Other 4xx responses and refused or unsafe redirects fail permanently.
+- A delivery that exhausts retries enters `dead_letter`. Inspect it and use the
+  idempotent replay action after correcting your endpoint.
+
+Use the active bearer management route to list delivery records with a key
+carrying `runs:read`:
+
+```http
+GET /v1/webhook-deliveries?endpoint_id=73f700a8-5367-4c78-9d13-8b60c9bb9374&status=dead_letter&limit=50
+Authorization: Bearer praxa_sk_<64 lowercase hex characters>
+```
+
+You can filter by `endpoint_id`, `run_id`, or `status`, page with `cursor`, and
+set `limit` from 1 to 100. The default is 50. The response status is `200`, and
+the strict list contains `apiVersion`, `data`, and optional `nextCursor`.
+
+Replay a corrected dead-letter delivery by sending an exact empty object:
+
+```http
+POST /v1/webhook-deliveries/{deliveryId}/replay
+Authorization: Bearer praxa_sk_<64 lowercase hex characters>
+Content-Type: application/json
+
+{}
+```
+
+The gateway checks `runs:write`, while the backend requires both `runs:read`
+and `runs:write`. A successful replay returns `202` and the created or
+idempotently reused delivery record.
+
+## Production rollout evidence
+
+The compatible Worker fleet is deployed at exact ref
+`7e347f497e8f56395abc541569c018977287da8f`. Production migration history
+records:
+
+- `20260801092339 platform_task_webhook_projection`;
+- `20260801092356 platform_webhook_api_authority`.
+
+A production canary created an endpoint, received a delivery, and verified its
+HMAC over the exact raw body. Retry, dead-letter, eligible replay, and redirect
+safety remain separate operational canaries. Build idempotent handling as
+documented even when a particular retry path has not been forced in a live
+canary.
 
 ## Next steps
 
-- Approval deliveries follow the same rendering rule as the live stream —
-  see [build-an-approval-ui.md](/fabric/how-to/build-an-approval-ui).
-- Funding your runs with your own provider credentials instead of Praxa's?
-  See [bring-your-own-keys.md](/fabric/how-to/bring-your-own-keys).
+- Build the human decision flow with
+  [Build an approval UI](/fabric/how-to/build-an-approval-ui).
+- Review the full payload, signing, activation, and endpoint constraints in
+  [Webhooks](/fabric/api/webhooks).

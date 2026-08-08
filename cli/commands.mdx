@@ -1,7 +1,7 @@
 ---
 title: "Praxa CLI Commands: Flags, Env Vars, and Usage Examples"
 sidebarTitle: "Commands"
-description: "Full reference for praxa CLI commands: version, doctor, mission get, create, and cancel. Covers required flags, environment variables, and example output."
+description: "Full reference for Praxa CLI commands: init, version, doctor, and mission submit, get, create, and cancel."
 ---
 
 This page covers every command available in `@praxa/cli`. Each section includes a description of what the command does, the full flag set, which environment variables it reads, and a runnable example. All commands write JSON to stdout and errors to stderr, exiting with code `1` on failure.
@@ -30,9 +30,9 @@ None required.
 
 ```json
 {
-  "cliVersion": "0.1.0",
+  "cliVersion": "0.2.0",
   "openapiVersion": "8.1.0",
-  "contractVersion": "aura-integration-gateway-v8.1",
+  "contractVersion": "praxa-integration-gateway-v8.1",
   "openapiSha256": "<hex fingerprint>"
 }
 ```
@@ -40,6 +40,25 @@ None required.
 <Tip>
 Run `praxa version` immediately after installation to confirm the correct build is on your `PATH` and to capture the exact OpenAPI version for support requests.
 </Tip>
+
+---
+
+## `praxa init`
+
+Configures one or more project-scoped agent clients without writing an access token into project files.
+
+**Syntax**
+
+```bash
+praxa init [--base-url <url>] [--target <target>] [--auth environment|oauth] \
+  [--project-dir <path>] [--dry-run] [--force] [--json]
+```
+
+Use `--target` repeatedly to select `codex`, `claude`, `cursor`, `vscode`, or `env`; omit it to configure all targets. `--dry-run` reports intended changes without writing files, and `--force` replaces a conflicting managed entry.
+
+```bash
+praxa init --target codex --target cursor --project-dir . --json
+```
 
 ---
 
@@ -77,6 +96,30 @@ praxa doctor
   "ok": true,
   "coverage": { ... }
 }
+```
+
+---
+
+## `praxa mission submit`
+
+Records natural-language intent for deterministic compilation. A successful response is durable admission, not proof of execution or a provider outcome.
+
+**Syntax**
+
+```bash
+praxa mission submit --intent <text> --idempotency-key <key> [--base-url <url>]
+```
+
+| Flag | Required | Description |
+|---|---|---|
+| `--intent <text>` | Yes | Natural-language intent between 1 and 4,000 characters |
+| `--idempotency-key <key>` | Yes | A stable 16–128 character key for this logical submission |
+| `--base-url <url>` | No | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+
+```bash
+praxa mission submit \
+  --intent "Prepare a governed deployment plan" \
+  --idempotency-key $(uuidgen)
 ```
 
 ---

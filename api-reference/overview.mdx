@@ -1,10 +1,10 @@
 ---
 title: "Praxa Integration Gateway REST API v8.1.0 Reference"
 sidebarTitle: "Overview"
-description: "The Praxa Integration Gateway REST API v8.1.0 lets you submit and manage governed AI agent missions. All 14 endpoints require scoped OAuth Bearer tokens."
+description: "The Praxa Integration Gateway REST API v8.1.0 lets you submit and manage governed AI agent missions. All 15 operations require scoped OAuth Bearer tokens."
 ---
 
-The Praxa Integration Gateway exposes a REST API at version 8.1.0 (contract: `aura-integration-gateway-v8.1`) for submitting and managing governed AI agent missions. Models, SDKs, CLIs, and MCP tools grant no action authority of their own — all effects are governed by the platform's policy and consent controls. This reference covers all 14 endpoints available in v8.1.0.
+The Praxa Integration Gateway exposes a REST API at version 8.1.0 (contract: `praxa-integration-gateway-v8.1`) for submitting and managing governed AI agent missions. Models, SDKs, CLIs, and MCP tools grant no action authority of their own — all effects are governed by the platform's policy and consent controls. This reference covers all 15 operations available in v8.1.0.
 
 ## Base URL
 
@@ -26,7 +26,7 @@ Every request must use HTTPS. HTTP origins are rejected by the gateway.
 The current API version is **v8.1.0**, accessible under the `/v8/` path prefix. All v8 paths share a single wire-compatibility contract that is identified by the following header, which the server includes in every response:
 
 ```
-x-aura-contract-version: aura-integration-gateway-v8.1
+x-praxa-contract-version: praxa-integration-gateway-v8.1
 ```
 
 You can use this header to confirm that the gateway you are talking to is
@@ -38,6 +38,7 @@ The table below lists every endpoint exposed by the Integration Gateway. Click a
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `POST` | `/v8/intents` | Record a natural-language intent for deterministic compilation |
 | `POST` | `/v8/missions` | Create a new mission |
 | `GET` | `/v8/missions/{runId}` | Get mission status |
 | `GET` | `/v8/missions/{runId}/events` | Stream mission events (SSE) |
@@ -55,13 +56,13 @@ The table below lists every endpoint exposed by the Integration Gateway. Click a
 
 <Tip>
   The `/mcp` endpoints sit outside the `/v8/` prefix because they implement the
-  MCP 2025-03-26 Streamable HTTP JSON-RPC protocol, which has its own
-  versioning surface.
+  MCP 2025-11-25 Streamable HTTP JSON-RPC protocol, with negotiated
+  compatibility for 2025-03-26. MCP has its own versioning surface.
 </Tip>
 
 ## Response Format
 
-All endpoints return JSON bodies (`application/json`) together with standard HTTP status codes. A `200` or `202` response means your request was accepted and the body contains the documented schema.
+Most operations return JSON bodies together with standard HTTP status codes. The mission-events operation returns `text/event-stream`, and `GET /mcp` returns `405 Method Not Allowed` without a JSON success body. A `200` or `202` JSON response means the request was accepted and the body contains the documented schema.
 
 When the gateway cannot fulfill a request, it returns an `application/problem+json` body following [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457). Every problem response includes the following fields:
 
@@ -78,7 +79,7 @@ See [Errors](/api-reference/errors) for the full list of status codes and recove
 
 ## Idempotency
 
-Mutating operations (`POST /v8/missions`, `POST /v8/missions/{runId}/signals`, and `POST /v8/missions/{runId}/cancel`) require you to include an `Idempotency-Key` header on every call. Safe read operations (`GET` requests and search/query `POST` requests) do not require it.
+Mutating operations (`POST /v8/intents`, `POST /v8/missions`, `POST /v8/missions/{runId}/signals`, and `POST /v8/missions/{runId}/cancel`) require you to include an `Idempotency-Key` header on every call. Safe read operations (`GET` requests and search/query `POST` requests) do not require it.
 
 ```
 Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000

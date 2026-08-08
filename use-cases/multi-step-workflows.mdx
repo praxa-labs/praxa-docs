@@ -103,14 +103,14 @@ for await (const event of client.missionEvents(mission.runId)) {
 The `missionEvents()` async generator yields every server-sent event emitted during the mission's lifetime. Pipe these events to your front-end via WebSocket or SSE to give users a live view of agent progress.
 
 ```typescript
-import { PraxaClient, type AuraSseEvent } from "@praxa/sdk";
+import { PraxaClient, type PraxaSseEvent } from "@praxa/sdk";
 
 const client = new PraxaClient({
   baseUrl: process.env.PRAXA_BASE_URL!,
   accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
 });
 
-async function streamWorkflow(runId: string, pushToClient: (e: AuraSseEvent) => void) {
+async function streamWorkflow(runId: string, pushToClient: (e: PraxaSseEvent) => void) {
   for await (const event of client.missionEvents(runId)) {
     // Forward every event to the connected client in real time
     pushToClient(event);

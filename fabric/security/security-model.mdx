@@ -1,183 +1,89 @@
 ---
 title: "Security model"
 sidebarTitle: "Security model"
-description: "Scope: the trust boundaries between client, gateway, and runtime; what a"
+description: "Understand the live gateway/runtime boundary and the safety features that remain pending or planned."
 ---
 
-> **Status:** Trust-boundary architecture and the unified policy engine —
-> **Developer preview** (designed, not built). The fail-closed
-> approval-enforcement pattern and the credential-hashing pattern it
-> generalizes — **Available today**, inside the product the fabric is built
-> on top of.
-
-Scope: the trust boundaries between client, gateway, and runtime; what a
-client can never do regardless of what it asks for; the fail-closed
-enforcement philosophy with concrete examples; and how the platform handles
-the credentials it issues and the credentials tenants bring.
-
-Sources: `docs/superpowers/specs/2026-07-30-maas-execution-fabric-design.md`
-(design spec) §§1–4, 6; `docs/decisions/2026-07-24-ai-platform-extraction.md`
-("Security decision" and the target-boundaries sections).
+> **Status:** The personal partner-preview gateway, API-key authority, strict
+> minimal task boundary, tenant-bound run/usage reads, and server-owned billing
+> admission are live. Unified policy, BYO credentials, organization execution,
+> and mature receipts are unavailable.
 
 ## Trust boundaries
 
-The design draws three boundaries, and a request cannot skip one to reach
-the next.
+**Client.** Holds a credential and requests an operation. It cannot assign its
+own identity, tenant, roles, billing account, tools, model, policy authority, or
+approval.
 
-**Client.** Everything outside Praxa's infrastructure: the Expo app, web,
-Praxa Control (desktop), and third-party API callers. A client holds a
-credential and can make requests. It cannot make itself more than what that
-credential already resolves to — see "What a client can never do" below.
+**Gateway.** Validates protocol/method/path, bearer key admission, endpoint
+scope, request/body limits, and CORS, then strips external authorization state
+before private service-binding dispatch. Gateway admission is necessary but
+not final point-of-effect authority.
 
-**Gateway.** A separately deployable, versioned edge — the fabric gateway in the
-design, served at the existing `api.praxa.io` custom domain behind a
-flag-gated dispatch (design spec §4, workstream F1). It owns protocol/version
-negotiation, OAuth/API-key authentication, audience/tenant/organization/scope
-validation, CORS for explicitly registered origins, request-size and rate
-limits, idempotency claim/replay, stream framing, normalized errors, and
-trace correlation plus response redaction. It does **not** own model
-selection, prompt construction, tool execution, memory, billing decisions, or
-provider credentials — those stay one layer in, by design.
+**Runtime and database authority.** Re-resolve the key, tenant, actor, resource
+ownership, scopes, funding, current state, and mutation invariants. Privileged
+provider, connector, webhook-signing, and database credentials remain inside
+this boundary.
 
-**Runtime.** The one privileged execution authority — the existing chat runtime today, per
-the parent ADR's strangler migration. It owns authenticated actor/tenant
-authority, model and provider selection, tool admission/approval/execution,
-memory retrieval and writes, billing authorization and metering, durable
-workflow state, and provider-specific error mapping. Provider and privileged
-tool credentials live here, and only here — never in a client, never at the
-gateway.
+## Current client constraints
 
-Everything past the runtime — model providers, tool/connector adapters,
-Supabase/R2/Vectorize/Workflows/Durable Objects, observability — is reached
-only from the runtime.
+- no request `userId`, tenant assignment, or organization execution;
+- `task.agentId`, `context`, `tools`, `policy`, and `delivery` are rejected;
+- exact four-value key scope enum;
+- foreign/unknown resources are not projected;
+- cancellation is cooperative and cannot assert rollback;
+- usage is customer-safe evidence, not authority to change billing.
 
-## What a client can never do
+## API-key handling
 
-A client can *request* a capability. It cannot *grant itself* one. Per the
-ADR's client boundary, no request, from any client, can self-assign:
+Praxa creates 32 random bytes and returns the `praxa_sk_` secret once. It stores
+a SHA-256 hash plus safe lifecycle metadata, not recoverable plaintext. Create
+and rotate responses are `no-store`; list responses never expose the hash or
+tenant id. Rotation and revocation recheck authoritative storage even while an
+edge projection propagates.
 
-- **Identity.** The request schema has no `userId` field, deliberately.
-  Identity comes from the credential the gateway validated — a JWT's claims,
-  or the tenant an API key resolves to — never from a body field.
-- **Tenancy.** `organizationId` is a *requested resource*, not an assertion.
-  The server still has to authorize the caller against real membership
-  before honoring it.
-- **Tools.** Tool admission is runtime-owned — capability metadata, policy
-  evaluation, tenant scope. A request cannot add itself to an allowlist by
-  asking.
-- **Billing tier.** Spend ceilings and credit balance are runtime-derived. A
-  request body cannot raise its own limit.
-- **Approvals.** A client cannot self-approve a gated action, and cannot
-  construct approval evidence — only present evidence it was actually
-  issued. Full treatment in `receipts-and-audit.md`.
-- **Memory consent.** Consent state is runtime-derived, not client-asserted.
+Existing custom-agent deployment keys remain a separate credential family.
 
-Praxa Control and other IDE-shaped clients get one more layer before local
-tools are even admitted: workspace trust, explicit file/terminal capability
-grants, path confinement, and per-action audit. Running locally is not itself
-a trust grant.
+## Webhook boundary
 
-## Fail-closed philosophy
+Partner-preview webhook management rechecks tenant and actor in service-role-only
+database functions. Endpoint destinations must be public HTTPS and pass
+SSRF-resistant validation. Signing secrets are generated once, encrypted with
+AES-256-GCM at rest, and returned only by create. Gateway authorization headers
+are removed before private dispatch.
 
-The rule, stated directly in the parent ADR: **authorization remains
-server-derived and fail closed.** What that means in practice:
+Automatic task projection and bearer management are active for admitted
+personal tenants. A production canary verified a delivery signature against the
+exact raw body. Retry, dead-letter, eligible replay, and redirect-safety
+exercises remain separate operational canaries.
 
-**Two independent checks, not one.** The gateway validates a token's
-audience and expiry — is this credential real and current. The runtime then
-independently re-authorizes tenant, conversation, data classes, tools, and
-approvals — is this specific actor allowed to do this specific thing, right
-now, against live state. Clearing the gateway is necessary; it is not
-sufficient. A request that clears authentication still gets re-checked
-before it can act.
+## Approval boundary
 
-**Default-deny policy output.** The design's unified policy engine
-(`evaluateActionPolicy`, design spec §3.3) evaluates before execution, at two
-chokepoints — the tool-runtime wrap and the workflow action phase — and
-returns exactly one of `auto | peer_review | human_approval | deny`, plus a
-TTL and approver requirement. There is no unlisted fifth outcome that means
-"allow anyway."
+Existing Praxa product gates fail closed. The first source-ready public form is
+an exact immutable browser action. Praxa must be able to re-derive the exact
+instruction/steps, host, approval reference, and digest; otherwise it emits
+nothing and refuses the mutation.
 
-**The pattern is proven, not hypothetical.** The policy engine itself is a
-developer-preview design commitment — it does not exist as one engine yet.
-What it collapses into a single evaluator already runs in production today:
-11 fail-closed approval domains, each gated by a no-execute
-`request_approval` tool against a shared TTL policy
-(`src/lib/trust/approval-window-policy.ts`). The engine consolidates a
-pattern already carrying real traffic; it does not introduce an untested one.
+That is not a unified customer-configurable policy engine, and it does not make
+generic approvals, peer review, organization approver roles, or mature approval
+receipts available.
 
-**Approval evidence is single-use.** A receipt that authorizes one action
-cannot be replayed to authorize a second one, even the same action twice.
-Why, and what "opaque, scoped, expiring, single-use" mean concretely:
-`receipts-and-audit.md`.
+## Credentials not yet supported
 
-**No implicit trust for local tools.** As above: file/terminal access on
-Praxa Control requires an explicit, per-capability grant — being local isn't
-a substitute for being granted.
+BYO provider credentials are planned. Because provider credentials must be
+used, a future implementation would require reversible envelope encryption,
+not hashing, and strict tenant/runtime confinement. No such public funding mode
+is live today.
 
-## Credential handling
+## Deployment and isolation gaps
 
-One server-side principal resolver sits behind three credential families —
-Supabase JWT (Expo, web, Praxa Control), `aura_agent_*` (existing
-custom-agent deployments), and `platform_api_keys`/`praxa_sk_` (the fabric,
-developer preview) — with identical downstream authority derivation
-regardless of which one authenticated the request (design spec §3.2). Full
-key lifecycle, formats, and scopes live in `keys-and-access/api-keys.md` and
-`keys-and-access/scopes-and-tenancy.md`. The properties that matter for the
-security model specifically:
-
-**Platform keys are hashed, never stored recoverable.** `aura_agent_*` keys
-are SHA-256-hashed at rest today, hex-encoded, verified with a constant-time
-comparison — available today, in production. `platform_api_keys`
-(`praxa_sk_`) commit to the same hash-at-rest discipline (design spec §3.2);
-the design does not name a specific hash algorithm for the new key family,
-and this document does not assert one on its behalf. Either way, a hashed
-key can be *verified* — compare a hash of what was presented against the
-stored hash — and never *recovered*. The platform cannot hand your key back
-to you after issuance, structurally, regardless of who asks or why.
-
-**BYO provider keys are encrypted, not hashed, because they must be usable.**
-A platform API key only ever needs to be verified; a bring-your-own provider
-credential has to be decrypted and used to call a provider on the tenant's
-behalf, so it needs reversible encryption, not a one-way hash. The design
-reuses the existing connections-key envelope pattern for this (design spec
-§3.4). BYO keys never leave the runtime boundary — in the vocabulary above,
-that means never returned to a client and never visible at the gateway. A
-BYO-funded tenant's provider failover ladder is constrained to only the
-lanes that tenant actually funded; it cannot silently borrow another
-tenant's spend or credentials.
-
-**Never in logs, never in errors.** Per the ADR's security decision: logs and
-errors expose stable codes and correlation IDs — never provider payloads,
-prompts, secrets, stack traces, or private reasoning. A BYO provider key is a
-secret under this rule and is redacted on the same basis as any platform
-credential, not as a special case bolted on afterward.
-
-## Isolation and deployment posture
-
-No self-hosting is offered. The rejected-alternatives analysis is direct
-about why: a self-hosted build would mean forking the CF-native substrate —
-Durable Objects, Workflows, Vectorize — outside Cloudflare, not deploying a
-container, and that path is rejected (design spec §6). Enterprise isolation
-instead means a **dedicated Cloudflare account/region, BYO provider keys, and
-full evidence export** (design spec §4, phase P3) — stated as that, not
-implied to be equivalent to a customer running their own infrastructure. Full
-treatment: `enterprise/deployment-and-isolation.md`.
-
-One honest gap to carry forward rather than paper over: today's multi-tenant
-isolation guarantees (personal agents never falling back to organization
-resources, and the reverse) are shipped and verified for the existing
-custom-agent product. The equivalent audit *for fabric traffic specifically*
-— per-tenant isolation across memory/Vectorize namespaces, Durable Object
-naming, and RLS — is explicit GA-hardening scope (design spec §4, workstream
-F7, phase P3), which ships after the tenant/key model, not alongside it.
-Treat fabric-specific multi-tenant isolation as unverified until that audit
-lands and this document is updated to reflect it.
+The live preview is personal-only. Organization delegation, formal fabric
+isolation audit, dedicated accounts/regions, evidence export, SSO/SCIM, and
+centralized broker revocation are unavailable. Self-hosting is not offered.
 
 ## See also
 
-- `data-handling.md` — what's stored, the PII pseudonymization pipeline, and
-  per-tenant vs. cross-tenant learning.
-- `receipts-and-audit.md` — receipt contents, why approval evidence is
-  single-use, and export paths.
-- `keys-and-access/api-keys.md`, `keys-and-access/scopes-and-tenancy.md` —
-  key formats, lifecycle, and the tenant/scope model in full.
+- [API keys](/fabric/keys-and-access/api-keys)
+- [Scopes and tenancy](/fabric/keys-and-access/scopes-and-tenancy)
+- [Data handling](/fabric/security/data-handling)
+- [Deployment and isolation](/fabric/enterprise/deployment-and-isolation)

@@ -19,7 +19,7 @@ class PraxaClientError extends Error {
 
 | Property | Type | Description |
 |---|---|---|
-| `message` | `string` | Human-readable error description. Defaults to the `detail` field from the problem object, or `"Aura request failed with HTTP {status}"` if no problem body was returned. |
+| `message` | `string` | Human-readable error description. Defaults to the `detail` field from the problem object, or `"Praxa request failed with HTTP {status}"` if no problem body was returned. |
 | `status` | `number` | The HTTP status code of the failed response — for example `401`, `403`, or `503`. |
 | `problem` | `Problem \| undefined` | The parsed RFC 9457 `application/problem+json` body, if the gateway included one. Contains `type`, `title`, `detail`, `status`, `code`, and `requestId`. |
 

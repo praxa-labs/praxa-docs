@@ -1,56 +1,236 @@
 ---
 title: "Status and roadmap"
 sidebarTitle: "Status and roadmap"
-description: "This page describes sequencing, not a calendar. Each phase below is gated on the one before it holding up in practice: a specific set of things being provabl"
+description: "Separate live partner-preview behavior, source-ready portal work, remaining production canaries, and unavailable roadmap capabilities."
 ---
 
-This page describes sequencing, not a calendar. Each phase below is gated on the one before it holding up in practice: a specific set of things being provably true, not a date on a schedule. Where a phase's capabilities map to the three-tier legend from [`README.md`](/fabric#status-legend), that label is shown; foundation work that isn't itself a callable capability is marked complete instead.
+This page is the release truth table. Source code, local tests, deployed state,
+and authenticated browser/API canaries are separate proof lanes.
 
-## P0 — Foundation
+## Live: production partner-preview baseline
 
-**Status: complete.** Nothing new to call yet from this phase. It's the ground the rest of the fabric stands on.
+For admitted **personal tenants**:
 
-- A versioned contract for how tasks, runs, and events are described, shared by every client that will ever speak to the fabric, including the one Praxa's own apps already use.
-- A locked baseline of current behavior, checked continuously, so nothing about how existing agents run can drift while the fabric is built alongside them.
-- An internal-only gateway, not reachable from outside Praxa, proving the request path end to end before anything is exposed publicly.
+- `praxa_sk_` tenant API keys and the edge/authentication boundary;
+- strict minimal `POST /v1/execute` with `mode:"task"`;
+- `GET /v1/runs/{run_id}`;
+- resumable `GET /v1/runs/{run_id}/events` SSE;
+- cooperative `POST /v1/runs/{run_id}/cancel` requests;
+- tenant-scoped `GET /v1/usage` backed by completed provider-call and settled
+  retail evidence;
+- automatic forward projection of the eight strict task webhook event types;
+- bearer webhook endpoint management and delivery readback;
+- HMAC-SHA-256 signed webhook delivery with one-time endpoint secrets;
+- signed-in personal key and usage management for the admitted cohort.
 
-**Cleared to move on:** the contract holds under real traffic, the behavior baseline stays provably unchanged, and the internal gateway passes its own health and safety checks.
+Every admitted task still passes fail-closed funding reservation and settlement
+authority. Usage readback is evidence, not invoice or reservation authority.
 
-## P1 — Partner preview
+### Production activation evidence
 
-**Status: next up.** The P0 foundation is complete; P1 is the build that opens the API to the first partner cohort.
+The compatible Worker fleet is currently stamped at exact source ref
+`7e347f497e8f56395abc541569c018977287da8f`. That activation retains the
+Execution Fabric runtime tree gated at `a0dc4df697e93225cb1d9fda357514c5ebd63fb6`
+and adds release metadata. Production migration history records:
 
-- The gateway opens to a small, invited cohort of partners, not a public signup yet.
-- Tenants and API keys (`praxa_sk_`) exist as a real, manageable thing, not a placeholder.
-- `/v1/execute` and the run, event, and approval endpoints work end to end, including approvals that genuinely pause a run and resume it only on a matching decision.
-- Usage is metered and billing is enforced on every call through this lane: not logged for later, enforced at the time.
+- `20260801092306 task_cancellation_reconciliation`;
+- `20260801092339 platform_task_webhook_projection`;
+- `20260801092356 platform_webhook_api_authority`.
 
-**Cleared to move on:** metering and billing enforcement hold up under real partner usage, not just test traffic, and a rollback path has been proven, not just documented.
+Authenticated production canaries have proved the strict task-only boundary,
+idempotent admission, ordered and resumable SSE, tenant usage readback, key
+scope enforcement, and a signed webhook delivery whose HMAC matched the exact
+raw request body. Separate live cancellation canaries proved both a claimed
+model-backed run cancelled before provider mutation and a provider-in-flight
+cancellation that remained non-terminal while reconciling, then converged to
+the exact non-retryable `run_outcome_unknown` failure. An authenticated browser
+canary proved callback credential removal, persisted session reuse, durable
+legal acceptance, and platform-origin preservation through `/`, `/developer`,
+and `/developers`; read-only HTTP checks proved nested developer routes and the
+consumer-host deep-link return. This evidence does not make the preview
+generally available.
 
-## P2 — General availability
+## Deployed, pending separate production canaries
 
-**Status: planned.** This is the phase most people reading these docs are waiting for.
+The following refinements remain closed until their own production canaries
+prove the exact behavior described here.
 
-- The SDK and this documentation site come out of preview and open to everyone.
-- The policy engine becomes something you configure, not just fixed platform defaults.
-- Webhooks: register an endpoint and get delivery, instead of only polling or holding a stream open.
-- Desktop lanes: Praxa Control calls the fabric for cloud work directly from local coding sessions.
-- Bring-your-own provider keys becomes available alongside bundled inference, priced and routed on equal footing.
+### Exact browser-action approvals
 
-**Cleared to move on:** real external clients, not only Praxa's own surfaces, are running production traffic on the fabric, and the routing-quality feedback loop is live and evaluated on a schedule, not tuned by hand.
+- customer-safe `pendingApproval`, `approval.required`, and
+  `approval.resolved` for immutable `browse_session_act` input only;
+- exact instruction/steps plus target host;
+- 64-character digest binding;
+- public mutation decision `approve` or `deny`;
+- fail-closed suppression and refusal for every unsupported or unverifiable
+  approval.
 
-## P3 — Enterprise governance
+This is not generic tool approval or a unified configurable policy engine.
 
-**Status: planned.** The governance layer for organizations that need to prove control over what their agents did, not just get the work done.
+## Source-ready, not production-activated
 
-- Dedicated isolation for enterprise tenants: their own account and region, not shared infrastructure.
-- Full evidence export, so an organization's own audit and compliance tooling doesn't have to trust Praxa's dashboard.
-- Org-wide policy packs, single sign-on, and the access controls that come with operating at that scale.
+The following work exists in the source tree and has repository-level contract
+coverage. None of these entries is a live claim. Each still needs the activation
+evidence named below.
 
-No phase adds a self-hosted deployment option. See the FAQ entry "Can I self-host Praxa?" and [`enterprise/deployment-and-isolation.md`](/fabric/enterprise/deployment-and-isolation) for why, and what dedicated isolation gives you instead.
+### Portal-native personal build surfaces
 
-## What stays true across every phase
+- personal agent list, create, detail, edit, preview, chat, analytics, and
+  conversation routes rehost the existing custom-agent system under
+  `/developers/build/agents`;
+- personal workflow list, create, detail, and edit routes rehost the existing
+  automation system under `/developers/build/workflows`; and
+- the playground selects a personal agent and opens its server-owned draft in
+  the real metered preview runtime without retaining an API-key secret or
+  accepting a client-supplied model override.
 
-- A receipt is never optional. Every run that executes anything produces one, from P1 onward.
-- Approvals fail closed at every phase. A slow or broken approval integration on your side blocks execution; it never becomes an accidental approval.
-- Existing `aura_agent_*` custom-agent keys and integrations keep working through every phase of this rollout. Nothing here deprecates them out from under you.
+Activation requires a compatible Worker deployment and an authenticated browser
+canary across create, edit, preview, navigation, metering, and permission-refusal
+states. The rehosted workflow UI is not the public typed workflow DSL.
+
+### Portal-native account, organization, and billing views
+
+- profile name, nickname, private preferences, avatar upload, provider/email
+  facts, and sign-out reuse the existing account authorities;
+- organization list/create, member directory, add-existing-username,
+  member/admin role changes, and member removal reuse existing organization
+  authority; and
+- subscription status and credit display reuse existing usage/subscription
+  evidence, while eligible free or terminal users can start an allowlisted
+  Stripe Checkout.
+
+The checkout server guard refuses a new subscription flow for `active`,
+`in_grace`, or `in_retry` evidence and fails closed when subscription state
+cannot be proven. There is no developer-portal Stripe Customer Portal,
+payment-method editor, cross-provider cancellation flow, organization key, or
+organization execution authority.
+
+Activation requires a compatible Worker deployment plus authenticated profile,
+avatar, membership/RBAC refusal, subscription-state, trusted-redirect, and
+duplicate-subscription billing canaries.
+
+### Agent evaluation datasets
+
+The source-ready dataset slice provides personal and organization-scoped
+datasets, mutable current items, resumable server-validated JSONL ingest,
+immutable published revisions/items, revision-addressable exports, and
+canonical SHA-256 evidence. Ordered chunk receipts, stale-revision checks,
+atomic finalize/abort behavior, bounded retention, authenticated routes,
+row-level security, and database mutation functions exist in source.
+
+The migration is not recorded as applied here. Activation requires migration
+review/application, a compatible Worker deployment, scheduled ingest cleanup,
+and production canaries for AAL2, authorized management, two-organization
+refusal, interrupted/replayed ingest, digest binding, and published
+immutability. Publishing a dataset does not execute an experiment.
+
+### Governed workflow and experiment authorities
+
+The source tree now contains two separate platform authorities:
+
+- workflow create, update, pause, resume, complete, archive, run, and cancel
+  commands with AAL2, tenant-derived authorization, idempotent receipts,
+  optimistic stale-state checks, immutable run ownership, and point-of-use
+  revocation; and
+- experiment execution that freezes dataset, configuration, evaluator, runtime,
+  agent, and billing identities; reserves a bounded aggregate credit ceiling;
+  dispatches durable shards; and records customer-safe result and comparison
+  receipts with cancel/resume generation fencing.
+
+These are source-ready backend boundaries, not customer availability claims.
+Their migrations are not recorded as applied, the Worker release is pending,
+and authenticated two-tenant, billing, capacity-race, cancellation, redaction,
+and browser canaries have not been completed. The portal therefore keeps
+workflow mutation and experiment execution controls unavailable.
+
+### Redacted causal-trace authority
+
+A source-ready trace projection records value-free span lineage, phase,
+actor kind, argument key names, digests, safe retail credits, and retention
+metadata. It deliberately excludes prompts, outputs, credentials, provider
+cost, and infrastructure cost. Migration, retention deployment, permission
+proof, and an authenticated redaction canary remain pending, so the live portal
+continues to expose only its narrower projection timeline.
+
+### Typed workflow DSL foundation
+
+Strict plan schemas, canonical compilation, serialization, interpreter behavior,
+and Cloudflare step-adapter contracts exist in source. The foundation remains
+gated: there is no public route, SDK package, deployed customer-definition
+authority, or connection to `/v1/execute`. Customer activation still requires
+tenant/version authority, billing, approvals, cancellation, suspension/resume,
+projection, migration, deployment, and production proof as one boundary.
+
+## Live cancellation reconciliation behavior
+
+The reviewed migration is applied, the compatible Worker fleet is deployed,
+and separate production canaries observed both cancellation branches. A
+claimed model-backed run cancelled before provider mutation finished public
+`cancelled`, released its complete reservation, charged zero credits, emitted
+one terminal `run.cancelled`, and resumed SSE only after the requested cursor.
+
+A provider-in-flight cancellation retained one run, task, claim, executor, and
+process under idempotent resubmission. While internal state was
+`reconcile_required`, its public run stayed `running` and non-terminal and its
+stream emitted this exact warning:
+
+```text
+The run is reconciling an uncertain execution outcome. Do not retry or resubmit it.
+```
+
+The scheduled reconciliation owner later settled the frozen billing ceiling
+once and converted the unverifiable committing outcome to `run.failed` with
+`code: "run_outcome_unknown"`, message
+`A committing action may have happened, but the final outcome could not be verified. Do not retry automatically.`,
+and `retryable: false`. The resumed stream ended with one byte-identical
+`run.failed`; the run never became publicly cancelled or retryable. These are
+bounded canary observations, not a promise that every provider exposes a
+recoverable cancellation receipt.
+
+## Live canonical developer portal host
+
+The intended origin is `https://platform.praxa.io/developers`, with consumer
+destinations on `https://app.praxa.io` and API traffic on
+`https://api.praxa.io`. The deployed portal accepts email-link/OTP fragment
+callbacks, clears the callback credentials from the URL, persists the resulting
+browser session, and requires durable legal acceptance before developer routes
+render. This release does not add provider-button sign-in or an account-recovery
+flow. A production browser canary proved callback credentials were removed from
+the URL, the authenticated session survived reload, legal acceptance persisted,
+and `/`, `/developer`, and `/developers` all retained the platform origin.
+Read-only HTTP checks separately proved `200` responses for nested API-key,
+run, webhook, and usage routes and an exact `app.praxa.io` developer deep-link
+redirect back to the matching platform route.
+
+## Unavailable
+
+- `mode:"turn"` and the rich turn event stream;
+- request-level `agent`, `context`, `tools`, `policy`, or `delivery` overrides;
+- organization execution and organization API keys;
+- configurable unified policy packs;
+- generic tool approvals and mature approval receipts;
+- published npm SDK;
+- BYO provider credentials;
+- customer experiment execution and model comparison;
+- a public typed-workflow definition or execution route;
+- developer-portal subscription cancellation, payment-method changes, and
+  Stripe Customer Portal sessions;
+- mature hash-chained receipts/evidence export;
+- dedicated/self-hosted deployment and enterprise governance surfaces.
+
+## Remaining preview gates
+
+1. Deploy and browser-canary the source-ready portal agent, workflow,
+   playground, profile/avatar, organization, and billing surfaces.
+2. Review/apply the additive dataset, workflow, experiment, and trace
+   migrations; deploy the matching Worker routes; then prove authorization,
+   cross-tenant refusal, receipt binding, billing/capacity races, redaction,
+   and immutable revision behavior in production.
+3. Prove exact browser-action approval, including stale, mismatched,
+   unsupported, and cross-tenant refusal.
+4. Exercise retry, dead-letter, and eligible replay behavior against live
+   webhook destinations before claiming those operational canaries complete.
+
+General availability additionally requires external-client load, rollback,
+support, SDK publication, and security proof. Existing custom-agent deployment
+credentials remain a separate supported surface.

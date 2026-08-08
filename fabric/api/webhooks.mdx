@@ -1,108 +1,246 @@
 ---
 title: "Webhooks"
 sidebarTitle: "Webhooks"
-description: "POST /v1/webhooks"
+description: "Configure signed task-event webhooks and consume their strict v1 payloads safely."
 ---
 
-> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+> **Status:** Production partner preview for admitted personal tenants. Bearer
+> management, forward task-event projection, and HMAC-signed outbound delivery
+> are active. Production migration history records the forward-projection
+> migration `20260801092339 platform_task_webhook_projection` and authority
+> migration `20260801092356 platform_webhook_api_authority`.
 
+Praxa projects each new durable task-ledger event into a strict v1 webhook
+event, fans it out to matching active endpoints, and signs every delivery.
+Delivery is at least once and may arrive out of order.
 
-```
-POST /v1/webhooks
-```
+The signed-in developer portal manages endpoints through
+`/api/platform/webhooks`. The TypeScript SDK defines the bearer management
+contract under `/v1/webhooks` and `/v1/webhook-deliveries`. Those bearer routes
+are active for the admitted production-preview cohort.
 
-Registers an outbound delivery endpoint for run progress. This is Praxa's
-first **outbound** webhook lane — every existing integration in this corpus
-is inbound. Backed by two new tables, `webhook_endpoints` and
-`webhook_deliveries`.
+## Create an endpoint
 
-## Confirmed behavior
-
-- Deliveries are **HMAC-signed**.
-- Failed deliveries are retried with **exponential backoff**.
-- Deliveries that exhaust retries land in a **dead-letter** state.
-- Signing secrets are **rotatable per tenant**.
-
-## Authentication
-
-Bearer API key, prefix `praxa_sk_`.
-
-## Request body
-
-> **Gap.** Neither source publishes field-level names for the registration
-> request or response. The table below is this reference's best-effort,
-> clearly-flagged reconstruction from the confirmed behavior above and
-> conventional webhook-registration shape — **not** a confirmed contract.
-> Verify against the actual implementation before relying on exact field
-> names.
-
-| Field | Type | Required | Description (illustrative — not confirmed) |
-|---|---|---|---|
-| `url` | string (URL) | Yes | Delivery target. Must be HTTPS. |
-| `events` | string[] | No | Event-type filter. Omitted is presumed to mean "all." |
-
-### Response (illustrative — not confirmed)
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Webhook endpoint identifier. |
-| `secret` | string | HMAC signing secret for this endpoint — shown once. |
-
-## Delivery payload
-
-Not specified by either source. The most defensible assumption is that
-deliveries carry the same `AiPlatformEventV1` envelope documented in
-[Events](/fabric/api/events), since that is the platform's one existing event
-schema — but this is an assumption, not a confirmed contract.
-
-## What is genuinely unresolved
-
-- Exact request/response field names for `POST /v1/webhooks`.
-- The HMAC signature scheme (header name, algorithm, canonicalization).
-- The retry schedule (attempt count, backoff base/cap) and how a
-  dead-lettered delivery is surfaced to the tenant.
-- Secret-rotation mechanics (single active secret vs. overlap window).
-
-## Example
-
-```bash
-curl https://api.praxa.io/v1/webhooks \
-  -X POST \
-  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/hooks/praxa",
-    "events": ["response.final", "approval.required"]
-  }'
-```
-
-## TypeScript
-
-```ts
-// Field names are illustrative — see the Gap note above.
-type WebhookRegistration = {
-  url: string;
-  events?: string[];
-};
-
-type WebhookEndpoint = {
-  id: string;
-  secret: string;
-} & Record<string, unknown>;
-
-async function registerWebhook(
-  registration: WebhookRegistration,
-  apiKey: string,
-): Promise<WebhookEndpoint> {
-  const res = await fetch("https://api.praxa.io/v1/webhooks", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(registration),
-  });
-  if (!res.ok) throw new Error(`webhook registration failed: ${res.status}`);
-  return res.json();
+```json
+{
+  "url": "https://events.example.com/praxa",
+  "event_types": ["approval.required", "run.completed", "run.failed"],
+  "description": "Production run events"
 }
 ```
+
+Allowed event types are:
+
+- `run.accepted`
+- `run.started`
+- `run.progress`
+- `approval.required`
+- `approval.resolved`
+- `run.completed`
+- `run.failed`
+- `run.cancelled`
+
+The list must contain one to eight unique values. A tenant can have at most 20
+active endpoints. The create response contains the endpoint plus a
+`signing_secret` with the `praxa_whsec_` prefix. The secret is shown once.
+Praxa stores only its SHA-256 hash and an AES-GCM-encrypted copy for delivery.
+
+Endpoint URLs must use HTTPS on the default port with a public multi-label
+hostname. Credentials, fragments, IP literals, private or reserved IP ranges,
+single-label hosts, and local, internal, or test suffixes are rejected. The
+delivery Worker also validates DNS answers and revalidates the destination at
+every redirect hop.
+
+## Bearer management contract
+
+<Note>
+  These six operations are a production partner preview, not general
+  availability. Use only keys issued to an admitted personal tenant.
+</Note>
+
+The key scope vocabulary remains exactly `execute:write`, `runs:read`,
+`runs:write`, and `usage:read`. There is no webhook-specific scope.
+
+| Method and route | Gateway scope | Backend authority | Success |
+|---|---|---|---|
+| `GET /v1/webhooks` | `runs:read` | `runs:read` | `200` with `{ "apiVersion": "v1", "data": [...] }` |
+| `POST /v1/webhooks` | `runs:write` | Both `runs:read` and `runs:write` | `201` with `{ "endpoint": {...}, "signing_secret": "..." }` |
+| `PATCH /v1/webhooks/{endpointId}` | `runs:write` | Both `runs:read` and `runs:write` | `200` with the updated endpoint |
+| `DELETE /v1/webhooks/{endpointId}` | `runs:write` | Both `runs:read` and `runs:write` | `204` with no body |
+| `GET /v1/webhook-deliveries` | `runs:read` | `runs:read` | `200` with `{ "apiVersion": "v1", "data": [...], "nextCursor": "..." }` |
+| `POST /v1/webhook-deliveries/{deliveryId}/replay` | `runs:write` | Both `runs:read` and `runs:write` | `202` with the replay delivery |
+
+The gateway performs only the first scope check. The backend is the point-of-
+effect authority and rechecks every required scope. A mutation key therefore
+must carry both `runs:read` and `runs:write`, even though gateway admission is
+keyed to `runs:write`.
+
+Create input is strict. `url` must be HTTPS, `event_types` must contain one to
+eight unique values, and optional `description` must contain 1–256 characters.
+Update input is also strict and must contain at least one of `url`,
+`event_types`, `description`, or `status`. Set `description` to `null` to clear
+it. Set `status` to `active` or `disabled`.
+
+An endpoint has `apiVersion`, `id`, `url`, `event_types`, optional
+`description`, `status`, `createdAt`, and `updatedAt`. Create returns that
+endpoint plus the one-time `signing_secret`. List returns `apiVersion` and
+`data` and never returns a secret.
+
+Filter delivery records with `endpoint_id`, `run_id`, `status`, `limit`, and
+`cursor`. `limit` defaults to 50 and must be between 1 and 100. Delivery status
+is one of `pending`, `delivering`, `succeeded`, `retrying`, or `dead_letter`.
+Each delivery has `apiVersion`, `id`, `endpoint_id`, `event_type`, optional
+`run_id`, `status`, `attempt_count`, optional `response_status`, optional
+`next_attempt_at`, optional `delivered_at`, `createdAt`, and `updatedAt`. A list
+returns `apiVersion`, `data`, and optional `nextCursor`. Replay requires the
+exact body `{}`.
+
+## Signed-in portal routes
+
+The signed-in management routes are:
+
+| Route | Behavior |
+|---|---|
+| `GET /api/platform/webhooks?workspace=personal` | List endpoint metadata; never returns a secret. |
+| `POST /api/platform/webhooks` | Create an endpoint and return its signing secret once. |
+| `PATCH /api/platform/webhooks/:id` | Change the URL, event filter, description, or active or disabled state. |
+| `DELETE /api/platform/webhooks/:id` | Disable the endpoint and dead-letter queued records. |
+| `GET /api/platform/webhook-deliveries` | Filter and page durable delivery records. |
+| `POST /api/platform/webhook-deliveries/:id/replay` | Create or return the idempotent replay record. |
+
+The queue records `pending`, `delivering`, `succeeded`, `retrying`, and
+`dead_letter` states. It makes at most five attempts, with delays of 30 seconds,
+5 minutes, 30 minutes, and 2 hours between retries. A replay creates another
+delivery attempt for the same immutable event; it does not create a new event.
+
+## Strict v1 payload
+
+Every body has exactly these seven top-level fields:
+
+```json
+{
+  "apiVersion": "v1",
+  "event_id": "864d6901-0de1-4fcf-9c9d-1a1f9d60cb4a",
+  "created_at": "2026-08-01T12:45:18.430Z",
+  "run_id": "3b7e72a9-8607-4e99-9acc-71b81cf7742b",
+  "sequence": 12,
+  "type": "run.progress",
+  "data": {
+    "status": "running"
+  }
+}
+```
+
+- `event_id` is the immutable task-ledger event id. Retries and manual replay
+  preserve it.
+- `sequence` increases within one run. It is not a global delivery sequence.
+- `data` is strict and type-specific. A v1 consumer must not assume that an
+  additive field can appear without explicit contract-version negotiation.
+
+| Type | Exact `data` shape |
+|---|---|
+| `run.accepted` | `{ "status": "queued" }` |
+| `run.started` | `{ "status": "running" }` |
+| `run.progress` | `{ "status": "<run status>" }` |
+| `approval.required` | `{ "status": "waiting_approval", "action_digest": "<64 lowercase hex characters>" }` |
+| `approval.resolved` | `{ "status": "<run status>", "action_digest": "<64 lowercase hex characters>", "decision": "<decision>" }` |
+| `run.completed` | `{ "status": "completed" }` |
+| `run.failed` | `{ "status": "failed", "error_code": "<machine-readable code>" }` |
+| `run.cancelled` | `{ "status": "cancelled" }` |
+
+Here, `<run status>` is one of `queued`, `running`, `waiting_approval`,
+`completed`, `failed`, or `cancelled`. The webhook contract uses
+`waiting_approval`; the public run resource uses `awaiting_approval`.
+`<decision>` is `approved` or `denied`.
+
+Reconciliation emits strict `run.progress` with only
+`data.status: "running"`. The explanatory messages available on the SSE stream
+are not added to the webhook body. A permanently unknown committing outcome
+emits `run.failed` with:
+
+```json
+{
+  "status": "failed",
+  "error_code": "run_outcome_unknown"
+}
+```
+
+Do not retry or resubmit a run automatically after that outcome. Ordinary
+failed, partial, and expired outcomes use `error_code: "run_failed"`.
+
+## Approval notifications are digest-only
+
+An `approval.required` webhook deliberately contains only the run id, event
+identity, ordering fields, status, and `action_digest`. It does not contain an
+approval id or a human-readable summary.
+
+Before presenting a choice to a person:
+
+1. Fetch `GET /v1/runs/:id` using the webhook's `run_id`.
+2. Require an exact `pendingApproval` object.
+3. Verify that `pendingApproval.action_digest` equals the webhook digest.
+4. Render `pendingApproval.summary` exactly, without truncating or rewriting it.
+5. Send the unchanged digest and the public request decision `approve` or
+   `deny`.
+
+The decision vocabularies intentionally differ across the boundary. The public
+approval request accepts `approve` or `deny`. The emitted
+`approval.resolved.data.decision` webhook preserves the internal event values
+`approved` or `denied`.
+
+If the pending approval is missing, stale, or mismatched, do not show an active
+approval control and do not submit a decision. See
+[Approvals](/fabric/api/approvals) for the fail-closed contract.
+
+## Signing contract
+
+The delivery Worker signs this canonical string with HMAC-SHA-256:
+
+```text
+<event-id>.<unix-timestamp>.<raw-request-body>
+```
+
+It sends:
+
+```text
+Praxa-Webhook-Id: <event-id>
+Praxa-Webhook-Timestamp: <unix-timestamp>
+Praxa-Webhook-Signature: v1=<lowercase hex digest>
+```
+
+Verify the signature against the exact raw body before parsing JSON, use a
+constant-time comparison, enforce a short timestamp tolerance, and then verify
+that the header id equals the body's `event_id`.
+
+## Ordering and idempotency
+
+Webhook delivery is at least once. A failed request, timeout, retry, or manual
+replay can deliver the same event again, and a delayed retry can arrive after a
+newer event.
+
+1. Deduplicate by immutable `event_id`.
+2. Process or order state changes per run by `(run_id, sequence)`.
+3. Return a 2xx response only after you have durably stored the event or queued
+   the work it triggers.
+
+Do not use arrival order, attempt count, or HTTP request identity as run order.
+
+## Production boundary and rollout evidence
+
+Automatic task-event projection is forward-only. The production migration
+installs an `AFTER INSERT` trigger, so it projects task-ledger events inserted
+after the migration is applied. It does not backfill historical events.
+
+Production migration history records:
+
+- `20260801092339 platform_task_webhook_projection` for forward task-event
+  projection;
+- `20260801092356 platform_webhook_api_authority` for service-role-only bearer
+  management authority.
+
+The compatible Worker fleet is deployed at exact ref
+`7e347f497e8f56395abc541569c018977287da8f`. A production canary created a
+tenant endpoint, received a delivery, and verified the HMAC against the exact
+raw body. Retry, dead-letter, eligible replay, digest-only approval fetch, and
+`run_outcome_unknown` remain separate operational canaries; do not infer those
+results from the successful signed delivery.

@@ -4,15 +4,47 @@ sidebarTitle: "Praxa Execution Fabric"
 description: "Stripe routes payments. Praxa routes work — and can prove what it did."
 ---
 
-**Stripe routes payments. Praxa routes work — and can prove what it did.**
+**Stripe routes payments. Praxa is building the accountable boundary for routed work.**
 
-Praxa Execution Fabric is an API for delegating real work to an AI agent and getting proof of what happened. You submit a task. Praxa routes it across models, tools, and agents under a policy you set. Anything risky (a purchase, a message sent on your behalf, a destructive change) pauses for your approval before it executes. When the run finishes, you get an outcome and a receipt: what ran, which policy version evaluated it, who approved what, and what it was verified against.
+Praxa Execution Fabric is the public boundary being built around Praxa's
+durable agent runtime: submit work, follow a run, enforce policy and billing,
+and retain evidence of what happened. The full product direction includes
+model/tool routing, exact-action approvals, and verified receipts; the status
+note below separates that direction from what is currently implemented.
+
+> **Current status:** the production partner preview serves personal tenant keys,
+> minimal durable-task execution, run reads, resumable SSE, cancellation requests,
+> public and signed-in usage readback, automatic signed task webhooks, and bearer
+> webhook management. The deployed portal accepts email-link/OTP fragment
+> callbacks, persists the resulting browser session, and records legal acceptance
+> durably before it renders developer routes. Exact recorded browser-action
+> approval remains pending.
+> Production canaries have separately proved zero-cost pre-dispatch cancellation
+> and the scheduled non-retryable `run_outcome_unknown` terminal state for a
+> genuinely provider-in-flight cancellation. An authenticated browser canary
+> proved persisted platform-origin sessions, durable legal gating, and the
+> canonical aliases; read-only HTTP checks proved nested developer routes and
+> the consumer-host deep-link return. Turn execution,
+> request-level overrides, organization
+> execution and keys, and mature receipts remain closed. See
+> [Status and roadmap](/fabric/status-and-roadmap).
+
+> **Source-ready follow-on:** Portal-native personal agent/workflow management,
+> a metered draft playground, profile/avatar/preferences, organization membership
+> management, subscription display/eligible checkout, agent evaluation datasets,
+> and a gated typed-workflow foundation now exist in source. They are not live
+> claims until their migrations, Worker release, and production canaries are
+> recorded on the status page. Experiments and model comparison remain
+> unavailable.
 
 It's the same execution runtime that already runs Praxa's own custom agents and its desktop coding tool, opened up as an API you can build on.
 
-Model routing is table stakes now. Every major provider ships a router. What we bill you for is the part that's hard to fake: a policy that actually gates the risky step, and a receipt that proves it did.
+Model routing alone is not the target differentiator. The target is a
+server-enforced action boundary and durable evidence. The live preview has a
+narrower task/run/event/usage boundary; unified policy and mature receipts are
+not yet billable public products.
 
-## How a task moves through the fabric
+## Target approval flow
 
 ```
 POST /v1/execute                submit a task, under a policy
@@ -30,7 +62,11 @@ POST /v1/execute                submit a task, under a policy
    run finishes                 outcome + receipt: what ran, which policy, who approved, verified how
 ```
 
-That's the whole shape. Request fields, event types, and the error format live in the API reference below.
+This is the target end-to-end shape. The source-ready P1 approval path implements
+the public decision step only for an exact immutable `browse_session_act`
+instruction or steps and target host. It suppresses every unsupported or
+unverifiable approval shape instead of inventing a summary. Treat that refinement
+as pending until the status page records its production activation.
 
 ## Status legend
 
@@ -39,7 +75,7 @@ Every capability in these docs carries one of three labels. They tell you what y
 | Status | Meaning |
 |---|---|
 | **Available today** | Shipped and callable now. Build on it in production. |
-| **Developer preview** | The wire contracts are stable and published, but the serving endpoints are still in active build and not yet publicly callable. Interfaces can still change before general availability. |
+| **Developer preview** | The wire contracts are stable and selected endpoints are callable by the invited production cohort. Interfaces can still change before general availability. |
 | **Planned** | Designed and sequenced, not yet built. See [`status-and-roadmap.md`](/fabric/status-and-roadmap) for what has to happen first: timing is phase-gated, not date-committed. |
 
 ## Documentation
@@ -50,29 +86,34 @@ Every capability in these docs carries one of three labels. They tell you what y
 - [`getting-started/quickstart.md`](/fabric/getting-started/quickstart) — make your first authenticated call
 
 ### API reference
-- [`api/execute.md`](/fabric/api/execute) — `POST /v1/execute`: submit a task, choose turn or task mode
+- [`api/execute.md`](/fabric/api/execute) — `POST /v1/execute`: the minimal durable-task subset and reserved contract fields
 - [`api/runs.md`](/fabric/api/runs) — `GET /v1/runs/:id`: read a run's current state
 - [`api/events.md`](/fabric/api/events) — `GET /v1/runs/:id/events`: stream a run's events, resume with `Last-Event-ID`
-- [`api/approvals.md`](/fabric/api/approvals) — `POST /v1/runs/:id/approve`: resume a paused run
-- [`api/usage.md`](/fabric/api/usage) — `GET /v1/usage`: tenant-scoped usage and spend readback
-- [`api/webhooks.md`](/fabric/api/webhooks) — `POST /v1/webhooks`: register a delivery endpoint
+- [`api/approvals.md`](/fabric/api/approvals) — exact digest-bound browser-action approval and fail-closed unsupported shapes
+- [`api/usage.md`](/fabric/api/usage) — the usage contract and signed-in source implementation
+- [`api/webhooks.md`](/fabric/api/webhooks) — active partner-preview signed delivery, ordering, and replay contract
 - [`api/errors.md`](/fabric/api/errors) — the RFC 9457 error format every endpoint shares
-- [`api/openapi.yaml`](/fabric/api/openapi.yaml) — machine-readable OpenAPI 3.1 specification
+- [`api/openapi.yaml`](/fabric/api/openapi.yaml) — preview contract specification; Markdown status pages are activation authority
 
 ### Keys & access
 - [`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys) — creating, scoping, and rotating `praxa_sk_` keys
 - [`keys-and-access/scopes-and-tenancy.md`](/fabric/keys-and-access/scopes-and-tenancy) — tenants, scopes, and the three principal types
-- [`keys-and-access/rate-limits.md`](/fabric/keys-and-access/rate-limits) — per-key limits and response headers
+- [`keys-and-access/rate-limits.md`](/fabric/keys-and-access/rate-limits) — current retry guidance and the unavailable dedicated per-key tiers
 
 ### Approvals & policy
 - [`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals) — how a run pauses and how you resume it
-- [`approvals-and-policy/policy-engine.md`](/fabric/approvals-and-policy/policy-engine) — the `policy` parameter and how risk tiers get decided
+- [`approvals-and-policy/policy-engine.md`](/fabric/approvals-and-policy/policy-engine) — current product gates and the planned unified engine
 - [`approvals-and-policy/budgets-and-limits.md`](/fabric/approvals-and-policy/budgets-and-limits) — budget ceilings and what happens when a run hits one
+
+### Studio & workflows
+- [`studio-and-console.md`](/fabric/studio-and-console) — live, source-ready, gated, and unavailable developer-portal surfaces
+- [`datasets.md`](/fabric/datasets) — source-ready agent-scoped immutable evaluation inputs
+- [`workflows.md`](/fabric/workflows) — the gated typed-workflow source foundation and its activation boundary
 
 ### Security
 - [`security/security-model.md`](/fabric/security/security-model) — tenant isolation and credential handling
-- [`security/data-handling.md`](/fabric/security/data-handling) — what's stored, for how long, and whether any of it trains a model
-- [`security/receipts-and-audit.md`](/fabric/security/receipts-and-audit) — receipts and the hash-chained evidence trail behind them
+- [`security/data-handling.md`](/fabric/security/data-handling) — current projections, unspecified retention, and unimplemented learning governance
+- [`security/receipts-and-audit.md`](/fabric/security/receipts-and-audit) — current evidence versus planned receipts and exports
 
 ### SDK
 - [`sdk/typescript.md`](/fabric/sdk/typescript) — the TypeScript client
@@ -101,6 +142,11 @@ Every capability in these docs carries one of three labels. They tell you what y
 - [`status-and-roadmap.md`](/fabric/status-and-roadmap) — what's shipped and what's next, in customer terms
 - [`glossary.md`](/fabric/glossary) — terms used across these docs
 
-## Support
-
-Questions, feedback, or partner-preview access: *(support contact placeholder — add before publish, e.g. a support address or partner-intake form)*.
+Partner-preview access is invitation-only. The deployed portal supports an
+email-link/OTP fragment callback, a persisted browser session, and durable legal
+acceptance for admitted accounts. Production canaries proved authenticated
+platform-origin preservation through the canonical aliases, `200` responses on
+nested developer routes such as
+`https://platform.praxa.io/developers/develop/api-keys`, and exact developer
+deep-link return from `app.praxa.io`. See the bounded evidence and remaining
+gates on the [status page](/fabric/status-and-roadmap).

@@ -1,212 +1,90 @@
 ---
-title: "Deployment and Isolation"
-sidebarTitle: "Deployment and Isolation"
-description: "The infrastructure model behind the Praxa Execution Fabric, what isolation"
+title: "Deployment and isolation"
+sidebarTitle: "Deployment and isolation"
+description: "Understand the managed runtime, current public boundary, and unavailable enterprise deployment options."
 ---
 
-*The infrastructure model behind the Praxa Execution Fabric, what isolation
-between tenants actually means, and the honest answer to "can we self-host
-this."*
+Praxa is a managed Cloudflare/Supabase service. The public execution gateway is
+a versioned client boundary in front of privileged runtime and database
+authority; it is not a separately self-hostable agent runtime.
 
-Written for a security or infrastructure reviewer deciding whether Praxa's
-deployment model is compatible with your requirements before a commercial
-conversation goes further.
+## Current partner-preview boundary
 
----
+- personal-tenant `praxa_sk_` authentication and exact endpoint scopes;
+- strict minimal durable tasks;
+- customer-safe run and lifecycle-event projections;
+- cooperative cancellation requests;
+- evidence-bounded usage readback;
+- fail-closed bundled funding reservation and settlement;
+- no public prompts, private reasoning, raw tool arguments, credentials,
+  executor leases, provider cost, or margin fields.
 
-## The managed model
+Automatic signed webhooks and bearer webhook management are active for admitted
+personal tenants. Exact browser-action approval remains pending. Separate
+production canaries have proved cancellation final states and authenticated
+canonical-host, alias, and deep-link preservation. The deployed portal
+authentication path is limited to email-link/OTP fragment callbacks, a
+persisted browser session, and durable legal acceptance; it does not activate
+the unavailable enterprise surfaces below.
 
-> **Status:** Developer preview (fabric surface) — the underlying runtime is production infrastructure today
+## Approval truth
 
-Praxa runs on a Cloudflare-native substrate — Durable Objects, Workflows,
-and Vectorize — with Postgres, Auth, Storage, and Realtime on Supabase.
-There is one privileged runtime behind a versioned gateway; every client
-(the mobile/web app, the desktop coding surface, and the execution-fabric
-API being described in these pages) is a client of that one runtime, not a
-separate deployment of the product.
+Praxa's existing product has multiple mature fail-closed approval domains. The
+first source-ready public approval is narrower: an immutable
+`browse_session_act` action whose exact instruction/steps, target host, and
+digest can be re-derived. Unsupported approvals are suppressed and refused.
 
-Changes to that runtime ship behind a locked-behavior corpus and a shadow-
-equivalence check — new code has to reproduce the old code's behavior
-before it's allowed to replace it, with rollback gates on the migration.
-That discipline is the regression floor every consumer of the runtime
-shares, including the fabric API.
+That does not mean every committing action gates through public `/v1`, or that a
+unified configurable policy engine is live. Generic tool approvals, policy
+packs, peer review, and organization approval roles remain unavailable.
 
----
+## Tenant isolation truth
 
-## Per-tenant isolation promises
+The live public preview is personal-only. Server-derived tenant authority,
+tenant-bound run reads, and evidence-bounded usage are part of the current
+boundary. Organization execution, per-organization key authority, formal
+fabric isolation attestation, tenant-specific Vectorize/DO audit proof, and
+enterprise data-residency controls remain separate gates.
 
-### Data
+Praxa's existing organization RLS and custom-agent isolation are relevant
+foundations, not proof that every new public route has completed an enterprise
+isolation audit.
 
-> **Status:** Developer preview
+## Receipts and learning
 
-Organization data is isolated with row-level security in Postgres, scoped
-to the organization. This is the same isolation pattern Praxa's existing
-multi-tenant product already runs on in production — the fabric extends it
-to API tenants rather than introducing a new isolation mechanism.
+Current public run/event/usage projections and internal task events are not a
+mature receipt. Hash-chained evidence, policy-version linkage, approver
+identity, verification provenance, SIEM/PDF export, consent/training labels,
+and customer-visible learning controls remain roadmap work.
 
-### Memory and learning
+Do not claim cross-tenant routing learning, content exclusion, or opt-out
+properties as public execution guarantees until their implemented data path and
+governance contract are independently verified.
 
-> **Status:** Developer preview
+## Deployment options
 
-Learning is **per-tenant by default.** What crosses tenant boundaries is
-metadata only — which model or tool tends to succeed for a class of task,
-latency and cost distributions — aggregated, contractually described, and
-opt-out-able. It is never your content, never your memory, and never raw
-context. Praxa's own design principle here is explicit: raw context and
-state are never sold or shared across tenants, full stop.
-
-Two more constraints worth stating plainly:
-
-- Every learned routing-policy update ships **versioned, evaluation-gated,
-  and reversible** — policy learning is gated the same way code is, not
-  pushed silently.
-- Receipts carry a consent / training-eligibility label from the moment
-  they're written, so data captured for debugging can never later be
-  reclassified as training data after the fact.
-
-### Formal isolation audit
-
-> **Status:** Planned (enterprise tier)
-
-The mechanisms above — RLS scoping, per-tenant memory/Vectorize
-namespaces, Durable Object naming — are architected into the system today.
-A **formal audit** of that isolation, plus abuse/burst controls and SLO
-dashboards, is scoped as pre-general-availability hardening work. It has
-not happened yet. Don't treat "isolated by design" and "audited and
-attested" as the same claim — only the first is true right now.
-
----
-
-## Dedicated-account and region isolation (enterprise)
-
-> **Status:** Planned (enterprise tier)
-
-For organizations that need isolation beyond shared multi-tenant
-infrastructure, the plan is a **dedicated Cloudflare account and/or
-region** rather than a shared pool — not a different product, a different
-deployment footprint of the same runtime. The current pricing proposal
-lists a dedicated environment / data-residency add-on at roughly
-$2,500/mo for Enterprise (indicative — see
-[Billing and Plans](/fabric/enterprise/billing-and-plans) for the pricing-disclaimer
-that applies to every figure on this site). None of this is built yet.
-
----
-
-## The honest self-hosting position
-
-> **Status:** Not offered — a deliberate decision, not a timeline
-
-**Praxa does not offer self-hosted or on-premises deployment, and it is
-not on a roadmap to add one.** This was evaluated directly and rejected:
-the runtime is built on Cloudflare-native primitives — Durable Objects,
-Workflows, Vectorize — that don't have a portable, exportable form. Making
-this self-hostable would mean rewriting the substrate the product runs on,
-not packaging up what already exists.
-
-What you get instead, for the isolation and control most self-hosting
-requests are actually asking for:
-
-1. **BYO provider keys** — your inference spend goes through your own
-   vendor relationship, not Praxa's.
-2. **Evidence export** — an exportable audit trail (see below) rather than
-   direct database access.
-3. **Dedicated-account/region isolation** — infrastructure separation
-   without operating the infrastructure yourself.
-
-This is a genuine trade, not a workaround, and it's worth stating as one:
-you get a runtime Praxa patches, secures, and evolves under one shared
-discipline, in exchange for not operating that infrastructure yourself. If
-your requirement is specifically "our data must never touch shared
-infrastructure we don't control," the honest answer is that dedicated-
-account isolation is the closest available answer, and it is not built
-yet.
-
----
-
-## Procurement-facing trust story
-
-### Approvals fail closed
-
-> **Status:** Developer preview (unified engine) — the underlying gate is production today
-
-Every committing action gates through an approval before it executes —
-deny by default. An approval request carries an **action digest**: a
-fingerprint of the exact action pending approval. Approving means posting
-that digest back; you cannot approve a different action than the one you
-were actually shown. What renders to the approver, what gets recorded, and
-what the gate actually checks before allowing execution are required to
-match — that invariant doesn't get relaxed for convenience.
-
-Today this runs as 11 separate fail-closed approval domains built at
-different times for different features. The fabric build consolidates
-those into one policy engine (`evaluateActionPolicy`) evaluated at a single
-chokepoint, with each existing domain becoming an adapter onto it — the
-migration is required to prove identical-or-stricter decisions
-domain-by-domain, not just "the new engine also blocks things."
-
-### Receipts
-
-> **Status:** Developer preview
-
-Every run returns a receipt: what ran, which policy version evaluated it,
-who approved what, and what it was verified against — billed against a
-reservation held before the run, not settled after the fact with no prior
-hold.
-
-### Policy versioning
-
-> **Status:** Developer preview
-
-Policy packs are versioned. The version applied to a given run is recorded
-in that run's receipt, which means an audit of past decisions is
-replayable against the exact rules that were live at the time, not against
-whatever the rules happen to say today.
-
----
-
-## What's still missing for a full enterprise security review
-
-> **Status:** Planned (enterprise tier)
-
-Say this as plainly to a security reviewer as it's said internally: **do
-not treat enterprise governance as available until these ship, or the
-claim fails review mid-deal.**
-
-- SSO (SAML/OIDC) and SCIM provisioning
-- A centralized broker-revocation list enforced on the credential-use hot
-  path, so revoking a member's access takes effect immediately rather than
-  eventually
-- A server-authoritative approval re-check that doesn't rely on transport
-  auth alone
-
-These are deliberately sequenced for the quarter before the first
-enterprise deal closes — not spun up speculatively ahead of demand, and
-not represented as ready before they ship.
-
----
-
-## Summary: what's real today, what's building, what's not offered
-
-| | Status |
+| Capability | Status |
 |---|---|
-| Fail-closed approval gates (11 domains) | Production today |
-| Reserve-settle-reconcile billing machinery | Production today |
-| Org-scoped data isolation (RLS) | Production today |
-| Legacy custom-agent keys (`aura_agent_*`) | Production today |
-| Org tenancy + platform API keys (`praxa_sk_`) | Developer preview |
-| Unified policy engine + `policy` parameter | Developer preview |
-| Execute API, runs, events, webhooks | Developer preview |
-| Per-run receipts, usage readback | Developer preview |
-| BYO provider-key funding | Developer preview |
-| Connector RBAC console (grant editor UI) | Planned (enterprise tier) |
-| Evidence Ledger export (PDF / SIEM stream) | Planned (enterprise tier) |
-| Policy authoring console | Planned (enterprise tier) |
-| SSO / SCIM / broker revocation / approval re-check | Planned (enterprise tier) |
-| Dedicated CF account / region isolation | Planned (enterprise tier) |
-| Formal per-tenant isolation audit | Planned (enterprise tier) |
-| Self-hosted / on-premises deployment | Not offered |
+| Managed shared service | Current model |
+| Dedicated Cloudflare account/region | Planned, not available |
+| BYO provider credentials | Planned, not available |
+| Evidence export | Planned, not available |
+| Formal fabric isolation audit/attestation | Planned, not complete |
+| Self-hosted/on-premises | Not offered |
 
----
+Self-hosting is not on the roadmap because the runtime depends on managed
+Cloudflare primitives. Dedicated deployment is an enterprise direction, not a
+current substitute that can be purchased today.
 
-*Related: [Teams and Organizations](/fabric/enterprise/teams-and-organizations) ·
-[Billing and Plans](/fabric/enterprise/billing-and-plans)*
+## Enterprise gaps
+
+SSO/SAML/OIDC, SCIM, organization key administration, policy authoring,
+connector grant editing, centralized broker revocation, organization receipts,
+Evidence/SIEM export, dedicated regions, and related SLO/abuse dashboards are
+unavailable until explicitly activated and verified.
+
+## See also
+
+- [Teams and organizations](/fabric/enterprise/teams-and-organizations)
+- [Billing and plans](/fabric/enterprise/billing-and-plans)
+- [Security model](/fabric/security/security-model)

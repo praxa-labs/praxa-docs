@@ -1,155 +1,176 @@
 ---
 title: "TypeScript SDK"
 sidebarTitle: "TypeScript SDK"
-description: "It intentionally does not contain model-provider credentials or adapters, authentication, authorization, tenant/billing logic, memory, tool execution, or any"
+description: "Use Praxa's task-only TypeScript client for runs, approvals, cancellation, usage, and webhooks."
 ---
 
-> **Status:** Developer preview — the SDK (`@nexislabs/ai-platform`) is source-available in the Praxa repo and contract-stable; npm publication follows the public API launch and its security review.
+> **Status:** The SDK is source-available in the Praxa repository and its
+> durable-task methods work with the production partner-preview gateway. It is
+> not published to npm. Webhook methods are active for admitted personal
+> tenants. Exact approval remains pending its production canary. Cancellation
+> final-state behavior has passed separate production canaries for the
+> pre-dispatch and provider-in-flight branches.
 
-`@nexislabs/ai-platform` is the runtime-neutral contracts and streaming-client package for the Praxa Execution Fabric's `v1` chat protocol. It intentionally contains only:
+`@nexislabs/ai-platform` is a runtime-neutral client for the served Praxa
+Execution Fabric `v1` task boundary. It uses Fetch and `ReadableStream` and has
+no Expo, React, React Native, Supabase, provider, database, or tool-execution
+dependency.
 
-- Versioned request, event, and RFC 9457-style error schemas (Zod).
-- A Fetch/`ReadableStream` streaming client with no Expo, React, React Native, Supabase, model-provider, database, or tool-execution dependency.
-- Strict parsing of every streamed event.
+The public client surface is task-only. `POST /v1/execute` accepts
+`mode: "task"`; `mode: "turn"` returns `400 invalid_request`, and `/v1/chat` is
+not routed. Candidate turn schemas in the source repository are offline
+contracts, not public client methods.
 
-It intentionally does **not** contain model-provider credentials or adapters, authentication, authorization, tenant/billing logic, memory, tool execution, or any UI. Those stay server-side, in the privileged runtime behind the gateway. Two more facts worth separating from the npm-publication status above:
+## Install status
 
-- **No production endpoint serves this protocol yet.** The existing Expo `/api/chat` path remains the app's authoritative chat entry point today.
-- The package is version-locked at `0.1.0`, ESM-only (`"type": "module"`, no CommonJS build), and declares `"engines": { "node": ">=20" }`.
+The package is not published to npm. In-repo consumers resolve it through the
+Praxa monorepo's TypeScript path alias. External consumers must wait for an
+official package release or vendor the reviewed source package deliberately.
 
-## Installing
+The source package is ESM-only, version-locked at `0.1.0`, and requires Node.js
+20 or later.
 
-At launch:
-
-```sh
-npm install @nexislabs/ai-platform
-```
-
-Today, before publication, the package is only reachable from inside the Praxa monorepo. In-repo consumers (for example `src/lib/platform-corpus/`) resolve the `@nexislabs/ai-platform` specifier through a TypeScript path alias in the repo's root `tsconfig.json` that points directly at `packages/ai-platform/src/index.ts` — there is no installed `node_modules/@nexislabs` package, and this alias is not a distribution mechanism. Outside that repo, the only way to use the SDK today is to vendor or path-import `packages/ai-platform/src/index.ts` directly.
-
-## Constructing the client
+## Construct the client
 
 ```typescript
 import { AiPlatformClient } from "@nexislabs/ai-platform";
 
 const client = new AiPlatformClient({
-  baseUrl: "https://platform.example.invalid",
-  accessToken: async () => await getShortLivedAccessToken(), // your own token provider
+  baseUrl: "https://api.praxa.io",
+  accessToken: () => process.env.PRAXA_API_KEY ?? null,
 });
 ```
 
-`AiPlatformClientOptions`:
+`baseUrl` must be HTTPS, except for loopback development hosts. `accessToken`
+may be a string or a function that returns the current token. The client
+resolves it for every request. You may inject a Fetch implementation when the
+runtime does not provide one.
 
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `baseUrl` | `string` | yes | Must parse as an absolute URL. Construction throws unless the protocol is `https:` or the hostname is a loopback address (`localhost`, `127.0.0.1`, `[::1]`) — the loopback exception is what makes local development possible. Trailing slashes are stripped. |
-| `accessToken` | `string \| (() => string \| null \| Promise<string \| null>)` | yes | A static token, or a provider function the client calls (and awaits) on every `streamChat()` call — use the function form to refresh short-lived tokens transparently. If the resolved value is falsy, `streamChat()` throws `Error("No access token is available")` before any network call. |
-| `fetch` | `typeof globalThis.fetch` | no | Defaults to `globalThis.fetch`. Construction throws `Error("No fetch implementation is available")` if neither is supplied nor globally present — inject a polyfill (`undici`, `cross-fetch`) on runtimes without a native Fetch/`ReadableStream` implementation. |
-
-The constructor does no I/O. The `baseUrl` and `fetch` checks are synchronous and local; `accessToken` isn't invoked until the first `streamChat()` call.
-
-## Making a turn-mode call
-
-The only request this client makes today is the `v1` **turn-mode** chat call: one `POST {baseUrl}/v1/chat`, one `text/event-stream` response, consumed as an `AsyncGenerator<AiPlatformEventV1>`. (The Praxa Execution Fabric design also defines a durable **task mode** over `/v1/execute` and `/v1/runs/:id`; that surface is not implemented in this package — see `streaming.md`.)
+## Start and follow a task
 
 ```typescript
-import {
-  AiPlatformClient,
-  AiPlatformChatRequestV1Schema,
-  AI_PLATFORM_API_VERSION,
-  type AiPlatformChatRequestV1,
-} from "@nexislabs/ai-platform";
-
-const client = new AiPlatformClient({
-  baseUrl: "https://platform.example.invalid",
-  accessToken: async () => await getShortLivedAccessToken(),
-});
-
-// Node 20+ and browsers expose crypto.randomUUID() globally; its output
-// always satisfies the SDK's identifier pattern (see below).
-const request: AiPlatformChatRequestV1 = AiPlatformChatRequestV1Schema.parse({
-  apiVersion: AI_PLATFORM_API_VERSION,
+const run = await client.execute({
+  apiVersion: "v1",
   requestId: crypto.randomUUID(),
-  conversationId: "conversation-4f2a",
-  client: {
-    kind: "backend",
-    name: "support-console",
-    version: "1.4.0",
-    capabilities: ["streaming", "cancellation"],
+  mode: "task",
+  task: {
+    input: "Summarize the incident and propose the next safe action.",
   },
-  messages: [
-    {
-      id: crypto.randomUUID(),
-      role: "user",
-      parts: [{ type: "text", text: "Summarize the approved project notes." }],
-    },
-  ],
-  tools: { allow: ["read_project_notes"], deny: [] },
-  memory: { read: "inherit", write: "deny" },
   idempotencyKey: crypto.randomUUID(),
 });
 
-for await (const event of client.streamChat(request)) {
+for await (const event of client.streamRunEvents(run.run_id)) {
   console.log(event.sequence, event.type);
 }
 ```
 
-Passing the request through `AiPlatformChatRequestV1Schema.parse(...)` yourself first is optional — `streamChat()` calls it internally on every call — but doing it at the call site surfaces validation errors, and Zod's applied defaults, before you've built UI state around the request. The schema is `.strict()`: an unknown top-level field (a typo, a stray `userId`) throws a `ZodError` synchronously, before any network call. There is deliberately no `userId` field — the caller's identity comes from the access token, not the request body.
+The execute request is strict. It accepts only `apiVersion`, `requestId`,
+`mode`, `task.input`, and optional `idempotencyKey`. Agent selection, context,
+tools, policy, delivery, `mode: "turn"`, and unknown fields fail validation.
 
-### Fields that default when omitted
-
-| Field | Default |
-|---|---|
-| `client.capabilities` | `[]` |
-| `tools.deny` (only if `tools` is present) | `[]` |
-| `approvals` | `[]` |
-| `memory` | `{ read: "inherit", write: "inherit" }` |
-| `output` | `{ mode: "text" }` |
-| `stream` | `true` — the only legal value; passing `stream: false` fails validation, this is not a toggle |
-
-`apiVersion` and `requestId` have no default and are required on every call. Every identifier-shaped field (`requestId`, `sessionId`, `conversationId`, `organizationId`, message/file/tool-call/approval/memory ids, `idempotencyKey`) must match `^[A-Za-z0-9][A-Za-z0-9._:-]*$`, 1–128 characters long.
-
-## Type exports
-
-| Export | Kind | Description |
-|---|---|---|
-| `AI_PLATFORM_API_VERSION` | `const "v1"` | The only valid `apiVersion` value; also the `X-AI-Platform-Version` header value the client sends. |
-| `AI_PLATFORM_EVENT_MEDIA_TYPE` | `const "text/event-stream"` | Required response `content-type` for `streamChat()` — anything else throws. |
-| `AI_PLATFORM_ERROR_MEDIA_TYPE` | `const "application/problem+json"` | Media type of error bodies — see `errors-and-retries.md`. |
-| `AiPlatformClient` | class | The streaming client: `new AiPlatformClient(options)`, `.streamChat(input, options?)`. |
-| `AiPlatformHttpError` | class (`extends Error`) | Thrown when the initial HTTP response is not `ok`. `.status: number`, `.problem: AiPlatformProblem \| null`. |
-| `parseAiPlatformEventStream` | function | `(body: ReadableStream<Uint8Array>) => AsyncGenerator<AiPlatformEventV1>` — the standalone SSE-to-event parser `AiPlatformClient` is built on. |
-| `AiPlatformChatRequestV1Schema` / `AiPlatformChatRequestV1` | Zod schema / inferred type | The turn-mode request body. |
-| `AiPlatformEventV1Schema` / `AiPlatformEventV1` | Zod schema / inferred type | The streamed event discriminated union — see `streaming.md`. |
-| `AiPlatformProblemSchema` / `AiPlatformProblem` | Zod schema / inferred type | The RFC 9457-shaped error body — see `errors-and-retries.md`. |
-| `AiPlatformErrorCodeSchema` / `AiPlatformErrorCode` | Zod schema / inferred type | The 15-value stable error-code enum. |
-| `AiPlatformClientOptions` | type | Constructor options (above). |
-| `AiPlatformStreamOptions` | type | `{ signal?: AbortSignal; idempotencyKey?: string }` — the second argument to `streamChat()`. |
-| `AiPlatformClientKindSchema` | Zod schema | Enum of `client.kind`: `"expo" \| "web" \| "nextjs" \| "macos" \| "ide" \| "cli" \| "backend" \| "external"`. |
-| `AiPlatformMessageSchema` / `AiPlatformMessagePartSchema` | Zod schema | Shape of `messages[]` and each message's `parts[]` (`text` or `file_reference`). |
-
-`AiPlatformClientKindSchema`, `AiPlatformMessageSchema`, and `AiPlatformMessagePartSchema` are exported as schemas only — the package does not re-export an inferred type for them the way it does for the request/event/problem/error-code schemas. Derive one yourself if you need it as a standalone type:
+Use `getRun()` when polling fits your application:
 
 ```typescript
-import { z } from "zod";
-import { AiPlatformMessageSchema } from "@nexislabs/ai-platform";
-
-type AiPlatformMessage = z.infer<typeof AiPlatformMessageSchema>;
+const current = await client.getRun(run.run_id);
+console.log(current.status);
 ```
 
-## Schema-parsing guarantees
+## Cancel a task
 
-Every event `AiPlatformClient.streamChat()` yields has passed two layers of validation:
+```typescript
+const current = await client.cancelRun(run.run_id);
+console.log(current.status);
+```
 
-1. **Schema validity**, enforced by `parseAiPlatformEventStream()`: each SSE `data:` payload is `JSON.parse`d and then run through `AiPlatformEventV1Schema.parse()`. Every event variant is `.strict()`, so an unknown extra field (a stray `chainOfThought`, for instance) fails the same way an unrecognized `type` does — closed by construction, not by convention. A malformed or unrecognized event throws a `ZodError` out of the generator; it is never silently dropped or passed through.
-2. **Stream-level invariants**, enforced only by `AiPlatformClient.streamChat()` on top of (1):
-   - `event.requestId` must equal the request's `requestId` — otherwise `Error("AI platform stream requestId mismatch")`.
-   - `event.sequence` must strictly increase from the previous event — otherwise `Error("AI platform stream sequence is not increasing")`.
-   - No event may follow a terminal event (`response.final`, `request.cancelled`, `request.failed`) — otherwise `Error("AI platform stream emitted an event after termination")`.
-   - The stream must end on a terminal event — a clean EOF without one throws `Error("AI platform stream ended without a terminal event")`.
+`cancelRun()` sends the exact body `{}`. It accepts no reason or options object.
+Cancellation is cooperative, so the returned run may still be `running`.
+Continue reading the run or event stream until a terminal status appears.
 
-`parseAiPlatformEventStream` is exported standalone and only provides guarantee (1). Use it directly if you're driving your own transport (a proxy, a recorded fixture, a non-`fetch` HTTP client) and still want strict per-event schema parsing. Use `AiPlatformClient.streamChat()` when you want the full guarantee set, including the requestId/sequence/termination checks that make a stream trustworthy enough to drive UI or billing state.
+## Decide an exact approval after activation
 
-The SSE framing itself tolerates arbitrary chunk boundaries — a `data:` payload split across multiple network reads is reassembled before parsing — ignores any line that doesn't start with `data:` (comments, keepalives), joins multi-line `data:` blocks with `\n` before parsing, and treats a literal `data: [DONE]` payload as an end-of-stream sentinel that is consumed, not yielded.
+> **Activation status:** Source-ready, with compatible Worker code deployed.
+> Required production database activation and authenticated approval canaries
+> remain pending.
 
-Continue with [`streaming.md`](/fabric/sdk/streaming) for the full event union and approval handling, and [`errors-and-retries.md`](/fabric/sdk/errors-and-retries) for the error, retry, and cancellation contract.
+An exact recorded browser action can expose `pendingApproval` and emit
+`approval.required` only when Praxa can bind the displayed summary to the
+stored action digest. Render the supplied summary unchanged and return the same
+digest:
+
+```typescript
+if (event.type === "approval.required") {
+  renderApproval(event.summary, {
+    onApprove: () => client.approveRun(event.run_id, event.action_digest),
+    onDeny: () => client.denyRun(event.run_id, event.action_digest),
+  });
+}
+```
+
+Both methods return the updated run. Missing, stale, unsupported, foreign, or
+mismatched approvals fail closed.
+
+## Read usage
+
+```typescript
+const usage = await client.getUsage({
+  from: "2026-08-01T00:00:00.000Z",
+  to: "2026-08-02T00:00:00.000Z",
+  groupBy: "hour",
+});
+```
+
+Usage is tenant-scoped evidence. It is not invoice or reservation authority.
+
+## Manage webhooks
+
+> **Status:** Production partner preview for admitted personal tenants. A live
+> delivery canary verified the HMAC against the exact raw request body.
+
+```typescript
+const created = await client.createWebhookEndpoint({
+  url: "https://example.com/hooks/praxa",
+  event_types: ["run.completed", "run.failed"],
+  description: "Production run events",
+});
+
+const endpoints = await client.listWebhookEndpoints();
+const deliveries = await client.listWebhookDeliveries({
+  endpointId: created.endpoint.id,
+  status: "dead_letter",
+  limit: 50,
+});
+```
+
+The source client also provides `updateWebhookEndpoint()`,
+`deleteWebhookEndpoint()`, and `replayWebhookDelivery()`. Reads require
+`runs:read`. Create, update, delete, and replay require both `runs:read` and
+`runs:write` at the authoritative backend. The signing secret is returned only
+when an endpoint is created.
+
+## Public client methods
+
+| Method | Purpose |
+|---|---|
+| `execute()` | Admit one strict durable task. |
+| `getRun()` | Read a tenant-owned run projection. |
+| `streamRunEvents()` | Consume or resume a durable run's SSE feed. |
+| `approveRun()` | After activation, approve the exact pending action digest. |
+| `denyRun()` | After activation, deny the exact pending action digest. |
+| `cancelRun()` | Send the exact `{}` cancellation request. |
+| `getUsage()` | Read tenant-scoped usage evidence. |
+| `listWebhookEndpoints()` | List endpoint metadata. |
+| `createWebhookEndpoint()` | Create an endpoint and receive its secret once. |
+| `updateWebhookEndpoint()` | Update an endpoint. |
+| `deleteWebhookEndpoint()` | Disable an endpoint. |
+| `listWebhookDeliveries()` | List delivery attempts. |
+| `replayWebhookDelivery()` | Replay an eligible dead-letter delivery. |
+
+## Stream guarantees
+
+`streamRunEvents()` verifies that every event belongs to the requested run,
+that every numeric SSE `id` equals the payload `sequence`, and that sequences
+increase. The stream must end with `run.completed`, `run.failed`, or
+`run.cancelled`. EOF before a terminal event throws.
+
+Continue with [Streaming events](/fabric/sdk/streaming) for reconnection and
+[Errors and retries](/fabric/sdk/errors-and-retries) for retry behavior.

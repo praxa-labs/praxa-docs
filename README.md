@@ -1,55 +1,50 @@
-# Mintlify Starter Kit
+# Praxa documentation
 
-Use the starter kit to get your docs deployed and ready to customize.
+This repository contains the source for [docs.praxa.io](https://docs.praxa.io).
+It documents the Praxa TypeScript SDK, CLI, MCP contracts, and governed agent
+harness concepts. The public packages are maintained in
+[`praxa-labs/praxa`](https://github.com/praxa-labs/praxa).
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+## Research and evidence
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
+The preprint [_From Proposal to Verified Effect: Praxa, an Evidence-Bound
+Harness for Governed AI Agent
+Execution_](https://github.com/praxa-labs/praxa-benchmarks/releases/tag/preprint-v1.1.0)
+describes the harness architecture and reports the current evidence with its
+claim boundaries. You can download the publication as
+[PDF](https://github.com/praxa-labs/praxa-benchmarks/releases/download/preprint-v1.1.0/praxa-harness-preprint.pdf)
+or
+[DOCX](https://github.com/praxa-labs/praxa-benchmarks/releases/download/preprint-v1.1.0/praxa-harness-preprint.docx).
+The tagged release also preserves the
+[LaTeX source](https://github.com/praxa-labs/praxa-benchmarks/tree/preprint-v1.1.0/paper),
+[evidence data](https://github.com/praxa-labs/praxa-benchmarks/tree/preprint-v1.1.0/paper/data),
+[evaluation protocols](https://github.com/praxa-labs/praxa-benchmarks/tree/preprint-v1.1.0/paper/protocols),
+and [pipeline improvement
+roadmap](https://github.com/praxa-labs/praxa-benchmarks/blob/preprint-v1.1.0/paper/PIPELINE-IMPROVEMENT-ROADMAP.md).
 
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
+The publication separates repository-local regression and conformance checks
+from a small Terminal-Bench pilot. Neither lane is production evidence or a
+demonstration of harness superiority. See the [benchmark and evidence
+guide](https://docs.praxa.io/benchmarks/overview) before interpreting a result.
 
-## AI-assisted writing
+## Local development
 
-Set up your AI coding tool to work with Mintlify:
+Install the [Mintlify CLI](https://www.npmjs.com/package/mint), then start a
+local preview from this directory:
 
 ```bash
-npx skills add https://mintlify.com/docs
-```
-
-This command installs Mintlify's documentation skill for your configured AI tools like Claude Code, Cursor, Windsurf, and others. The skill includes component reference, writing standards, and workflow guidance.
-
-See the [AI tools guides](/ai-tools) for tool-specific setup.
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
-npm i -g mint
-```
-
-Run the following command at the root of your documentation, where your `docs.json` is located:
-
-```
+npm install --global mint
 mint dev
 ```
 
-View your local preview at `http://localhost:3000`.
+Open `http://localhost:3000` to review the site. Navigation and theme settings
+live in `docs.json`; documentation pages use MDX.
 
 ## Publishing changes
 
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
+The Mintlify GitHub app deploys changes after they reach the default branch.
+Review links, MDX components, and navigation locally before publishing.
 
-## Need help?
+## License
 
-### Troubleshooting
-
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
-
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+See [LICENSE](LICENSE).
