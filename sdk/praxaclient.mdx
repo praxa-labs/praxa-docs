@@ -4,7 +4,7 @@ sidebarTitle: "PraxaClient"
 description: "Full PraxaClient reference for @praxa/sdk. Covers constructor options, every method signature, and working examples for missions, capabilities, and memory."
 ---
 
-`PraxaClient` is the single entry point for all Praxa Integration Gateway interactions. You construct one instance per application — passing the gateway origin and an access-token provider — and then call its methods to create missions, stream their event lifecycles, search capabilities, query memory, and inspect skills, traces, and coverage. Every method returns a native `Promise` (or an `AsyncGenerator` for event streams), so you can use standard `async`/`await` patterns and `AbortSignal` cancellation throughout.
+`PraxaClient` is the single entry point for all Praxa Integration Gateway interactions. You construct one instance per application — passing the gateway origin and an access-token provider — and then call its methods to submit intent, create missions, stream their event lifecycles, search capabilities, query memory, and inspect skills, traces, and coverage. Every method returns a native `Promise` (or an `AsyncGenerator` for event streams), so you can use standard `async`/`await` patterns and `AbortSignal` cancellation throughout.
 
 ## Constructor
 
@@ -43,9 +43,46 @@ const client = new PraxaClient({
 
 ## Mission Methods
 
+### `submitIntent`
+
+Record natural-language intent for deterministic compilation. The `202 Accepted` response confirms durable admission only; it does not imply execution or a provider outcome.
+
+```typescript
+submitIntent(
+  intent: string,
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<IntentSubmission>
+```
+
+<ParamField path="intent" type="string" required>
+  Natural-language intent between 1 and 4,000 characters.
+</ParamField>
+
+<ParamField path="idempotencyKey" type="string" required>
+  A stable 16–128 character key for this logical submission.
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  An optional `AbortSignal` to cancel the in-flight request.
+</ParamField>
+
+**Returns** `Promise<IntentSubmission>` with `requestId`, `submissionId`, `disposition: "pending_compilation"`, and a status message.
+
+```typescript
+const submission = await client.submitIntent(
+  "Prepare a governed deployment plan",
+  crypto.randomUUID(),
+);
+
+console.log(submission.submissionId, submission.disposition);
+```
+
+---
+
 ### `createMission`
 
-Submit a new governed AI agent mission to the gateway. The mission is created synchronously; use `missionEvents` to stream its lifecycle.
+Submit a new governed AI agent mission to the gateway. The gateway accepts it for durable governed processing with `202 Accepted`; use `missionEvents` to stream its lifecycle.
 
 ```typescript
 createMission(
@@ -127,7 +164,7 @@ Open a Server-Sent Event stream and iterate over mission lifecycle events in rea
 missionEvents(
   runId: string,
   opts?: { lastEventId?: string; signal?: AbortSignal },
-): AsyncGenerator<AuraSseEvent>
+): AsyncGenerator<PraxaSseEvent>
 ```
 
 <ParamField path="runId" type="string" required>
@@ -142,7 +179,7 @@ missionEvents(
   An optional `AbortSignal` to cancel the stream.
 </ParamField>
 
-**Yields** `AuraSseEvent` — objects with `id` (string), `event` (string), and `data` (parsed `JsonValue`).
+**Yields** `PraxaSseEvent` — objects with `id` (string), `event` (string), and `data` (parsed `JsonValue`).
 
 ```typescript
 for await (const event of client.missionEvents(mission.runId)) {

@@ -1,38 +1,77 @@
 ---
 title: "Praxa Execution Fabric: Overview"
 sidebarTitle: "Praxa Execution Fabric"
-description: "The Praxa Execution Fabric is an API for delegated work. You send a task, Praxa routes it across models, tools, agents, and memory under a policy you set, ri"
+description: "Praxa Execution Fabric is an API for delegated work with durable execution, policy, metering, and evidence."
 ---
 
-> **Status:** Developer preview — the Fabric v1 API described here is contract-stable but not yet serving traffic. Contact us to join the first partner cohort.
+> **Status:** Production partner preview — personal tenant keys, the minimal
+> durable-task boundary, run reads, resumable SSE, cancellation requests, and
+> usage readback and automatic signed webhooks are live. Exact recorded
+> browser-action approval remains pending activation. Production canaries have
+> proved zero-cost pre-dispatch cancellation and scheduled uncertain-outcome
+> reconciliation for a provider-in-flight cancellation. Turn mode, general tool
+> approval, request-level overrides, organization execution, and mature receipts
+> remain closed.
 
-The Praxa Execution Fabric is an API for delegated work. You send a task, Praxa routes it across models, tools, agents, and memory under a policy you set, risky steps pause for approval, and every run finishes with a receipt that proves what happened.
+The Praxa Execution Fabric is an API for delegated work. In the live partner
+preview, you submit a minimal durable task under Praxa's server-derived defaults,
+follow its safe run projection through reads, SSE, or signed webhooks, and read
+tenant-scoped usage. The broader product direction routes work across models,
+tools, agents, and memory under configurable policy, pauses risky steps for
+approval, and produces mature audit receipts.
 
 ## What it is
 
-You submit a task. Praxa picks the models and tools to use, runs them under the policy you configured, and pauses before any step your policy marks as risky. A human approver, or another approver you designate, reviews the exact action and approves or denies it. The run finishes with an outcome and a receipt: what ran, which policy version applied, who approved what, and whether the result met the acceptance criteria you set. Every run is billed against a reservation, so cost is bounded up front and settled afterward.
+You submit a task. The live minimal path pins the execution lane and policy
+server-side; request-level agent, tool, context, policy, and delivery overrides are
+rejected. Every admitted run passes through a billing reservation and later
+settlement or fail-closed reconciliation. Exact recorded browser actions have a
+source-ready digest-bound approval path. Configurable policy, arbitrary tool
+approval, and mature receipt projection remain later phases.
 
-Model routing, picking the best model for a given step, is part of this, but it is not the point. Any provider can route a request to a cheaper or faster model. What Praxa adds is accountability: a neutral routing layer across vendors, plus a record of what was decided, who approved it, and what actually happened. Stripe routes payments. Praxa routes delegated work, and can prove what it did.
+The product direction is accountable routing across models and tools. The live
+preview proves a smaller boundary—durable admission, lifecycle projection,
+cancellation request, and usage evidence—not yet the full policy-and-receipt
+claim.
 
 ## Who it's for
 
-**Agent builders.** If you already publish agents on Praxa's custom-agent platform, you hold an `aura_agent_*` key today and call your agent through the live custom-agent API. That surface is real and working now; see Track 1 in the [Quickstart](/fabric/getting-started/quickstart). The fabric is the next step for this audience: instead of calling one fixed agent, you submit any task and let Praxa route it under your policy.
+**Agent builders.** If you already publish agents on Praxa's custom-agent
+platform, you hold a deployment-scoped key today and call that deployment through
+the existing custom-agent API. The fabric currently adds only the strict
+personal durable-task boundary; arbitrary agent/tool/policy control is the
+future direction, not a live upgrade path.
 
-**Coding-tool developers.** Praxa Control, the desktop app that runs Codex and Claude Code sessions, already talks to Praxa's first-party versioned gateway. The fabric adds cloud execution lanes for research, browsing, media, connectors, and long-running tasks. A local coding session can call out to those lanes while your local model runs and your provider credentials stay on your machine.
+**Coding-tool developers.** A trusted local script can call the minimal cloud
+task boundary while a Codex or Claude Code session stays local. Direct Praxa
+Control composer integration, repo/context transfer, and selectable cloud tools
+remain planned; local provider credentials do not transit through `/v1`.
 
-**Teams.** The same fabric backs organization-level workflows: role-based access, an evidence ledger, and policy packs your organization controls. It runs on the same runs-and-receipts substrate as the other two audiences, so a task started from a coding session and a task started from an internal workflow tool produce the same kind of receipt.
+**Teams.** Organization workflows are a target audience. Organization
+execution, RBAC for fabric keys, policy packs, evidence ledger, pooled billing,
+and organization receipts are unavailable today.
 
 ## The five parts
 
-**One door.** A single endpoint, `POST /v1/execute`, admits any task: a quick synchronous turn or a long-running job. You do not pick a different API for different kinds of work.
+**One door.** `POST /v1/execute` is the task execution contract. The current
+production preview admits only `mode: "task"`; `mode: "turn"` returns
+`400 invalid_request`, and `/v1/chat` is not routed.
 
-**Dispatcher.** Praxa routes the task across models and tools: choosing providers, retrying, and failing over, so you do not have to manage that yourself.
+**Dispatcher.** The live lane is server-selected. Caller-selected models,
+providers, tools, agents, and failover policy are unavailable.
 
-**Permission system.** Before any risky step runs, a policy engine decides whether it proceeds automatically or waits for approval. Approvals are bound to the exact action, so a different action cannot be approved by mistake in its place.
+**Permission system.** Praxa's existing domains fail closed before risky actions.
+The source-ready public path projects only exact recorded browser actions and binds
+each decision to its action digest. The unified configurable policy engine remains
+unavailable.
 
-**Meter.** Every model call and tool use is measured and billed against a reservation, whether you are spending Praxa's provider credits or your own API keys.
+**Meter.** Admitted bundled tasks pass reservation and settlement authority.
+Usage readback counts completed provider evidence; trustworthy public tool-call
+counts and BYO funding are unavailable.
 
-**Logbook.** Every run leaves a receipt: what ran, which policy version applied, who approved what, and how it was checked against your acceptance criteria.
+**Logbook.** The live run and event resources expose a deliberately narrow,
+customer-safe projection. Mature per-run receipts and evidence export remain
+unavailable.
 
 ## Where to go next
 

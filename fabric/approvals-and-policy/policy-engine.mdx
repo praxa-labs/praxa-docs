@@ -1,148 +1,72 @@
 ---
 title: "The policy engine"
 sidebarTitle: "The policy engine"
-description: "Every gated action in the fabric is decided by one policy engine (internally,"
+description: "Separate current fail-closed product gates from the planned unified configurable policy engine."
 ---
 
-> **Status:** Developer preview.
+> **Status:** A unified configurable public policy engine is unavailable.
+> Praxa's existing product has multiple mature fail-closed gates; the current
+> minimal `/v1/execute` handler derives authority server-side and rejects the
+> request `policy` override.
 
+## What exists now
 
-Every gated action in the fabric is decided by one policy engine (internally,
-`evaluateActionPolicy`), evaluated **before** the action is allowed to
-execute. Given the same inputs, it returns the same decision every time —
-that decision, not a prompt and not a model's own judgment, is what gates
-execution.
+Praxa has domain-specific gates for browser actions, purchases, connector
+writes, social actions, credentials, and other consequential product behavior.
+Those gates refuse unsafe execution when approval or authority is absent. They
+are relevant safety foundations, but they are not one customer-configurable
+public engine.
 
-## What a policy pack is
+The first source-ready public approval refinement exposes only an exact
+immutable browser action. It remains pending production activation and does not
+generalize to every domain.
 
-A **policy pack** is your tenant's versioned configuration for how actions
-get judged: which categories require review, at what monetary thresholds,
-which tools are off the table entirely, and who's allowed to approve what.
-Praxa ships a default pack, so a new tenant is governed from its first call;
-you layer your own rules on top through your own policy configuration —
-never by asking the model nicely.
+## Planned unified contract
 
-Packs are versioned. A change to your rules creates a new version; it never
-silently rewrites the record of runs that already executed under an older
-one (more on this under Versioning and receipts, below).
+The planned engine would evaluate deterministic server-owned inputs at a small
+set of commit chokepoints and return one of:
 
-## Where it runs
-
-The engine is evaluated at a small, fixed set of chokepoints — right before
-a tool call is allowed to commit, and right before a durable run's next step
-is allowed to commit — instead of each feature deciding for itself.
-
-That consolidation is in progress. Eleven separate fail-closed approval
-domains — purchases, browser actions, connector writes, social posts,
-credential changes, and more — were each built at a different time for a
-different feature inside Praxa's own product, and each today enforces its
-own version of this discipline. The fabric's engine is what unifies them
-behind one auditable decision instead of eleven: each domain becomes an
-adapter onto the shared engine, required to prove an identical-or-stricter
-call than it made before — not just "the new engine also blocks things."
-See [Deployment and Isolation](/fabric/enterprise/deployment-and-isolation#approvals-fail-closed)
-for the full trust story.
-
-## The four outcomes
-
-Every evaluation resolves to exactly one risk tier:
-
-| Outcome | What happens |
+| Outcome | Intended meaning |
 |---|---|
-| `auto` | The action proceeds immediately. No pause, no approval event. |
-| `peer_review` | A second, distinct person — not whoever is driving the run — has to approve before it proceeds. A four-eyes control for actions where one person's judgment isn't enough on its own. |
-| `human_approval` | An authorized approver has to approve before it proceeds. See [approvals.md](/fabric/approvals-and-policy/approvals) for the full pause-and-resume mechanics. |
-| `deny` | The action never runs. Not "ask a person" — a hard stop, regardless of who's asking or what they'd say. |
+| `auto` | Action can proceed under current authority. |
+| `peer_review` | A distinct authorized reviewer must approve. |
+| `human_approval` | An authorized person must approve. |
+| `deny` | Action cannot proceed. |
 
-`peer_review` and `human_approval` decisions also carry a **TTL** and the
-**approver requirements** for that specific action — how long the window
-stays open and who's allowed to close it. See
-[Expiry and TTL](/fabric/approvals-and-policy/approvals#expiry-and-ttl).
+Planned inputs include tool capability, effect classification, monetary and
+sensitive-category thresholds, anomaly signals, tenant policy, and scoped
+standing grants. Planned policy packs would be named and versioned.
 
-## Trigger inputs, in plain language
+None of that vocabulary makes peer review, customer policy authoring, standing
+grants, request risk ceilings, model-lane pins, tool allowlists, or policy
+receipts live today.
 
-The engine weighs seven inputs together into one decision:
+## Current request behavior
 
-- **Tool capability.** Every tool already declares, as part of its own
-  definition, whether it's read-only, destructive, and/or requires a human
-  in the loop. This is the starting signal — read-only lookups lean toward
-  `auto`; anything destructive or flagged human-in-the-loop never lands
-  there.
-- **Effect classification.** What kind of consequence the action has —
-  sending something externally, moving money, deleting data, widening what
-  the agent can do later — independent of which specific tool is involved.
-- **Monetary threshold.** Whether a dollar amount in the action crosses a
-  line your policy pack sets. A $12 call and a $12,000 one aren't the same
-  decision even through the same tool.
-- **Sensitive category.** Whether the action falls into a category that's
-  always reviewed regardless of amount — payments, deletions, publishing,
-  credential handling, outbound customer communication. The dunning email
-  below is one of these.
-- **Anomaly vs. history.** Whether the action looks like the normal pattern
-  for this tenant, or a departure from it — a new recipient, an unusual
-  hour, a volume spike.
-- **Tenant policy pack.** Your own configured rules, layered on the
-  platform default.
-- **Standing grants.** A person's own prior, narrowly scoped "always allow
-  this" decision — bound to a specific host, recipient, or merchant, and
-  carrying its own expiry. A grant only ever narrows what still needs
-  review; it never overrides a `deny`.
+The SDK reserves a `policy` object, but the active handler rejects the entire
+field before task creation. A caller cannot tighten or loosen policy through
+`/v1/execute` yet. Identity, tenant, roles, funding, and task admission remain
+server-derived.
 
-A caller can also tighten — never loosen — behavior per request. The
-`policy` field on `POST /v1/execute` is a bounded view over the same engine:
-a risk ceiling, budget caps (see
-[budgets-and-limits.md](/fabric/approvals-and-policy/budgets-and-limits)), a model-lane pin, a tool
-allowlist, and an approval mode. It constrains what one run is allowed to
-do; it can't make the tenant pack more permissive.
+## Required invariants for future activation
 
-## Fail-closed defaults
+- unknown, unsupported, and evaluation-error cases fail closed;
+- no prompt or model judgment can grant authority;
+- every adapter proves identical-or-stricter behavior against its existing
+  product gate;
+- the displayed action equals the recorded action and resume-gate input;
+- policy versions cannot be rewritten under historical evidence;
+- organization approver authority is rechecked at the decision boundary;
+- activation follows evaluation, migration, deploy, and live negative canaries.
 
-An action the engine doesn't recognize, or can't classify with confidence,
-never defaults to `auto` — unknown means reviewed, not unrestricted. And if
-the engine itself can't be evaluated — an error, a timeout — the action is
-refused rather than waved through. A policy gate that fails open on its own
-error is not a policy gate. This is the same invariant
-[approvals.md](/fabric/approvals-and-policy/approvals) describes for the approval payload itself:
-what's presented for review is exactly what's checked at resume time, with
-no path around the check.
+## Receipts remain separate
 
-## Versioning and receipts
-
-The policy pack version active at the moment a run is admitted is frozen for
-that run's entire lifetime — it can't change mid-run, the same way a run's
-budget and step ceilings can't (see
-[budgets-and-limits.md](/fabric/approvals-and-policy/budgets-and-limits)). That version travels with
-the run and is recorded on its receipt. That's what makes the fabric's audit
-trail meaningful months later: you're not asking whether something would be
-approved under today's rules — you're checking a run against the exact rules
-that were live when it ran. A replayable audit, not a best-effort
-reconstruction.
-
-## Worked example: the dunning email, classified
-
-Back to Meridian Fabrication (full scenario in [approvals.md](/fabric/approvals-and-policy/approvals)).
-The `send_email` call the agent proposes reads, against the seven inputs
-above:
-
-- **Tool capability:** not destructive — nothing is deleted — but flagged
-  human-in-the-loop.
-- **Effect classification:** external communication, leaving the tenant's
-  boundary to a real customer.
-- **Sensitive category:** outbound customer correspondence tied to a
-  receivable.
-- **Monetary threshold:** $4,280.00 named in the body — below most tenants'
-  `peer_review` line, but not nothing.
-
-That combination resolves to `human_approval`: one authorized approver's
-decision is enough, but the email does not go out unreviewed. A larger
-invoice, or a first-time recipient the tenant's history doesn't recognize,
-could push the same tool call to `peer_review` instead under a stricter
-pack. Same tool, different decision — the decision belongs to the engine,
-evaluated fresh against this specific action, not fixed to `send_email` as a
-property of the tool itself.
+Current public runs and events do not expose a mature policy-version receipt.
+Hash-chained evidence, policy replay, approver identity, and export remain
+planned even though narrower internal task and approval records exist.
 
 ## See also
 
-- [Approvals](/fabric/approvals-and-policy/approvals) — the pause-and-resume lifecycle this engine triggers
-- [Budgets and limits](/fabric/approvals-and-policy/budgets-and-limits) — the spend and step ceilings the `policy` field can tighten
-- [Deployment and Isolation](/fabric/enterprise/deployment-and-isolation#approvals-fail-closed) — the eleven-domain trust story in full
+- [Approvals](/fabric/approvals-and-policy/approvals)
+- [Budgets and limits](/fabric/approvals-and-policy/budgets-and-limits)
+- [Receipts and audit](/fabric/security/receipts-and-audit)

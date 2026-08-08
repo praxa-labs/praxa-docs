@@ -1,30 +1,30 @@
 openapi: 3.1.0
 info:
   title: Praxa Execution Fabric API
-  version: 1.0.0-preview
-  summary: Developer preview — not yet serving public traffic.
+  version: 1.0.0-partner-preview
+  summary: Production partner-preview API for durable task execution.
   description: >-
-    The execution fabric for delegated work, as an API. A customer submits a
-    task; Praxa routes it across models, tools, agents, and memory under an
-    explicit policy; commits gate through approvals; every run returns a
-    receipt and is billed against a reservation.
-
-
-    Contract-stable per @nexislabs/ai-platform v1. This document mirrors two
-    sources: the design spec's endpoint-level architecture (§3.1) and the
-    published `AiPlatformChatRequestV1` / `AiPlatformEventV1` /
-    `AiPlatformProblem` zod contracts in `@nexislabs/ai-platform`. Where the
-    two sources disagree or a shape is not yet published, schemas below use
-    `additionalProperties: true` and a `description` explaining the gap
-    rather than inventing a contract. See the accompanying Markdown pages
-    for the full list of flagged ambiguities.
+    This specification describes the minimal public execution subset available
+    to the production partner-preview cohort. Durable task admission, run reads,
+    reconnectable event streams, and cancellation requests are active.
+    POST /v1/execute accepts mode task only; mode turn is rejected as a 400
+    invalid_request, and /v1/chat is not routed. Request-level
+    agent/tool/policy/delivery overrides remain unavailable. Usage readback is
+    active. Digest-bound public approval remains pending production activation.
+    The cancellation-reconciliation migration and compatible Workers are live,
+    and separate production canaries have proved the pre-dispatch and
+    provider-in-flight final-state branches.
+    Bearer webhook management and HMAC-signed delivery are active for admitted
+    personal tenants. Production migration history records 20260801092306
+    task_cancellation_reconciliation, 20260801092339
+    platform_task_webhook_projection, and 20260801092356
+    platform_webhook_api_authority. Signed-in platform management surfaces are
+    documented separately in Markdown.
 servers:
   - url: https://api.praxa.io
-    description: >-
-      Production origin (developer preview — not yet serving public
-      traffic).
+    description: Production partner-preview origin.
 security:
-  - ApiKeyAuth: []
+  - FabricKey: []
 tags:
   - name: Execute
   - name: Runs
@@ -32,12 +32,18 @@ tags:
   - name: Approvals
   - name: Usage
   - name: Webhooks
+  - name: Webhook deliveries
 paths:
   /v1/execute:
     post:
-      operationId: executeTask
-      summary: Admit a task into the execution fabric
+      operationId: executeDurableTask
+      summary: Admit a minimal durable task
+      description: >-
+        Accepts mode task only. Agent, context, tools, policy, delivery, mode
+        turn, and every other unknown member are rejected before task creation
+        with a 400 invalid_request response. /v1/chat is not a routed endpoint.
       tags: [Execute]
+      x-required-scopes: [execute:write]
       parameters:
         - name: Idempotency-Key
           in: header
@@ -45,59 +51,48 @@ paths:
           schema:
             $ref: '#/components/schemas/Identifier'
           description: >-
-            Principal-scoped. Same key + same request body replays safely
-            (request.accepted.replayed:true); same key + a different body
-            returns the conflict error code.
+            Must equal the body idempotencyKey when both are present. The
+            effective key is header, body, then requestId.
         - name: X-AI-Platform-Version
           in: header
           required: false
           schema:
             type: string
             const: v1
-        - name: Accept
-          in: header
-          required: false
-          schema:
-            type: string
-            enum: [text/event-stream, application/json]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExecuteRequest'
+              $ref: '#/components/schemas/ExecuteTaskRequest'
       responses:
-        '200':
-          description: >-
-            mode:"turn" streams AiPlatformEventV1 over SSE until a terminal
-            event. mode:"task" returns JSON carrying at minimum a run
-            identifier; the full mode:"task" response schema is not
-            published — see runs.md.
-          content:
-            text/event-stream:
+        '202':
+          description: Durable task admitted or exact idempotent replay returned.
+          headers:
+            Location:
               schema:
-                $ref: '#/components/schemas/AiPlatformEventV1'
+                type: string
+                pattern: '^/v1/runs/'
+          content:
             application/json:
               schema:
-                type: object
-                properties:
-                  run_id:
-                    type: string
-                required: [run_id]
-                additionalProperties: true
+                $ref: '#/components/schemas/RunResource'
+        '400':
+          $ref: '#/components/responses/ProblemResponse'
         default:
           $ref: '#/components/responses/ProblemResponse'
 
   /v1/runs/{id}:
     get:
       operationId: getRun
-      summary: Get a run
+      summary: Read a tenant-owned run projection
       tags: [Runs]
+      x-required-scopes: [runs:read]
       parameters:
         - $ref: '#/components/parameters/RunId'
       responses:
         '200':
-          description: Public RunResource projection.
+          description: Customer-safe run projection.
           content:
             application/json:
               schema:
@@ -108,34 +103,38 @@ paths:
   /v1/runs/{id}/events:
     get:
       operationId: streamRunEvents
-      summary: Stream run events over SSE
+      summary: Stream reconnectable durable-run events
       tags: [Events]
+      x-required-scopes: [runs:read]
       parameters:
         - $ref: '#/components/parameters/RunId'
         - name: Last-Event-ID
           in: header
           required: false
           schema:
-            type: string
-          description: >-
-            Resume from this task_run_events.sequence value (design spec
-            §3.1). Not verified against a client implementation in this
-            corpus — see events.md.
+            type: integer
+            minimum: 0
+          description: Resume strictly after this task_run_events sequence.
       responses:
         '200':
-          description: Event stream.
+          description: >-
+            SSE frames include matching numeric id and payload sequence. Comment
+            heartbeats may appear. During uncertain-outcome reconciliation, the
+            run remains non-terminal and keeps the stream open. A
+            completed, failed, or cancelled run closes it.
           content:
             text/event-stream:
               schema:
-                $ref: '#/components/schemas/AiPlatformEventV1'
+                $ref: '#/components/schemas/RunEvent'
         default:
           $ref: '#/components/responses/ProblemResponse'
 
-  /v1/runs/{id}/approve:
+  /v1/runs/{id}/cancel:
     post:
-      operationId: approveRun
-      summary: Approve or reject a parked run
-      tags: [Approvals]
+      operationId: cancelRun
+      summary: Request durable-run cancellation
+      tags: [Runs]
+      x-required-scopes: [runs:write]
       parameters:
         - $ref: '#/components/parameters/RunId'
       requestBody:
@@ -143,52 +142,95 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ApproveRequest'
+              type: object
+              additionalProperties: false
+              minProperties: 0
+              maxProperties: 0
+              description: The request body is exactly an empty JSON object.
       responses:
         '200':
           description: >-
-            resume_task_after_approval was invoked and confirmed delivered
-            (the fabric's approve wrapper is specified to fail loudly rather
-            than swallow a delivery failure). Success body beyond this is
-            not published — continue via the event stream or webhooks.
+            Updated run projection. Acceptance does not imply rollback or an
+            immediate cancelled state. Internal cancelling and
+            reconcile_required states both map to running until the run reaches
+            a terminal outcome.
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/RunResource'
         default:
           $ref: '#/components/responses/ProblemResponse'
 
-  /v1/runs/{id}/cancel:
+  /v1/runs/{id}/approve:
     post:
-      operationId: cancelRun
-      summary: Cancel a run
-      tags: [Runs]
+      operationId: decideRunApproval
+      summary: Approve or deny an exact pending browser action
+      description: >-
+        Source-ready but pending production activation. The key must carry
+        runs:write. Praxa re-derives the exact recorded browser-action
+        presentation before accepting the decision. The supplied digest must
+        match that presentation and the pending action. Missing, stale,
+        foreign-tenant, unsupported, or mismatched approvals fail closed; Praxa
+        never substitutes a generic summary.
+      tags: [Approvals]
+      x-activation-status: pending
+      x-required-scopes: [runs:write]
       parameters:
         - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecision'
       responses:
         '200':
-          description: >-
-            Cancellation accepted. Emits a terminal request.cancelled event
-            on the run's stream.
+          description: Updated run projection after the digest-bound decision.
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/RunResource'
         default:
           $ref: '#/components/responses/ProblemResponse'
 
   /v1/usage:
     get:
       operationId: getUsage
-      summary: Tenant-scoped usage/spend readback
+      summary: Read tenant-scoped usage evidence
+      description: The key must carry usage:read.
       tags: [Usage]
+      x-required-scopes: [usage:read]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Inclusive RFC 3339 range start.
+          schema:
+            $ref: '#/components/schemas/Timestamp'
+        - name: to
+          in: query
+          required: true
+          description: >-
+            Exclusive RFC 3339 range end. It must be after from; the management
+            implementation accepts a maximum range of 366 days.
+          schema:
+            $ref: '#/components/schemas/Timestamp'
+        - name: group_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [hour, day, month]
+            default: day
+        - name: api_key_id
+          in: query
+          required: false
+          description: Limit readback to one API key owned by the tenant.
+          schema:
+            $ref: '#/components/schemas/Identifier'
       responses:
         '200':
-          description: >-
-            No field-level response schema is published by either source in
-            scope for this reference — see usage.md.
+          description: Evidence-bounded usage totals and time buckets.
           content:
             application/json:
               schema:
@@ -197,41 +239,195 @@ paths:
           $ref: '#/components/responses/ProblemResponse'
 
   /v1/webhooks:
-    post:
-      operationId: registerWebhook
-      summary: Register an outbound webhook delivery endpoint
+    get:
+      operationId: listWebhookEndpoints
+      summary: List webhook endpoints
+      description: >-
+        Production partner preview. The gateway and backend both require
+        runs:read. Signing secrets are never returned by this operation.
       tags: [Webhooks]
+      x-activation-status: partner-preview
+      x-gateway-required-scopes: [runs:read]
+      x-backend-required-scopes: [runs:read]
+      responses:
+        '200':
+          description: Tenant-owned webhook endpoint metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointList'
+        default:
+          $ref: '#/components/responses/ProblemResponse'
+    post:
+      operationId: createWebhookEndpoint
+      summary: Create a webhook endpoint
+      description: >-
+        Production partner preview. The gateway checks runs:write; the backend
+        reauthorizes both runs:read and runs:write, so the key must carry both
+        scopes. The signing secret is returned only once.
+      tags: [Webhooks]
+      x-activation-status: partner-preview
+      x-gateway-required-scopes: [runs:write]
+      x-backend-required-scopes: [runs:read, runs:write]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WebhookRegistration'
+              $ref: '#/components/schemas/CreateWebhookEndpointInput'
       responses:
         '201':
-          description: >-
-            Endpoint registered. Field names in the request and this
-            response are an illustrative reconstruction, not a confirmed
-            contract — see webhooks.md.
+          description: Endpoint metadata and its one-time signing secret.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateWebhookEndpointResult'
+        default:
+          $ref: '#/components/responses/ProblemResponse'
+
+  /v1/webhooks/{endpointId}:
+    patch:
+      operationId: updateWebhookEndpoint
+      summary: Update a webhook endpoint
+      description: >-
+        Production partner preview. The gateway checks runs:write; the backend
+        reauthorizes both runs:read and runs:write, so the key must carry both
+        scopes. The strict request must contain at least one field.
+      tags: [Webhooks]
+      x-activation-status: partner-preview
+      x-gateway-required-scopes: [runs:write]
+      x-backend-required-scopes: [runs:read, runs:write]
+      parameters:
+        - $ref: '#/components/parameters/EndpointId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWebhookEndpointInput'
+      responses:
+        '200':
+          description: Updated endpoint metadata.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/WebhookEndpoint'
         default:
           $ref: '#/components/responses/ProblemResponse'
+    delete:
+      operationId: deleteWebhookEndpoint
+      summary: Disable a webhook endpoint
+      description: >-
+        Production partner preview. The gateway checks runs:write; the backend
+        reauthorizes both runs:read and runs:write, so the key must carry both
+        scopes. Deletion disables the endpoint and returns no body.
+      tags: [Webhooks]
+      x-activation-status: partner-preview
+      x-gateway-required-scopes: [runs:write]
+      x-backend-required-scopes: [runs:read, runs:write]
+      parameters:
+        - $ref: '#/components/parameters/EndpointId'
+      responses:
+        '204':
+          description: Endpoint disabled.
+        default:
+          $ref: '#/components/responses/ProblemResponse'
+
+  /v1/webhook-deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      summary: List webhook deliveries
+      description: >-
+        Production partner preview. The gateway and backend both require
+        runs:read.
+      tags: [Webhook deliveries]
+      x-activation-status: partner-preview
+      x-gateway-required-scopes: [runs:read]
+      x-backend-required-scopes: [runs:read]
+      parameters:
+        - name: endpoint_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Identifier'
+        - name: run_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Identifier'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/WebhookDeliveryStatus'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+      responses:
+        '200':
+          description: A cursor-paged list of tenant-owned delivery records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeliveryList'
+        default:
+          $ref: '#/components/responses/ProblemResponse'
+
+  /v1/webhook-deliveries/{deliveryId}/replay:
+    post:
+      operationId: replayWebhookDelivery
+      summary: Replay a webhook delivery
+      description: >-
+        Production partner preview. The gateway checks runs:write; the backend
+        reauthorizes both runs:read and runs:write, so the key must carry both
+        scopes. Send an exact empty JSON object.
+      tags: [Webhook deliveries]
+      x-activation-status: partner-preview
+      x-gateway-required-scopes: [runs:write]
+      x-backend-required-scopes: [runs:read, runs:write]
+      parameters:
+        - $ref: '#/components/parameters/DeliveryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
+      responses:
+        '202':
+          description: The created or idempotently reused replay delivery.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDelivery'
+        default:
+          $ref: '#/components/responses/ProblemResponse'
 
 components:
   securitySchemes:
-    ApiKeyAuth:
+    FabricKey:
       type: http
       scheme: bearer
-      bearerFormat: praxa_sk_*
+      bearerFormat: praxa_sk_<64 lowercase hex characters>
       description: >-
-        API key principal, prefix praxa_sk_. The gateway also accepts
-        Supabase-JWT principals for Praxa's own desktop and Expo clients;
-        this document covers the API-key principal used by external
-        integrations.
-
+        Exact format: praxa_sk_ followed by 64 lowercase hexadecimal
+        characters. The gateway does not accept Supabase JWT principals. The
+        exact scope vocabulary is execute:write, runs:read, runs:write, and
+        usage:read.
   parameters:
     RunId:
       name: id
@@ -239,342 +435,511 @@ components:
       required: true
       schema:
         type: string
-      description: Run identifier.
-
+        format: uuid
+    EndpointId:
+      name: endpointId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    DeliveryId:
+      name: deliveryId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
   responses:
     ProblemResponse:
-      description: Error response (RFC 9457).
+      description: RFC 9457-style fail-closed problem.
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
-
   schemas:
-    # ---- shared primitives ----
-
+    PlatformScope:
+      type: string
+      enum: [execute:write, runs:read, runs:write, usage:read]
     Identifier:
       type: string
       minLength: 1
       maxLength: 128
       pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$'
-
     Timestamp:
       type: string
       format: date-time
-      description: >-
-        RFC 3339 datetime. The published schema requires an explicit
-        timezone offset (zod .datetime({ offset: true })), not only "Z".
-
-    MetadataValue:
-      oneOf:
-        - type: string
-          maxLength: 512
-        - type: number
-        - type: boolean
-        - type: 'null'
-
-    Metadata:
-      type: object
-      description: Opaque trace metadata. At most 32 keys.
-      maxProperties: 32
-      propertyNames:
-        minLength: 1
-        maxLength: 64
-      additionalProperties:
-        $ref: '#/components/schemas/MetadataValue'
-
-    ClientKind:
-      type: string
-      enum: [expo, web, nextjs, macos, ide, cli, backend, external]
-
-    ClientInfo:
+    UsageTotals:
       type: object
       additionalProperties: false
       properties:
-        kind:
-          $ref: '#/components/schemas/ClientKind'
+        requests: { type: integer, minimum: 0 }
+        runs: { type: integer, minimum: 0 }
+        inputTokens: { type: integer, minimum: 0 }
+        outputTokens: { type: integer, minimum: 0 }
+        modelCalls: { type: integer, minimum: 0 }
+        toolCalls: { type: integer, minimum: 0 }
+        billableAmountMicros: { type: integer, minimum: 0 }
+      required:
+        - requests
+        - runs
+        - inputTokens
+        - outputTokens
+        - modelCalls
+        - toolCalls
+        - billableAmountMicros
+    UsageSeriesItem:
+      type: object
+      additionalProperties: false
+      properties:
+        bucketStart:
+          $ref: '#/components/schemas/Timestamp'
+        bucketEnd:
+          $ref: '#/components/schemas/Timestamp'
+        usage:
+          $ref: '#/components/schemas/UsageTotals'
+      required: [bucketStart, bucketEnd, usage]
+    UsageByApiKeyItem:
+      type: object
+      additionalProperties: false
+      properties:
+        apiKeyId:
+          $ref: '#/components/schemas/Identifier'
         name:
           type: string
           minLength: 1
           maxLength: 128
-        version:
-          type: string
-          minLength: 1
-          maxLength: 64
-        capabilities:
-          type: array
-          default: []
-          maxItems: 64
-          items:
-            type: string
-            minLength: 1
-            maxLength: 96
-      required: [kind, name, version]
-
-    TextPart:
+        usage:
+          $ref: '#/components/schemas/UsageTotals'
+      required: [apiKeyId, name, usage]
+    UsageResponse:
       type: object
       additionalProperties: false
-      properties:
-        type:
-          const: text
-        text:
-          type: string
-          minLength: 1
-          maxLength: 200000
-      required: [type, text]
-
-    FileReferencePart:
-      type: object
-      additionalProperties: false
-      properties:
-        type:
-          const: file_reference
-        fileId:
-          $ref: '#/components/schemas/Identifier'
-        mediaType:
-          type: string
-          minLength: 1
-          maxLength: 128
-        name:
-          type: string
-          minLength: 1
-          maxLength: 255
-      required: [type, fileId, mediaType]
-
-    MessagePart:
-      oneOf:
-        - $ref: '#/components/schemas/TextPart'
-        - $ref: '#/components/schemas/FileReferencePart'
-      discriminator:
-        propertyName: type
-        mapping:
-          text: '#/components/schemas/TextPart'
-          file_reference: '#/components/schemas/FileReferencePart'
-
-    Message:
-      type: object
-      additionalProperties: false
-      properties:
-        id:
-          $ref: '#/components/schemas/Identifier'
-        role:
-          type: string
-          enum: [user, assistant]
-        parts:
-          type: array
-          minItems: 1
-          maxItems: 64
-          items:
-            $ref: '#/components/schemas/MessagePart'
-      required: [id, role, parts]
-
-    ToolsFilter:
-      type: object
-      additionalProperties: false
-      properties:
-        allow:
-          type: array
-          maxItems: 256
-          items:
-            type: string
-            minLength: 1
-            maxLength: 128
-        deny:
-          type: array
-          default: []
-          maxItems: 256
-          items:
-            type: string
-            minLength: 1
-            maxLength: 128
-
-    ApprovalReceipt:
-      type: object
-      additionalProperties: false
-      description: >-
-        Inline approval transport used on mode:"turn" requests. Relationship
-        to action_digest/decision (used by POST /v1/runs/:id/approve) is not
-        specified by either source — see approvals.md.
-      properties:
-        approvalId:
-          $ref: '#/components/schemas/Identifier'
-        receipt:
-          type: string
-          minLength: 16
-          maxLength: 4096
-      required: [approvalId, receipt]
-
-    MemoryPolicy:
-      type: object
-      additionalProperties: false
-      properties:
-        read:
-          type: string
-          enum: [inherit, allow, deny]
-          default: inherit
-        write:
-          type: string
-          enum: [inherit, allow, deny]
-          default: inherit
-
-    OutputPolicy:
-      type: object
-      additionalProperties: false
-      properties:
-        mode:
-          type: string
-          enum: [text, structured, ui]
-          default: text
-        schemaId:
-          $ref: '#/components/schemas/Identifier'
-
-    # ---- request bodies ----
-
-    AiPlatformChatRequestV1:
-      type: object
-      additionalProperties: false
-      description: >-
-        Published wire contract for mode:"turn". Also the literal body the
-        reference client posts to /v1/chat — see execute.md's contract note
-        on the /v1/execute vs /v1/chat discrepancy.
       properties:
         apiVersion:
+          type: string
+          const: v1
+        from:
+          $ref: '#/components/schemas/Timestamp'
+        to:
+          $ref: '#/components/schemas/Timestamp'
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        totals:
+          $ref: '#/components/schemas/UsageTotals'
+        series:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/UsageSeriesItem'
+        byApiKey:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/UsageByApiKeyItem'
+      required: [apiVersion, from, to, currency, totals, series]
+    WebhookEventType:
+      type: string
+      enum:
+        - run.accepted
+        - run.started
+        - run.progress
+        - approval.required
+        - approval.resolved
+        - run.completed
+        - run.failed
+        - run.cancelled
+    WebhookEventTypes:
+      type: array
+      minItems: 1
+      maxItems: 8
+      uniqueItems: true
+      items:
+        $ref: '#/components/schemas/WebhookEventType'
+    WebhookHttpsUrl:
+      type: string
+      format: uri
+      maxLength: 2048
+      pattern: '^https://'
+    CreateWebhookEndpointInput:
+      type: object
+      additionalProperties: false
+      properties:
+        url:
+          $ref: '#/components/schemas/WebhookHttpsUrl'
+        event_types:
+          $ref: '#/components/schemas/WebhookEventTypes'
+        description:
+          type: string
+          minLength: 1
+          maxLength: 256
+      required: [url, event_types]
+    UpdateWebhookEndpointInput:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        url:
+          $ref: '#/components/schemas/WebhookHttpsUrl'
+        event_types:
+          $ref: '#/components/schemas/WebhookEventTypes'
+        description:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 256
+        status:
+          type: string
+          enum: [active, disabled]
+    WebhookEndpoint:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        id:
+          $ref: '#/components/schemas/Identifier'
+        url:
+          $ref: '#/components/schemas/WebhookHttpsUrl'
+        event_types:
+          $ref: '#/components/schemas/WebhookEventTypes'
+        description:
+          type: string
+          minLength: 1
+          maxLength: 256
+        status:
+          type: string
+          enum: [active, disabled]
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+      required: [apiVersion, id, url, event_types, status, createdAt, updatedAt]
+    CreateWebhookEndpointResult:
+      type: object
+      additionalProperties: false
+      properties:
+        endpoint:
+          $ref: '#/components/schemas/WebhookEndpoint'
+        signing_secret:
+          type: string
+          minLength: 16
+          maxLength: 512
+          description: Returned only when the endpoint is created.
+      required: [endpoint, signing_secret]
+    WebhookEndpointList:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        data:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/WebhookEndpoint'
+      required: [apiVersion, data]
+    WebhookDeliveryStatus:
+      type: string
+      enum: [pending, delivering, succeeded, retrying, dead_letter]
+    WebhookDelivery:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        id:
+          $ref: '#/components/schemas/Identifier'
+        endpoint_id:
+          $ref: '#/components/schemas/Identifier'
+        event_type:
+          $ref: '#/components/schemas/WebhookEventType'
+        run_id:
+          $ref: '#/components/schemas/Identifier'
+        status:
+          $ref: '#/components/schemas/WebhookDeliveryStatus'
+        attempt_count:
+          type: integer
+          minimum: 0
+        response_status:
+          type: integer
+          minimum: 100
+          maximum: 599
+        next_attempt_at:
+          $ref: '#/components/schemas/Timestamp'
+        delivered_at:
+          $ref: '#/components/schemas/Timestamp'
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+      required:
+        - apiVersion
+        - id
+        - endpoint_id
+        - event_type
+        - status
+        - attempt_count
+        - createdAt
+        - updatedAt
+    WebhookDeliveryList:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        data:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/WebhookDelivery'
+        nextCursor:
+          type: string
+          minLength: 1
+          maxLength: 512
+      required: [apiVersion, data]
+    ExecuteTaskRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
           const: v1
         requestId:
           $ref: '#/components/schemas/Identifier'
-        sessionId:
-          $ref: '#/components/schemas/Identifier'
-        conversationId:
-          $ref: '#/components/schemas/Identifier'
-        organizationId:
-          $ref: '#/components/schemas/Identifier'
-        client:
-          $ref: '#/components/schemas/ClientInfo'
-        messages:
-          type: array
-          minItems: 1
-          maxItems: 512
-          items:
-            $ref: '#/components/schemas/Message'
-        modelPreference:
-          type: string
-          minLength: 1
-          maxLength: 128
-        tools:
-          $ref: '#/components/schemas/ToolsFilter'
-        approvals:
-          type: array
-          default: []
-          maxItems: 64
-          items:
-            $ref: '#/components/schemas/ApprovalReceipt'
-        memory:
-          allOf:
-            - $ref: '#/components/schemas/MemoryPolicy'
-          default: { read: inherit, write: inherit }
-        output:
-          allOf:
-            - $ref: '#/components/schemas/OutputPolicy'
-          default: { mode: text }
-        stream:
-          const: true
-          default: true
-        timeoutMs:
-          type: integer
-          minimum: 1000
-          maximum: 120000
-        idempotencyKey:
-          $ref: '#/components/schemas/Identifier'
-        trace:
-          $ref: '#/components/schemas/Metadata'
-      required: [apiVersion, requestId, client, messages]
-
-    ExecuteRequestTask:
-      type: object
-      additionalProperties: true
-      description: >-
-        mode:"task" request envelope as named in the design spec (§3.1).
-        task/context/policy/delivery sub-field shapes are not published;
-        additionalProperties is left open honestly rather than invented.
-        See execute.md.
-      properties:
         mode:
+          type: string
           const: task
         task:
           type: object
-          additionalProperties: true
-          description: The work to execute. Shape not published.
-        context:
-          type: object
-          additionalProperties: true
-          description: >-
-            Session/conversation/organization/memory scoping. Shape not
-            published.
-        tools:
-          $ref: '#/components/schemas/ToolsFilter'
-        policy:
-          type: object
-          additionalProperties: true
-          description: >-
-            Risk ceiling, budget caps, model-lane pin, tool allowlist,
-            approval mode (design spec §3.3). Wire field names not
-            published.
-        delivery:
-          type: object
-          additionalProperties: true
-          description: >-
-            Progress-delivery preference (e.g. SSE vs. webhook). Not
-            elaborated beyond the field name.
-      required: [mode, task]
-
-    ExecuteRequest:
+          additionalProperties: false
+          properties:
+            input:
+              type: string
+              minLength: 1
+              maxLength: 16000
+          required: [input]
+        idempotencyKey:
+          $ref: '#/components/schemas/Identifier'
+      required: [apiVersion, requestId, mode, task]
+    RunStatus:
+      type: string
       description: >-
-        POST /v1/execute request body. Documented as two shapes rather than
-        one unified contract — see the contract note in execute.md. The
-        design spec's mode:"turn" description says this body IS the
-        AiPlatformChatRequestV1 shape (first option); mode:"task" uses the
-        spec's task/context/tools/policy/delivery envelope (second option).
-      oneOf:
-        - $ref: '#/components/schemas/AiPlatformChatRequestV1'
-        - $ref: '#/components/schemas/ExecuteRequestTask'
-
-    ApproveRequest:
+        Public lifecycle status. Internal cancelling and reconcile_required
+        states project as running; reconciliation is not terminal.
+      enum: [queued, running, awaiting_approval, completed, failed, cancelled]
+    RunFailure:
       type: object
       additionalProperties: false
       properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 96
+          description: >-
+            run_outcome_unknown identifies an unverified committing outcome.
+            Ordinary failed, partial, and expired outcomes use run_failed.
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2048
+        retryable:
+          type: boolean
+      required: [code, message, retryable]
+    PendingApproval:
+      type: object
+      additionalProperties: false
+      description: >-
+        Present only when Praxa can derive the exact recorded browser action
+        and bind it to the stored action digest. The summary contains the exact
+        recorded instruction or steps followed by the target host.
+      properties:
+        approvalId:
+          $ref: '#/components/schemas/Identifier'
         action_digest:
           type: string
-          description: >-
-            Binds the decision to the proposed action (digest-bound
-            resume_task_after_approval). Exact format not published.
+          pattern: '^[a-f0-9]{64}$'
+        summary:
+          type: string
+          minLength: 1
+          maxLength: 2048
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+      required: [approvalId, action_digest, summary]
+    RunResource:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        run_id:
+          type: string
+          format: uuid
+        requestId:
+          $ref: '#/components/schemas/Identifier'
+        mode:
+          type: string
+          const: task
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+        completedAt:
+          $ref: '#/components/schemas/Timestamp'
+        pendingApproval:
+          $ref: '#/components/schemas/PendingApproval'
+        result:
+          type: object
+          additionalProperties: false
+          description: Present only for schema-valid, digest-matched verified text.
+          properties:
+            text:
+              type: string
+              maxLength: 1000000
+        failure:
+          $ref: '#/components/schemas/RunFailure'
+        links:
+          type: object
+          additionalProperties: false
+          properties:
+            self:
+              type: string
+              pattern: '^/v1/runs/'
+            events:
+              type: string
+              pattern: '^/v1/runs/'
+          required: [self, events]
+      required: [apiVersion, run_id, requestId, mode, status, createdAt, updatedAt, links]
+    RunEventBase:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        run_id:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          minimum: 0
+        at:
+          $ref: '#/components/schemas/Timestamp'
+      required: [apiVersion, run_id, sequence, at]
+    RunEvent:
+      oneOf:
+        - allOf:
+            - $ref: '#/components/schemas/RunEventBase'
+            - type: object
+              properties:
+                type: { const: run.accepted }
+                replayed: { type: boolean }
+              required: [type, replayed]
+          unevaluatedProperties: false
+        - allOf:
+            - $ref: '#/components/schemas/RunEventBase'
+            - type: object
+              properties:
+                type: { const: run.started }
+              required: [type]
+          unevaluatedProperties: false
+        - allOf:
+            - $ref: '#/components/schemas/RunEventBase'
+            - type: object
+              properties:
+                type: { const: run.progress }
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 1024
+                  description: >-
+                    Reconciliation starts with "The run is reconciling an uncertain execution outcome. Do not retry or resubmit it."
+                    Recovery emits "Run reconciliation completed; execution is resuming."
+              required: [type, message]
+          unevaluatedProperties: false
+        - allOf:
+            - $ref: '#/components/schemas/RunEventBase'
+            - type: object
+              properties:
+                type: { const: approval.required }
+                approvalId:
+                  $ref: '#/components/schemas/Identifier'
+                action_digest:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                summary:
+                  type: string
+                  minLength: 1
+                  maxLength: 2048
+                expiresAt:
+                  $ref: '#/components/schemas/Timestamp'
+              required: [type, approvalId, action_digest, summary]
+          unevaluatedProperties: false
+        - allOf:
+            - $ref: '#/components/schemas/RunEventBase'
+            - type: object
+              properties:
+                type: { const: approval.resolved }
+                approvalId:
+                  $ref: '#/components/schemas/Identifier'
+                action_digest:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                decision:
+                  type: string
+                  enum: [approve, deny]
+              required: [type, approvalId, action_digest, decision]
+          unevaluatedProperties: false
+        - allOf:
+            - $ref: '#/components/schemas/RunEventBase'
+            - type: object
+              properties:
+                type: { const: run.completed }
+                finishReason: { type: string, const: stop }
+              required: [type, finishReason]
+          unevaluatedProperties: false
+        - allOf:
+            - $ref: '#/components/schemas/RunEventBase'
+            - type: object
+              properties:
+                type: { const: run.failed }
+                failure:
+                  allOf:
+                    - $ref: '#/components/schemas/RunFailure'
+                  description: >-
+                    An outcome_unknown terminal failure uses code
+                    run_outcome_unknown, message "A committing action may have happened, but the final outcome could not be verified. Do not retry automatically.",
+                    and retryable false. Ordinary failed, partial, and expired
+                    outcomes use run_failed.
+              required: [type, failure]
+          unevaluatedProperties: false
+        - allOf:
+            - $ref: '#/components/schemas/RunEventBase'
+            - type: object
+              properties:
+                type: { const: run.cancelled }
+              required: [type]
+          unevaluatedProperties: false
+    ApprovalDecision:
+      type: object
+      additionalProperties: false
+      description: >-
+        The digest must be copied from the exact pendingApproval or
+        approval.required presentation. Praxa rejects a decision when it cannot
+        re-derive that same presentation and digest.
+      properties:
+        action_digest:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
         decision:
           type: string
-          description: >-
-            Not enumerated in either source. "approved"/"rejected" is the
-            expected shape by convention, not a confirmed contract.
+          enum: [approve, deny]
       required: [action_digest, decision]
-
-    WebhookRegistration:
-      type: object
-      additionalProperties: true
-      description: >-
-        Illustrative reconstruction from confirmed behavior (HMAC signing,
-        exponential retry, dead-letter, per-tenant secret rotation) — field
-        names are NOT confirmed by either source. See webhooks.md.
-      properties:
-        url:
-          type: string
-          format: uri
-          description: Delivery target. Must be HTTPS.
-        events:
-          type: array
-          items:
-            type: string
-          description: Event-type filter. Omitted is presumed to mean "all".
-      required: [url]
-
-    # ---- responses / read models ----
-
     ErrorCode:
       type: string
       enum:
@@ -593,464 +958,28 @@ components:
         - conflict
         - idempotency_replay
         - internal_failed
-
-    FieldError:
-      type: object
-      additionalProperties: false
-      properties:
-        path:
-          type: string
-          minLength: 1
-          maxLength: 256
-        code:
-          type: string
-          minLength: 1
-          maxLength: 96
-        message:
-          type: string
-          minLength: 1
-          maxLength: 512
-      required: [path, code, message]
-
     Problem:
       type: object
       additionalProperties: false
-      description: RFC 9457 application/problem+json body.
       properties:
-        type:
-          type: string
-          format: uri
-        title:
-          type: string
-          minLength: 1
-          maxLength: 256
-        status:
-          type: integer
-          minimum: 400
-          maximum: 599
-        detail:
-          type: string
-          maxLength: 2048
-        instance:
-          type: string
-          description: Free-form string; not required to be a URI.
-        code:
-          $ref: '#/components/schemas/ErrorCode'
-        requestId:
-          $ref: '#/components/schemas/Identifier'
-        retryable:
-          type: boolean
-          description: Authoritative retry signal for this specific response.
-        retryAfterMs:
-          type: integer
-          minimum: 0
+        type: { type: string, format: uri }
+        title: { type: string, minLength: 1, maxLength: 256 }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string, maxLength: 2048 }
+        instance: { type: string }
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        requestId: { $ref: '#/components/schemas/Identifier' }
+        retryable: { type: boolean }
+        retryAfterMs: { type: integer, minimum: 0 }
         fieldErrors:
           type: array
           maxItems: 64
           items:
-            $ref: '#/components/schemas/FieldError'
+            type: object
+            additionalProperties: false
+            properties:
+              path: { type: string, minLength: 1, maxLength: 256 }
+              code: { type: string, minLength: 1, maxLength: 96 }
+              message: { type: string, minLength: 1, maxLength: 512 }
+            required: [path, code, message]
       required: [type, title, status, code, retryable]
-
-    RunResource:
-      type: object
-      additionalProperties: true
-      description: >-
-        Public projection of the internal task_runs entity. Internal fields
-        (lease hashes, margin micros, pricing refs) never appear here — that
-        exclusion is confirmed; nothing beyond id/status below is.
-      properties:
-        id:
-          type: string
-        status:
-          type: string
-          description: >-
-            Run lifecycle state. Only "waiting_approval" is confirmed by the
-            sources; the full enum is not published.
-      required: [id, status]
-
-    UsageResponse:
-      type: object
-      additionalProperties: true
-      description: >-
-        Tenant-scoped usage/spend readback. No field-level schema is
-        published by either source in scope for this reference — see
-        usage.md.
-
-    WebhookEndpoint:
-      type: object
-      additionalProperties: true
-      description: Illustrative reconstruction, not a confirmed contract.
-      properties:
-        id:
-          type: string
-        secret:
-          type: string
-          description: HMAC signing secret for this endpoint.
-
-    # ---- event envelope ----
-
-    EventEnvelope:
-      type: object
-      description: Fields shared by every AiPlatformEventV1 member.
-      properties:
-        apiVersion:
-          const: v1
-        requestId:
-          $ref: '#/components/schemas/Identifier'
-        sequence:
-          type: integer
-          minimum: 0
-          description: Strictly increasing within a stream — the resume key.
-        at:
-          $ref: '#/components/schemas/Timestamp'
-      required: [apiVersion, requestId, sequence, at]
-
-    EventRequestAccepted:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: request.accepted
-            replayed:
-              type: boolean
-              default: false
-          required: [type]
-
-    EventModelStarted:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: model.started
-            model:
-              type: string
-              minLength: 1
-              maxLength: 128
-          required: [type, model]
-
-    EventTextDelta:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: text.delta
-            delta:
-              type: string
-              minLength: 1
-              maxLength: 64000
-          required: [type, delta]
-
-    EventReasoningStatus:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: reasoning.status
-            status:
-              type: string
-              minLength: 1
-              maxLength: 256
-          required: [type, status]
-
-    EventToolProposed:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: tool.proposed
-            toolCallId:
-              $ref: '#/components/schemas/Identifier'
-            tool:
-              type: string
-              minLength: 1
-              maxLength: 128
-            summary:
-              type: string
-              minLength: 1
-              maxLength: 1024
-          required: [type, toolCallId, tool, summary]
-
-    EventApprovalRequired:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          description: >-
-            summary is the canonical payload the caller must render
-            verbatim (render == record == gate-match). See approvals.md.
-          properties:
-            type:
-              const: approval.required
-            approvalId:
-              $ref: '#/components/schemas/Identifier'
-            toolCallId:
-              $ref: '#/components/schemas/Identifier'
-            summary:
-              type: string
-              minLength: 1
-              maxLength: 2048
-            expiresAt:
-              $ref: '#/components/schemas/Timestamp'
-          required: [type, approvalId, toolCallId, summary]
-
-    EventToolStarted:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: tool.started
-            toolCallId:
-              $ref: '#/components/schemas/Identifier'
-            tool:
-              type: string
-              minLength: 1
-              maxLength: 128
-          required: [type, toolCallId, tool]
-
-    EventToolCompleted:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: tool.completed
-            toolCallId:
-              $ref: '#/components/schemas/Identifier'
-            result: {}
-          required: [type, toolCallId, result]
-
-    EventToolFailed:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: tool.failed
-            toolCallId:
-              $ref: '#/components/schemas/Identifier'
-            code:
-              $ref: '#/components/schemas/ErrorCode'
-            retryable:
-              type: boolean
-          required: [type, toolCallId, code, retryable]
-
-    EventMemoryRead:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: memory.read
-            count:
-              type: integer
-              minimum: 0
-            scope:
-              type: string
-              enum: [user, organization, conversation]
-          required: [type, count, scope]
-
-    EventMemoryWrite:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: memory.write
-            memoryId:
-              $ref: '#/components/schemas/Identifier'
-            scope:
-              type: string
-              enum: [user, organization, conversation]
-          required: [type, memoryId, scope]
-
-    EventOutputStructured:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: output.structured
-            schemaId:
-              $ref: '#/components/schemas/Identifier'
-            value: {}
-          required: [type, schemaId, value]
-
-    EventUiComponent:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: ui.component
-            component: {}
-          required: [type, component]
-
-    EventUsage:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          description: >-
-            Per-run usage counters. Distinct from the tenant-level aggregate
-            at GET /v1/usage — see usage.md.
-          properties:
-            type:
-              const: usage
-            inputTokens:
-              type: integer
-              minimum: 0
-            outputTokens:
-              type: integer
-              minimum: 0
-            modelCalls:
-              type: integer
-              minimum: 0
-            toolCalls:
-              type: integer
-              minimum: 0
-          required: [type, inputTokens, outputTokens, modelCalls, toolCalls]
-
-    EventWarning:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: warning
-            code:
-              type: string
-              minLength: 1
-              maxLength: 96
-            message:
-              type: string
-              minLength: 1
-              maxLength: 1024
-          required: [type, code, message]
-
-    EventRetry:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          properties:
-            type:
-              const: retry
-            attempt:
-              type: integer
-              minimum: 1
-            reason:
-              type: string
-              minLength: 1
-              maxLength: 512
-            delayMs:
-              type: integer
-              minimum: 0
-          required: [type, attempt, reason, delayMs]
-
-    EventResponseFinal:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          description: Terminal event — normal completion.
-          properties:
-            type:
-              const: response.final
-            finishReason:
-              type: string
-              enum: [stop, length, tool, content_filter, other]
-          required: [type, finishReason]
-
-    EventRequestCancelled:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          description: Terminal event — the run was cancelled.
-          properties:
-            type:
-              const: request.cancelled
-            reason:
-              type: string
-              maxLength: 512
-          required: [type]
-
-    EventRequestFailed:
-      allOf:
-        - $ref: '#/components/schemas/EventEnvelope'
-        - type: object
-          additionalProperties: false
-          description: Terminal event — carries the same Problem body as the HTTP error path.
-          properties:
-            type:
-              const: request.failed
-            problem:
-              $ref: '#/components/schemas/Problem'
-          required: [type, problem]
-
-    AiPlatformEventV1:
-      description: >-
-        Full discriminated union — 19 members. The task brief that requested
-        this reference named 18 (omitting request.failed); all 19 present in
-        the published zod union are included here.
-      oneOf:
-        - $ref: '#/components/schemas/EventRequestAccepted'
-        - $ref: '#/components/schemas/EventModelStarted'
-        - $ref: '#/components/schemas/EventTextDelta'
-        - $ref: '#/components/schemas/EventReasoningStatus'
-        - $ref: '#/components/schemas/EventToolProposed'
-        - $ref: '#/components/schemas/EventApprovalRequired'
-        - $ref: '#/components/schemas/EventToolStarted'
-        - $ref: '#/components/schemas/EventToolCompleted'
-        - $ref: '#/components/schemas/EventToolFailed'
-        - $ref: '#/components/schemas/EventMemoryRead'
-        - $ref: '#/components/schemas/EventMemoryWrite'
-        - $ref: '#/components/schemas/EventOutputStructured'
-        - $ref: '#/components/schemas/EventUiComponent'
-        - $ref: '#/components/schemas/EventUsage'
-        - $ref: '#/components/schemas/EventWarning'
-        - $ref: '#/components/schemas/EventRetry'
-        - $ref: '#/components/schemas/EventResponseFinal'
-        - $ref: '#/components/schemas/EventRequestCancelled'
-        - $ref: '#/components/schemas/EventRequestFailed'
-      discriminator:
-        propertyName: type
-        mapping:
-          request.accepted: '#/components/schemas/EventRequestAccepted'
-          model.started: '#/components/schemas/EventModelStarted'
-          text.delta: '#/components/schemas/EventTextDelta'
-          reasoning.status: '#/components/schemas/EventReasoningStatus'
-          tool.proposed: '#/components/schemas/EventToolProposed'
-          approval.required: '#/components/schemas/EventApprovalRequired'
-          tool.started: '#/components/schemas/EventToolStarted'
-          tool.completed: '#/components/schemas/EventToolCompleted'
-          tool.failed: '#/components/schemas/EventToolFailed'
-          memory.read: '#/components/schemas/EventMemoryRead'
-          memory.write: '#/components/schemas/EventMemoryWrite'
-          output.structured: '#/components/schemas/EventOutputStructured'
-          ui.component: '#/components/schemas/EventUiComponent'
-          usage: '#/components/schemas/EventUsage'
-          warning: '#/components/schemas/EventWarning'
-          retry: '#/components/schemas/EventRetry'
-          response.final: '#/components/schemas/EventResponseFinal'
-          request.cancelled: '#/components/schemas/EventRequestCancelled'
-          request.failed: '#/components/schemas/EventRequestFailed'

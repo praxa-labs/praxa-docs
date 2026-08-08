@@ -1,0 +1,124 @@
+---
+title: "Connect Praxa to your AI pipeline"
+sidebarTitle: "Framework integrations"
+description: "Use governed Praxa tools from the Vercel AI SDK, OpenAI Responses or Agents, LangChain, and remote MCP clients."
+---
+
+Praxa can sit behind an existing agent loop without moving provider credentials
+or action authority into that loop. Your application supplies a short-lived
+delegated Praxa token. The Integration Gateway still enforces tenant, scope,
+consent, purpose, target, budget, idempotency, and revocation checks on the
+server.
+
+<Warning>
+  Framework approval prompts are defense in depth. They do not replace Praxa's
+  server-side authorization, and a tool description never grants action
+  authority.
+</Warning>
+
+## Create the shared client and tools
+
+`createPraxaAgentTools()` binds each framework-neutral JSON Schema definition
+to a `PraxaClient` method. Keep this client on a trusted server. Do not send the
+delegated token to browser code.
+
+```typescript
+import { createPraxaAgentTools, PraxaClient } from "@praxa/sdk";
+
+const praxa = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const praxaTools = createPraxaAgentTools(praxa);
+```
+
+## Vercel AI SDK
+
+Wrap the Praxa definitions with the AI SDK's `tool()` helper. Keep
+framework-level approval enabled for mutations.
+
+```typescript
+import { jsonSchema, tool, ToolLoopAgent } from "ai";
+
+const tools = Object.fromEntries(
+  praxaTools.map((definition) => [
+    definition.name,
+    tool({
+      description: definition.description,
+      inputSchema: jsonSchema(definition.inputSchema),
+      execute: definition.execute,
+    }),
+  ]),
+);
+
+const agent = new ToolLoopAgent({ model, tools });
+```
+
+## OpenAI Responses or Agents
+
+Remote MCP is the smallest integration when your runtime supports it. Require
+approval for every remote call unless your application has a narrower reviewed
+policy.
+
+```typescript
+const response = await openai.responses.create({
+  model: "your-reviewed-model",
+  input: "Prepare the weekly review",
+  tools: [
+    {
+      type: "mcp",
+      server_label: "praxa",
+      server_url: `${process.env.PRAXA_BASE_URL}/mcp`,
+      authorization: process.env.PRAXA_ACCESS_TOKEN,
+      require_approval: "always",
+    },
+  ],
+});
+```
+
+For a function-calling loop, import `PRAXA_OPENAI_FUNCTION_TOOLS`, then
+dispatch returned calls to the matching definition from
+`createPraxaAgentTools(praxa)`.
+
+## LangChain
+
+Adapt the same executable definitions with LangChain's `tool()` helper:
+
+```typescript
+import { tool } from "@langchain/core/tools";
+
+const tools = praxaTools.map((definition) =>
+  tool(definition.execute, {
+    name: definition.name,
+    description: definition.description,
+    schema: definition.inputSchema,
+  }),
+);
+```
+
+## Codex, Claude Code, Cursor, and VS Code
+
+Run the project installer instead of maintaining client configuration by hand:
+
+```sh
+npx @praxa/cli@0.2.0 init
+```
+
+Review the generated `.praxa/SETUP.md`, provide a delegated token through the
+documented environment seam, restart the client, and list available tools
+before invoking a mutation. The installer writes no access token or provider
+key.
+
+## Choose the narrowest integration
+
+| Runtime | Recommended path |
+|---|---|
+| Agent framework with local tool execution | `createPraxaAgentTools()` |
+| OpenAI function-calling loop | `PRAXA_OPENAI_FUNCTION_TOOLS` plus bound execution |
+| Runtime with remote MCP support | Connect directly to `/mcp` |
+| Codex, Claude Code, Cursor, or VS Code | `praxa init` |
+
+Use [MCP contracts](/mcp/overview) when you need protocol metadata without an
+executor. Use the [PraxaClient reference](/sdk/praxaclient) when you want direct
+HTTP and SSE control instead of a model-facing tool layer.

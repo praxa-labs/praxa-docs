@@ -1,91 +1,121 @@
 ---
 title: "Runs"
 sidebarTitle: "Runs"
-description: "A run is a durable execution admitted via POST /v1/execute(./execute.md)"
+description: "Read and cancel durable task executions."
 ---
 
-> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+> **Status:** Minimal durable run reads and cancellation requests are available
+> in the production partner preview. Exact browser pending approvals remain
+> pending activation. Cancellation-reconciliation final states have passed
+> separate production canaries for pre-dispatch release and provider-in-flight
+> uncertain-outcome settlement.
 
-
-A run is a durable execution admitted via [`POST /v1/execute`](/fabric/api/execute)
-with `mode:"task"`. It is backed by the existing `task_runs` /
-`task_run_events` state machine (leases, attempts, budgets,
-`waiting_approval` as a first-class state, run-recovery crons). `RunResource`
-is the **public projection** of that internal entity — internal fields
-(lease hashes, margin micros, pricing refs) never cross the API boundary.
-
-For the event stream and the approval/cancel actions, see
-[Events](/fabric/api/events) and [Approvals](/fabric/api/approvals).
+A run is the customer-safe projection of a durable task admitted through
+[`POST /v1/execute`](/fabric/api/execute) with `mode: "task"`. Internal lease,
+executor, provider-cost, margin, prompt, and tool-argument fields never cross
+this boundary.
 
 ## Get a run
 
-```
+```http
 GET /v1/runs/:id
+Authorization: Bearer praxa_sk_<64 lowercase hex characters>
 ```
 
-| Parameter | Location | Required | Description |
-|---|---|---|---|
-| `id` | path | Yes | Run identifier returned by `POST /v1/execute` with `mode:"task"`. |
+The key must carry `runs:read`, and the run must belong to the key's tenant.
+An unknown or foreign run is not projected.
 
-### Response — `RunResource`
+```json
+{
+  "apiVersion": "v1",
+  "run_id": "2f47a86e-72ce-4f27-8ff0-7dc0c959fd35",
+  "requestId": "req-incident-001",
+  "mode": "task",
+  "status": "running",
+  "createdAt": "2026-07-31T12:00:00.000Z",
+  "updatedAt": "2026-07-31T12:00:03.000Z",
+  "links": {
+    "self": "/v1/runs/2f47a86e-72ce-4f27-8ff0-7dc0c959fd35",
+    "events": "/v1/runs/2f47a86e-72ce-4f27-8ff0-7dc0c959fd35/events"
+  }
+}
+```
 
-Neither source publishes a field-level schema for `RunResource`. What is
-confirmed:
+`status` is `queued`, `running`, `awaiting_approval`, `completed`, `failed`,
+or `cancelled`. Once the reconciliation final-status canary clears, an internal
+`reconcile_required` state projects as `running`.
+It is recoverable and non-terminal, so keep polling or streaming until you see
+an actual terminal status. A completed agent-loop run can include `result.text`
+only after its stored result validates, its action digest matches, and its
+verification verdict is `verified`. After approval activation, an awaiting
+browser action includes `pendingApproval` only when Praxa can derive its exact
+presentation and matching digest. Otherwise Praxa omits the unsafe projection
+and refuses a decision.
+The current projector does not populate structured result or usage members.
+Internal error detail stays private.
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `id` | string | Yes | The run identifier. |
-| `status` | string | Yes | Run lifecycle state. Only one member is confirmed by the sources: `waiting_approval`. The full enum (e.g. `running`, `completed`, `failed`, `cancelled`) is implied by the run engine but not enumerated in either source. |
+Ordinary failed, partial, and expired outcomes project as `failed` with
+`failure.code: "run_failed"`. Once the reconciliation final-status canary clears, an uncertain
+committing outcome projects as this terminal resource instead:
 
-**Confirmed exclusions** — these internal fields are explicitly stated to
-never appear in the public projection: lease hashes, margin micros, pricing
-references.
+```json
+{
+  "status": "failed",
+  "failure": {
+    "code": "run_outcome_unknown",
+    "message": "A committing action may have happened, but the final outcome could not be verified. Do not retry automatically.",
+    "retryable": false
+  }
+}
+```
 
-Everything else about this resource (timestamps, the task/context echoed
-back, usage totals, links to events) is unspecified in the sources in scope
-for this reference.
+Do not retry that run automatically. Reconcile the external system before you
+decide whether to submit new work.
 
 ## Cancel a run
 
-```
+```http
 POST /v1/runs/:id/cancel
+Authorization: Bearer praxa_sk_<64 lowercase hex characters>
+Content-Type: application/json
+
+{}
 ```
 
-| Parameter | Location | Required | Description |
-|---|---|---|---|
-| `id` | path | Yes | Run identifier. |
+The request body is exactly `{}`. Every member, including `reason`, is rejected.
+The key must carry `runs:write`. Cancellation is recorded through the mature
+task state machine and then wakes the durable workflow using its existing
+user-presence and approval-digest event names. A wake failure is loud: the
+endpoint does not claim success when the workflow notification failed.
 
-No request body fields are specified in the sources. Cancelling a run is
-expected to emit a terminal
-[`request.cancelled`](/fabric/api/events#lifecycle) event on that run's stream.
-Operations attempted against an already-cancelled run should expect the
-`cancelled` error code (see [Errors](/fabric/api/errors#error-codes)).
+The response is the updated `RunResource`. Cancellation is cooperative. It does
+not roll back a committed action, and a `200` response does not mean the run is
+already `cancelled`. Internal `cancelling` and `reconcile_required` states both
+remain publicly `running` until a terminal
+outcome is observed.
 
-## Example
+Once the reconciliation final-status canary clears, if Praxa must resolve an uncertain provider or billing outcome, the stream emits
+`run.progress` with this exact message and stays open:
 
-```bash
-curl https://api.praxa.io/v1/runs/run_01j9example000000000000001 \
-  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx"
-
-curl https://api.praxa.io/v1/runs/run_01j9example000000000000001/cancel \
-  -X POST \
-  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx"
+```text
+The run is reconciling an uncertain execution outcome. Do not retry or resubmit it.
 ```
+
+Successful recovery emits `Run reconciliation completed; execution is resuming.`
+and the run continues. If Praxa cannot verify a committing outcome,
+the run eventually becomes `failed` with the `run_outcome_unknown` failure shown
+above. Poll the run or follow its event stream until you observe the real
+terminal outcome.
 
 ## TypeScript
 
 ```ts
-type RunResource = {
-  id: string;
-  status: "waiting_approval" | (string & {}); // remaining members unpublished
-  // additional fields are not specified by the sources in scope
-};
+const run = await client.getRun(runId);
 
-async function getRun(runId: string, apiKey: string): Promise<RunResource> {
-  const res = await fetch(`https://api.praxa.io/v1/runs/${runId}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-  if (!res.ok) throw new Error(`run fetch failed: ${res.status}`);
-  return res.json();
+if (run.status === "running") {
+  const cancelled = await client.cancelRun(run.run_id);
+  console.log(cancelled.status);
 }
 ```
+
+Run events and reconnection are documented in [Events](/fabric/api/events).

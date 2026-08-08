@@ -4,72 +4,80 @@ sidebarTitle: "Praxa Execution Fabric"
 description: "This page defines the vocabulary of the fabric: runs, events, approvals, policies, receipts, tenants, keys, and how billing works."
 ---
 
-> **Status:** Developer preview — the Fabric v1 API described here is contract-stable but not yet serving traffic. Contact us to join the first partner cohort.
+> **Status:** Production partner preview — minimal personal-tenant durable tasks,
+> run reads, SSE, cancellation requests, usage readback, automatic signed
+> webhooks, and bearer webhook management are live. Exact browser approval
+> remains pending. The developer portal's email-link/OTP fragment callback,
+> persisted browser session, and durable legal gate are deployed. Cancellation
+> final-status behavior and authenticated canonical-host, alias, and deep-link
+> preservation remain pending separate canaries. Contact us for access.
 
 This page defines the vocabulary of the fabric: runs, events, approvals, policies, receipts, tenants, keys, and how billing works.
 
 ## Runs
 
-A run starts when you call `POST /v1/execute`. It has two shapes:
+A run starts when you call `POST /v1/execute` with `mode: "task"`. The call
+returns a run id immediately, and the run keeps going in the background. Today
+you track it by reading its state, resuming SSE, or receiving automatic signed
+webhooks.
 
-- **`mode: "turn"`**: a synchronous request. You get a Server-Sent Events (SSE) stream back on the same connection, and the run ends when the stream ends.
-- **`mode: "task"`**: a durable run. The call returns a run id immediately, and the run keeps going in the background. You track it by reading its state, subscribing to its event stream, or registering a webhook.
-
-Both shapes go through the same admission path and the same policy engine. The difference is only how you receive output.
+The production preview implements only minimal personal-tenant `task`
+execution. `mode: "turn"` returns `400 invalid_request`, `/v1/chat` is not
+routed, and request-level overrides and organization delegation stay closed.
+Exact recorded browser-action approval is source-ready and pending
+activation; unsupported or unverifiable approval requests stay fail-closed.
 
 Once a run exists, these endpoints operate on it:
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /v1/execute` | Start a run. Body: `task`, `context`, `tools`, `policy`, `delivery`. Header: `Idempotency-Key`. |
+| `POST /v1/execute` | Production preview accepts only a minimal `task.input`; reserved overrides are rejected. |
 | `GET /v1/runs/:id` | Read the run's current state. |
 | `GET /v1/runs/:id/events` | Stream the run's events over SSE. Resumable with a `Last-Event-ID` header. |
-| `POST /v1/runs/:id/approve` | Resolve a pending approval. Body: `action_digest`, `decision`. |
+| `POST /v1/runs/:id/approve` | Source-ready: approve or deny an exact recorded browser action by its matching digest. Unsupported approval shapes stay fail-closed. |
 | `POST /v1/runs/:id/cancel` | Cancel a run in progress. |
-| `GET /v1/usage` | Read your tenant's usage and spend. |
-| `POST /v1/webhooks` | Register a webhook endpoint to receive run events asynchronously. |
+| `GET /v1/usage` | Read tenant-scoped usage, spend, and optional API-key attribution. |
+| `GET`, `POST /v1/webhooks` | Production partner-preview bearer endpoint management. Reads require `runs:read`; mutations require `runs:read` and `runs:write`. |
+| `GET /v1/webhook-deliveries` | Production partner-preview delivery readback. Replay an eligible dead-letter delivery at `POST /v1/webhook-deliveries/:id/replay`. |
 
 ## Events
 
-Runs and turns emit a typed stream of events. Each event carries a `requestId`, a strictly increasing `sequence` number, and a timestamp. Every stream ends in exactly one terminal event.
+Durable task events carry `apiVersion`, `run_id`, a strictly increasing
+`sequence`, and an `at` timestamp. The current projector emits:
 
-Non-terminal events include:
+- `run.accepted`, `run.started`, and `run.progress` for non-terminal lifecycle
+  updates;
+- source-ready `approval.required` and `approval.resolved` events for exact
+  recorded browser actions;
+- exactly one terminal `run.completed`, `run.failed`, or `run.cancelled` event.
 
-- `request.accepted`: the request was admitted, and whether this is a replay of an earlier request with the same idempotency key.
-- `model.started`: a model call began.
-- `text.delta`: a chunk of streamed text.
-- `reasoning.status`: a status update while the model is working.
-- `tool.proposed`: the model wants to call a tool.
-- `approval.required`: a step is paused pending approval (see Approvals below).
-- `tool.started`, `tool.completed`, `tool.failed`: a tool call's lifecycle.
-- `memory.read`, `memory.write`: memory access, scoped to `user`, `organization`, or `conversation`.
-- `output.structured`: a structured output payload matching a schema you requested.
-- `ui.component`: a UI component to render.
-- `usage`: token and call counts so far.
-- `warning`, `retry`: non-fatal issues and retry attempts.
-
-Terminal events, exactly one per stream:
-
-- `response.final`: finished normally, with a `finishReason` of `stop`, `length`, `tool`, `content_filter`, or `other`.
-- `request.cancelled`: the caller or the platform cancelled the run.
-- `request.failed`: the run failed. Carries an RFC 9457 problem object with a machine-readable `code`, a human `title` and `detail`, and a `retryable` flag.
+The source repository contains richer candidate turn event schemas for offline
+contract work. They are unserved and do not add a public route or SDK method.
 
 For `mode: "task"` runs, `GET /v1/runs/:id/events` is resumable: reconnect with a `Last-Event-ID` header and the stream picks up where it left off.
 
 ## Approvals: digest-bound resume
 
-When a step needs sign-off, the run pauses and emits `approval.required` with a summary of the action and an `action_digest` (a fingerprint of that specific action, arguments included). Show the summary to a human, or route it to whatever approver your policy names, then call:
+After the source-ready browser-action refinement is activated, an exact stored
+browser step can pause and emit `approval.required` with its canonical summary
+and `action_digest`. Show the summary unchanged to a person, then call:
 
 ```
 POST /v1/runs/:id/approve
-{ "action_digest": "...", "decision": "approved" | "denied" }
+{ "action_digest": "...", "decision": "approve" | "deny" }
 ```
 
-The design spec names `action_digest` and `decision` on this call but does not enumerate `decision`'s values on the wire; `approved` and `denied` mirror Praxa's internal approval-status enum, and the public contract will confirm them at launch. The digest has to match the paused action exactly. A changed argument, an expired approval, a replayed approval, or an approval posted against the wrong run is rejected. This is the same fail-closed pattern the rest of Praxa's approval surfaces use: what is shown to the approver is exactly what gets checked before anything runs.
+`decision` is `approve` or `deny`. The digest has to match the paused action
+exactly. A changed argument, an expired approval, a replayed approval, or an
+approval posted against the wrong run is rejected. This is the same fail-closed
+pattern the rest of Praxa's approval surfaces use: what is shown to the
+approver is exactly what gets checked before anything runs.
 
 ## Policies
 
-Before the fabric does anything with real consequences (calling a tool, spending money, touching a connector), one policy engine evaluates the step. It looks at:
+Praxa's current product domains already apply fail-closed approval and billing
+checks before consequential work. The planned unified policy engine will combine
+these inputs:
 
 - the tool's capability metadata (read-only, destructive, human-in-the-loop),
 - the kind of effect the action has,
@@ -79,31 +87,47 @@ Before the fabric does anything with real consequences (calling a tool, spending
 - the tenant's policy pack,
 - and any standing grants already in place.
 
-It returns one of four decisions: `auto`, `peer_review`, `human_approval`, or `deny`, plus a TTL and who is allowed to approve. Policy packs are versioned, and the version applied to a run is recorded in that run's receipt, so a decision can be replayed and audited later.
+The planned engine returns `auto`, `peer_review`, `human_approval`, or `deny`,
+plus a TTL and approver requirements. Configurable policy packs and public
+policy-version receipts are not active in the partner preview.
 
-The `policy` field on `POST /v1/execute` is a constrained view into this same engine: a risk ceiling, a budget cap, a pinned model lane, a tool allowlist, and an approval mode. You are setting knobs on the platform's own engine, not writing a parallel rules system.
+The shared request schema reserves a `policy` field for a risk ceiling, budget
+cap, model lane, tool allowlist, and approval mode. The current handler rejects
+that whole override before task creation.
 
 ## Receipts
 
-Every run produces a receipt: what ran, which policy version applied, who approved what and against which digest, and whether the outcome was verified against your acceptance criteria. The design calls for receipts to chain together, hashed, into an append-only evidence ledger that exports to PDF or a SIEM. That ledger is still on the fabric's build list; it does not exist yet, even in preview. The receipt itself is meant to be the artifact you hand to an auditor, or to a customer who asks what the agent actually did.
+The current run and event resources are narrow customer-safe projections, not
+mature receipts. The target receipt records what ran, which policy version
+applied, who approved which digest, and how the outcome was verified. Mature
+receipts, the hash-chained evidence ledger, and PDF/SIEM export remain on the
+build list.
 
 ## Tenants and keys
 
-Your organization or account is a tenant. A tenant can be owned by a single user or by an organization; organizations are becoming first-class billing subjects in their own right rather than riding on an owner's personal plan.
+The live public tenant is owned by one personal account. The broader target
+model can also represent organizations, but organization execution, keys, and
+billing ownership are unavailable.
 
-A tenant holds one or more API keys, each with its own scopes, expiry, last-used timestamp, rate-limit tier, and revocation state. Keys are hashed at rest; Praxa never stores or displays the raw key after you create it.
+A personal tenant can hold multiple API keys with endpoint scopes, expiry,
+last-used metadata, and revocation state. Keys are SHA-256 hashed at rest; Praxa
+never displays the raw key after its one-time create/rotate response. A stable
+dedicated per-key rate-tier product is not yet documented or available.
 
 There are three credential families on the same gateway:
 
 1. **Supabase-authenticated sessions**: the Praxa mobile app and Praxa Control desktop app authenticate this way.
-2. **`aura_agent_*` deployment keys**: the credential family behind today's live custom-agent API and embeds. These keep working as they do today.
+2. **Custom-agent deployment keys**: the credential family behind today's live custom-agent API and embeds. These keep working as they do today.
 3. **`praxa_sk_*` platform API keys**: the new fabric tenant model described on this page.
 
-All three resolve through one principal resolver to the same downstream authority checks, fail-closed and server-derived. `aura_agent_*` keys are expected to move onto the tenant model over time, but that migration does not change how they work today.
+Each active surface derives authority server-side and fail closed. Do not infer
+that a Supabase session or custom-agent credential can call `/v1`, or that a
+`praxa_sk_` credential gains custom-agent authority.
 
 ## Billing: bundled vs. BYO
 
-The fabric supports two ways to pay for the models and tools it calls on your behalf.
+Bundled inference is the active funding path. BYO provider funding is planned and
+not available in the partner preview.
 
 | | Bundled (default) | BYO (bring your own keys) |
 |---|---|---|
@@ -112,4 +136,5 @@ The fabric supports two ways to pay for the models and tools it calls on your be
 | Where the keys live | Not applicable | Encrypted at rest; never leave the runtime |
 | Routing telemetry | Priced and recorded the same way in both modes | Priced and recorded the same way in both modes |
 
-Bundled is the default: you spend Praxa credits, and every run is priced from a versioned price snapshot at a fixed margin floor. BYO plugs in your own provider credentials; Praxa charges a fee on what gets routed through them instead of marking up tokens. Either way, the routing decisions and the receipts they produce look the same, so switching how you fund runs does not change what you can audit.
+Bundled runs spend Praxa credits and use immutable reservation economics. The BYO
+column describes the intended contract, not an option you can enable today.

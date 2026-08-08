@@ -1,145 +1,75 @@
 ---
 title: "Approvals"
 sidebarTitle: "Approvals"
-description: "A run parks pending a human or peer decision whenever the policy engine"
+description: "Approve or deny an exact recorded browser action without weakening the execution gate."
 ---
 
-> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+> **Activation status:** Source-ready for exact recorded browser actions,
+> with compatible Worker code deployed. Required production database activation
+> and authenticated approval canaries remain pending. Do not call this mutation
+> until Praxa confirms activation for your tenant.
 
+Praxa exposes a public approval only when it can prove **render == record ==
+gate-match**. You see the exact immutable browser instruction or steps and its
+target host. The digest you return binds to that same stored action.
 
-A run parks pending a human or peer decision whenever the policy engine
-(design spec §3.3) classifies a proposed action above `auto`:
-`auto | peer_review | human_approval | deny`, each with a TTL and approver
-requirements attached. `deny` never reaches an approval — the action is
-rejected outright. The other two levels emit
-[`approval.required`](/fabric/api/events#tools-and-approval).
+## Read the pending action
 
-Approval semantics are the same for `mode:"turn"` and `mode:"task"`: the
-stream/run pauses, the caller renders the canonical payload, and the caller
-posts the decision back.
+An exact pending browser action appears on the run resource:
 
-## The `approval.required` event
-
-Repeated here for convenience — see [Events](/fabric/api/events#tools-and-approval)
-for the full envelope.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `approvalId` | Identifier | Yes | |
-| `toolCallId` | Identifier | Yes | The proposed action this approval gates. |
-| `summary` | string (1–2,048) | Yes | Canonical payload. Render this **verbatim** — render == record == gate-match. Do not clamp, reformat, or re-derive it. |
-| `expiresAt` | timestamp | No | If present and passed, the pending approval is expected to fail with `approval_timed_out` (see [Errors](/fabric/api/errors#error-codes)). |
-
-## `action_digest`
-
-The design spec describes `resume_task_after_approval` as **digest-bound**:
-the digest binds a decision to the exact canonical payload that was
-proposed, so a decision cannot be replayed against a different action. This
-mirrors the render == record == gate-match invariant the existing
-first-party approval domains already hold (design spec §3.3).
-
-Neither source in scope for this reference states the digest's algorithm or
-where it is carried on the wire response — this reference assumes it
-travels alongside (or is derivable from) the `approval.required` event, and
-flags the gap below rather than inventing a transport.
-
-## Endpoint: approve or reject
-
-```
-POST /v1/runs/:id/approve
-```
-
-| Parameter | Location | Required | Description |
-|---|---|---|---|
-| `id` | path | Yes | Run identifier. |
-
-### Request body
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `action_digest` | string | Yes | Binds the decision to the proposed action. Exact format not published. |
-| `decision` | string | Yes | The approval decision. **Not enumerated in either source** — `approved` / `rejected` is the expected shape by convention, not a confirmed contract. |
-
-### Behavior
-
-A valid call invokes `resume_task_after_approval`, which unparks the run.
-The caller should continue consuming the run's event stream (or webhook
-deliveries) rather than expecting the full result synchronously from this
-call — the design spec does not describe this endpoint's success response
-body beyond "resumes the run."
-
-The design spec separately notes that today's `wakeTaskWorkflow` swallows
-errors when the underlying `sendEvent` doesn't land, and states the fabric's
-`approve` wrapper must fail loudly instead — i.e., a 2xx from this endpoint
-is meant to guarantee the resume was actually delivered to the run, not just
-accepted for delivery.
-
-### Errors
-
-- `approval_timed_out` — the approval's `expiresAt` passed before a decision
-  was posted.
-- Posting against a run with no pending approval, an already-resolved
-  approval, or a mismatched `action_digest` is expected to be rejected —
-  most plausibly as `conflict`, but neither source ties a specific code to
-  this case; treat as inferred, not confirmed.
-
-## Inline approvals (mode: turn)
-
-The published `AiPlatformChatRequestV1` schema carries a **second**,
-differently-shaped approval mechanism: an `approvals` array on the request
-itself.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `approvalId` | Identifier | Yes | |
-| `receipt` | string (16–4,096) | Yes | Opaque. |
-
-> **Ambiguity.** The design spec states approval semantics are "identical in
-> both modes," and describes that contract as `action_digest` + `decision`.
-> The published chat schema instead threads `approvalId` + `receipt`
-> (resubmitted as part of a fresh request, presumably to continue a
-> `mode:"turn"` stream past an `approval.required` pause). Whether `receipt`
-> **is** an encoded `action_digest`/`decision` pair, or a distinct mechanism
-> that predates the fabric's `/v1/runs/:id/approve` endpoint, is not stated
-> by either source. Both shapes are documented here rather than merged into
-> one, silently-assumed contract.
-
-## Example
-
-```bash
-curl https://api.praxa.io/v1/runs/run_01j9example000000000000001/approve \
-  -X POST \
-  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action_digest": "adg_01j9exampledigest0000000001",
-    "decision": "approved"
-  }'
-```
-
-## TypeScript
-
-```ts
-import type { AiPlatformEventV1 } from "@nexislabs/ai-platform";
-
-async function onApprovalRequired(
-  event: Extract<AiPlatformEventV1, { type: "approval.required" }>,
-  runId: string,
-  apiKey: string,
-) {
-  // Render event.summary verbatim in your own UI before calling this.
-  const decision = await promptOperator(event.summary);
-
-  await fetch(`https://api.praxa.io/v1/runs/${runId}/approve`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      action_digest: decisionDigestFor(event), // transport not published — see note above
-      decision,
-    }),
-  });
+```json
+{
+  "status": "awaiting_approval",
+  "pendingApproval": {
+    "approvalId": "approval:browser:1",
+    "action_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "summary": "Publish the reviewed release\nTarget: console.example.com"
+  }
 }
 ```
+
+The same presentation arrives as `approval.required` on the run event stream.
+Render `summary` exactly as supplied. Do not replace it with a shorter or
+client-derived description.
+
+## Approve or deny
+
+```http
+POST /v1/runs/:id/approve
+Authorization: Bearer praxa_sk_<64 lowercase hex characters>
+Content-Type: application/json
+
+{
+  "action_digest": "<64 lowercase hex characters>",
+  "decision": "approve"
+}
+```
+
+`decision` is `approve` or `deny`. The key must carry `runs:write`, and the
+run must belong to its tenant. Copy `action_digest` from the exact
+`pendingApproval` or `approval.required` projection. The response is the updated
+`RunResource`.
+
+`approve` records the digest-bound approval and wakes that exact suspended
+action. `deny` records refusal and does not authorize the action. It can move the
+run into cancellation and close-out processing; follow the run until you observe
+its real terminal status.
+
+## What Praxa checks
+
+Praxa re-derives the presentation when it reads the run, emits the event, and
+receives your decision. Public projection and approval require all of these:
+
+1. The run is waiting for a pending approval with an approval reference and a
+   64-character action digest.
+2. The executor is a browser action using `browse_session_act`.
+3. The immutable executor request carries the same action digest.
+4. The recorded instruction or steps, URL, and target host pass the strict
+   browser-action schema and fit the public presentation unchanged.
+5. The submitted digest still matches that exact pending presentation.
+
+If any check fails, Praxa omits `pendingApproval`, emits no
+`approval.required`, and refuses the decision. A stale or mismatched digest
+returns `409 conflict`. A foreign run is not projected. Expiry, replay, changed
+state, and workflow-wake failures also fail closed. Praxa never turns a missing
+approval integration or generic summary into approval.

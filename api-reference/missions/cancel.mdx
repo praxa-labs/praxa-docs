@@ -61,7 +61,10 @@ curl -X POST https://your-gateway.example/v8/missions/018e2f3a-7c14-7000-b1e2-4d
 ```typescript TypeScript SDK
 import { PraxaClient } from "@praxa/sdk";
 
-const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
 
 await client.cancelMission(
   "018e2f3a-7c14-7000-b1e2-4d3f8a20c911", // runId

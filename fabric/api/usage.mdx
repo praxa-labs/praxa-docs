@@ -1,71 +1,79 @@
 ---
 title: "Usage"
 sidebarTitle: "Usage"
-description: "GET /v1/usage"
+description: "Evidence-bounded usage readback for public-API task runs."
 ---
 
-> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+> **Status:** Available in the production partner preview at `https://api.praxa.io/v1/usage` for tenant API keys with `usage:read`.
 
+The SDK contract is tenant scoped:
 
+```http
+GET /v1/usage?from=2026-07-01T00:00:00.000Z&to=2026-08-01T00:00:00.000Z&group_by=day
+Authorization: Bearer praxa_sk_<64 lowercase hex characters>
 ```
-GET /v1/usage
-```
 
-Tenant-scoped usage/spend readback (design spec §3.1's exact wording). No
-query parameters, request fields, or response fields are specified at the
-field level by either source in scope for this reference — see the note
-below.
+| Query | Required | Notes |
+|---|---|---|
+| `from` | Yes | RFC 3339 timestamp. |
+| `to` | Yes | RFC 3339 timestamp after `from`; maximum range is 366 days in the management implementation. |
+| `group_by` | No | `hour`, `day`, or `month`; defaults to `day`. The SDK input property is `groupBy`. |
+| `api_key_id` | No | Limits readback to one key owned by the tenant. The SDK input property is `apiKeyId`. |
 
-## Authentication
-
-Bearer API key, prefix `praxa_sk_`. The readback is scoped to the calling
-key's tenant; there is no tenant-id parameter.
-
-## What backs it
-
-- Billing runs on a reserve → settle → reconcile pipeline over
-  `ai_usage_events`, with immutable price versions and margin-floor pricing
-  (`minimum_margin_bps`, `payment_fee_bps`).
-- Usage is denominated through the existing token → micros → credits
-  pipeline (`usage_events`).
-- [Bundled inference](/fabric/api/execute) is priced against the platform's credit
-  machinery; [BYO inference](/fabric/api/webhooks) is charged a platform fee on
-  routed spend instead of a token margin — both are priced through the same
-  telemetry so the readback shape does not depend on funding mode (design
-  spec §3.4).
-- Per-run token/tool-call counts are available on the event stream as the
-  [`usage` event](/fabric/api/events#telemetry) (`inputTokens`, `outputTokens`,
-  `modelCalls`, `toolCalls`). This is **not** the same object as the
-  tenant-level aggregate this endpoint returns — one is a per-run streamed
-  event, the other is a tenant-scoped readback across runs.
+The authenticated developer portal uses the corresponding signed-in route,
+`/api/platform/usage`, with `workspace=personal` and the same snake-case query
+names. Both routes read the same tenant-scoped evidence projection. The public
+route accepts the SDK's `groupBy` and `apiKeyId` input properties by encoding
+them as `group_by` and `api_key_id` in the request URL.
 
 ## Response
 
-> **Gap.** The design spec confirms this endpoint exists and what it is
-> scoped to ("tenant-scoped usage/spend readback"), and lists the billing
-> machinery it is built on, but does not publish a response schema. The
-> `@nexislabs/ai-platform` package in this corpus exports no type for it.
-> Field names, pagination, and date-range filtering are unspecified. The
-> design spec assigns finalizing this surface to Workstream F4 (developer
-> surface) atop Workstream S1 (metering/billing authority transfer).
-
-## Example
-
-```bash
-curl https://api.praxa.io/v1/usage \
-  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx"
+```json
+{
+  "apiVersion": "v1",
+  "from": "2026-07-01T00:00:00.000Z",
+  "to": "2026-08-01T00:00:00.000Z",
+  "currency": "USD",
+  "totals": {
+    "requests": 12,
+    "runs": 12,
+    "inputTokens": 42000,
+    "outputTokens": 8100,
+    "modelCalls": 24,
+    "toolCalls": 0,
+    "billableAmountMicros": 153300000
+  },
+  "series": []
+}
 ```
+
+Every `series` item has `bucketStart`, `bucketEnd`, and the same usage object.
+When key-attributed rows exist, `byApiKey` items have `apiKeyId`, key `name`,
+and the same usage object. The property is omitted when no rows exist.
+
+## Evidence boundary
+
+Readback includes only tasks whose immutable `api_tenant_id` matches the
+requested tenant and whose owner matches that tenant. Ordinary chat tasks,
+cross-tenant tasks, and tasks without public-API origin evidence are excluded.
+
+- token and model-call counts come only from completed provider-call rows;
+- billable amount comes from canonical `actual_retail_microusd` settlement;
+- API-key attribution requires immutable `task_runs.api_key_id`;
+- `toolCalls` remains zero until a trustworthy per-task public tool-call source exists.
+
+This endpoint reports billing evidence. It does not replace reservation,
+settlement, reconciliation, entitlement, or invoice authority, and it never
+exposes provider cost or margin.
 
 ## TypeScript
 
 ```ts
-// Response shape is not yet published — treat as opaque until the
-// finalized schema ships (see the Gap note above).
-async function getUsage(apiKey: string): Promise<unknown> {
-  const res = await fetch("https://api.praxa.io/v1/usage", {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-  if (!res.ok) throw new Error(`usage fetch failed: ${res.status}`);
-  return res.json();
-}
+const usage = await client.getUsage({
+  from: "2026-07-01T00:00:00.000Z",
+  to: "2026-08-01T00:00:00.000Z",
+  groupBy: "day",
+});
+
+console.log(usage.totals.billableAmountMicros, usage.currency);
 ```

@@ -1,151 +1,137 @@
 ---
 title: "Events"
 sidebarTitle: "Events"
-description: "Both POST /v1/execute (mode:"turn") and GET /v1/runs/:id/events"
+description: "Reconnectable SSE for durable task runs."
 ---
 
-> **Status:** Developer preview — contract-stable per @nexislabs/ai-platform v1; not yet serving public traffic.
+> **Status:** Durable lifecycle SSE is available in the production partner
+> preview. Exact browser approval events remain pending production activation.
+> Cancellation-reconciliation code is deployed, but final-status behavior
+> remains pending a separate live canary.
 
-
-Both `POST /v1/execute` (`mode:"turn"`) and `GET /v1/runs/:id/events`
-(`mode:"task"`) stream the same envelope type, `AiPlatformEventV1`, as
-`text/event-stream` (`AI_PLATFORM_EVENT_MEDIA_TYPE`).
-
-## Endpoint
-
-```
+```http
 GET /v1/runs/:id/events
+Authorization: Bearer praxa_sk_<64 lowercase hex characters>
+Accept: text/event-stream
+Last-Event-ID: 42
 ```
 
-| Parameter | Location | Required | Description |
-|---|---|---|---|
-| `id` | path | Yes | Run identifier from [`GET /v1/runs/:id`](/fabric/api/runs). |
-| `Last-Event-ID` | header | No | Resume a dropped connection from the given `sequence` value (design spec §3.1: "SSE over `task_run_events.sequence`"). |
+The key must carry `runs:read`, and the run must belong to its tenant.
+`Last-Event-ID` is optional. When supplied, it must be a non-negative safe
+integer; the stream resumes strictly after that `task_run_events.sequence`.
 
-> **Ambiguity.** The design spec asserts `Last-Event-ID` resume in one line;
-> the `@nexislabs/ai-platform` package in this corpus has no client method
-> for this endpoint (its only stream method, `streamChat`, calls `/v1/chat`
-> once, with no reconnect/resume logic). The `sequence` field below is the
-> only concrete evidence of a resume key. Resume mechanics here are
-> transcribed from spec prose, not verified against an implementation.
+## Framing
 
-## Stream framing
+Every projected event uses standard SSE `id`, `event`, and `data` fields:
 
-Transcribed from the reference SSE parser (`parseAiPlatformEventStream`):
+```text
+id: 43
+event: run.progress
+data: {"apiVersion":"v1","run_id":"2f47a86e-72ce-4f27-8ff0-7dc0c959fd35","sequence":43,"at":"2026-07-31T12:00:04.000Z","type":"run.progress","message":"Run phase: executing"}
 
-- Response `Content-Type` must include `text/event-stream`.
-- Only lines beginning `data:` are read; other SSE fields (`event:`, `id:`,
-  `retry:`) are not parsed by the reference client.
-- A blank line dispatches the buffered `data:` lines, joined by `\n`, as one
-  JSON payload — standard multi-line SSE `data:` framing.
-- A literal `data: [DONE]` line ends the stream without emitting an event.
-- Every dispatched payload is parsed as JSON and validated against
-  `AiPlatformEventV1Schema`; a payload that fails validation throws.
+```
 
-## Event envelope
+- `id` equals the event's numeric `sequence`.
+- The stream sends comment heartbeats after ten seconds without a projected event.
+- Disconnecting cancels the polling loop.
+- A `completed`, `failed`, or `cancelled` run closes the stream.
+- Once the reconciliation final-status canary clears, reconciliation is
+  non-terminal: the run remains `running`, and the stream stays open through
+  reconciliation and recovery.
+- The TypeScript client rejects a missing/mismatched SSE id, non-increasing
+  sequences, events after a terminal event, and EOF before a terminal event.
 
-Every event shares this base shape, then adds the fields listed in the
-catalog below.
+## Durable event vocabulary
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `apiVersion` | `"v1"` | Yes | |
-| `requestId` | Identifier | Yes | Must equal the originating request's `requestId`. |
-| `sequence` | integer ≥ 0 | Yes | Strictly increasing within a stream — the resume key. |
-| `at` | timestamp (RFC 3339, offset required) | Yes | |
-| `type` | string | Yes | Discriminator — see catalog below. |
+| Event | Source condition |
+|---|---|
+| `run.accepted` | Billing reservation recorded. |
+| `run.started` | Durable workflow claimed the task. |
+| `run.progress` | A non-terminal phase update; reconciliation/recovery messages join this existing type after their final-status canary clears. |
+| `approval.required` | Source-ready pending activation: an exact recorded browser action is waiting for a digest-bound decision. |
+| `approval.resolved` | Source-ready pending activation: a digest-bound approval decision was recorded. |
+| `run.completed` | `task.finalized` with completed status. |
+| `run.failed` | An ordinary terminal failure; after the reconciliation final-status canary clears, also an outcome Praxa could not verify. |
+| `run.cancelled` | Cancellation completed. |
 
-**Protocol invariants** (enforced by the reference client; treat as MUST for
-any implementation):
+## Reconciliation without a new event type
 
-- `sequence` strictly increases; a repeated or lower value is a protocol
-  violation.
-- Exactly one **terminal** event ends a stream: `response.final`,
-  `request.cancelled`, or `request.failed`. No event may follow a terminal
-  event, and a stream must not end without emitting one.
+The migration and compatible Workers are deployed, but this final-status path
+remains pending a separate live canary. Once that gate clears, internal
+`reconcile_required` states project through the existing v1 shapes. The run
+stays `running`, and the stream emits this exact
+`run.progress` message:
 
-## Event catalog
+```text
+The run is reconciling an uncertain execution outcome. Do not retry or resubmit it.
+```
 
-Fields below are **in addition to** the envelope above.
+Do not retry or resubmit the run while you see that message. Reconciliation is
+not a terminal event, so the stream remains open. If Praxa resolves the
+uncertainty, it emits another `run.progress` event with this exact message:
 
-### Lifecycle
+```text
+Run reconciliation completed; execution is resuming.
+```
 
-| `type` | Fields | Description |
-|---|---|---|
-| `request.accepted` | `replayed`: boolean (default `false`) | First event of a stream. `replayed:true` signals the request matched a prior request under the same `Idempotency-Key` (see [Idempotency](/fabric/api/execute#idempotency)). |
-| `model.started` | `model`: string (1–128) | Model selected by the routing layer for this turn. |
-| `response.final` | `finishReason`: `stop \| length \| tool \| content_filter \| other` | Terminal — normal completion. |
-| `request.cancelled` | `reason`?: string (≤512) | Terminal — the run was cancelled, e.g. via [`POST /v1/runs/:id/cancel`](/fabric/api/runs#cancel-a-run). |
-| `request.failed` | `problem`: [Problem](/fabric/api/errors#the-problem-object) | Terminal — see [Errors](/fabric/api/errors). |
+If Praxa cannot verify whether a committing action happened, it emits a terminal
+`run.failed` event:
 
-### Generation
-
-| `type` | Fields | Description |
-|---|---|---|
-| `text.delta` | `delta`: string (1–64,000) | Incremental assistant text to append. |
-| `reasoning.status` | `status`: string (1–256) | Human-readable label for an in-progress reasoning step — not the reasoning content itself. |
-| `output.structured` | `schemaId`: Identifier, `value`: unknown | Structured output conforming to `schemaId`. The platform schema does not itself constrain `value`. |
-| `ui.component` | `component`: unknown | Generative-UI payload; shape is not constrained by the platform schema. |
-
-### Tools and approval
-
-| `type` | Fields | Description |
-|---|---|---|
-| `tool.proposed` | `toolCallId`: Identifier, `tool`: string (1–128), `summary`: string (1–1,024) | A tool call the run wants to make. |
-| `approval.required` | `approvalId`: Identifier, `toolCallId`: Identifier, `summary`: string (1–2,048), `expiresAt`?: timestamp | The run has parked pending a decision. `summary` is the canonical payload the caller must render verbatim (render == record == gate-match). See [Approvals](/fabric/api/approvals). |
-| `tool.started` | `toolCallId`: Identifier, `tool`: string (1–128) | |
-| `tool.completed` | `toolCallId`: Identifier, `result`: unknown | Tool output; shape is tool-specific. |
-| `tool.failed` | `toolCallId`: Identifier, `code`: [ErrorCode](/fabric/api/errors#error-codes), `retryable`: boolean | |
-
-### Memory
-
-| `type` | Fields | Description |
-|---|---|---|
-| `memory.read` | `count`: integer ≥ 0, `scope`: `user \| organization \| conversation` | |
-| `memory.write` | `memoryId`: Identifier, `scope`: `user \| organization \| conversation` | |
-
-### Telemetry
-
-| `type` | Fields | Description |
-|---|---|---|
-| `usage` | `inputTokens`, `outputTokens`, `modelCalls`, `toolCalls`: integer ≥ 0 | Per-run usage counters. Distinct from the tenant-level aggregate at [`GET /v1/usage`](/fabric/api/usage). |
-| `warning` | `code`: string (1–96), `message`: string (1–1,024) | Non-fatal condition; the run continues. |
-| `retry` | `attempt`: integer > 0, `reason`: string (1–512), `delayMs`: integer ≥ 0 | An internal step is being retried. |
-
-Note on `result` / `value` / `component`: these are typed `unknown` in the
-zod schema (not wrapped in `.optional()`), so this reference lists them as
-required keys. `z.unknown()` also validates a missing key at parse time —
-implementations should not assume the key is always present on the wire.
-
-## TypeScript
-
-```ts
-import type { AiPlatformEventV1 } from "@nexislabs/ai-platform";
-
-function handle(event: AiPlatformEventV1) {
-  switch (event.type) {
-    case "approval.required":
-      return renderApproval(event.summary, event.approvalId, event.expiresAt);
-    case "tool.failed":
-      return event.retryable ? scheduleRetry(event.toolCallId) : failRun(event.code);
-    case "usage":
-      return recordUsage(event.inputTokens, event.outputTokens);
-    case "response.final":
-    case "request.cancelled":
-    case "request.failed":
-      return closeStream();
-    default:
-      return; // text.delta, reasoning.status, tool.*, memory.*, output.structured, ui.component, warning, retry
+```json
+{
+  "apiVersion": "v1",
+  "run_id": "2f47a86e-72ce-4f27-8ff0-7dc0c959fd35",
+  "sequence": 44,
+  "at": "2026-07-31T12:00:05.000Z",
+  "type": "run.failed",
+  "failure": {
+    "code": "run_outcome_unknown",
+    "message": "A committing action may have happened, but the final outcome could not be verified. Do not retry automatically.",
+    "retryable": false
   }
 }
 ```
 
-## Example
+Ordinary failed, partial, and expired outcomes continue to use
+`failure.code: "run_failed"`. An accepted cancellation request can follow any
+of these paths. It does not prove rollback or guarantee an immediate
+`run.cancelled` event.
 
-```bash
-curl https://api.praxa.io/v1/runs/run_01j9example000000000000001/events \
-  -H "Authorization: Bearer praxa_sk_live_xxxxxxxxxxxxxxxxxxxx" \
-  -H "Accept: text/event-stream" \
-  -H "Last-Event-ID: 42" \
-  -N
+## Approval events fail closed (pending activation)
+
+Praxa emits `approval.required` only when it can derive a customer-safe exact
+presentation from immutable `browse_session_act` executor input. The event
+contains an `approvalId`, the exact `action_digest`, and a `summary` made from
+the recorded instruction or steps followed by the target host. The same fields
+can appear as `RunResource.pendingApproval`.
+
+Render that summary without truncation or re-derivation. After the person
+chooses, send `approve` or `deny` with the event's exact digest to
+`POST /v1/runs/:id/approve`. Praxa re-derives the presentation and compares the
+digest before recording the decision. If the presentation or digest is absent,
+stale, unsupported, or mismatched, Praxa emits no unsafe approval projection
+and accepts no decision.
+
+The versioned `AiPlatformRunEventV1` schema also includes output, tool, and usage
+events. The current durable-task projector does not emit those event types.
+
+No event exposes prompts, reasoning content, raw tool arguments, provider
+cost, margin, lease state, or executor credentials.
+
+## TypeScript
+
+```ts
+for await (const event of client.streamRunEvents(runId, {
+  lastEventId: 42,
+})) {
+  switch (event.type) {
+    case "run.completed":
+    case "run.failed":
+    case "run.cancelled":
+      console.log("terminal", event.type);
+      break;
+    default:
+      console.log(event.sequence, event.type);
+  }
+}
 ```
