@@ -1,0 +1,70 @@
+---
+title: "Memory Federation"
+sidebarTitle: "Overview"
+description: "Keep an existing memory provider authoritative while evaluating source-labelled retrieval through Praxa."
+---
+
+Memory Federation lets your application query existing memory systems through one bounded,
+source-labelled interface. It starts with federation so you can evaluate retrieval without moving
+credentials, copying a database, or changing which system is authoritative.
+
+<Warning>
+  **Current status:** the `@praxa/sdk/memory` adapters and CLI setup commands are source-ready in an
+  unpublished `0.3.0` candidate. `0.2.0` remains the published npm release. The hosted
+  `/v1/memory/*` API is source-ready but not deployed, migrated, or authenticated-canary proven.
+  The Developer Platform has no provider credential vault or connect, sync, import, mirror, or
+  cutover control.
+</Warning>
+
+## Choose an adoption model
+
+| Model | Authority | Current status | What changes |
+|---|---|---|---|
+| **Federation** | Your existing provider | Source-ready SDK candidate | Praxa queries an injected client at request time and returns source-labelled results. No provider write is implied. |
+| **Import** | Your provider until an explicit snapshot is accepted | Unavailable | Copies bounded records into an isolated Praxa candidate plane. Requires deployed create, export, idempotency, and erasure receipts. |
+| **Mirror** | Your existing provider | Unavailable | Writes an explicit secondary copy. Requires durable scheduling, loop prevention, and separate local/remote outcomes. |
+| **Cutover** | Praxa after a verified transition | Unavailable | Changes the authoritative store. Requires parity proof, rollback, export, and deletion verification. |
+
+Federation is the only model represented by the source-ready SDK adapters. Selecting or reading
+about another model does not authorize it.
+
+## What stays where
+
+```text
+Your backend
+  provider client + credential
+          |
+          v
+@praxa/sdk/memory federation
+  bounded query -> source-labelled results -> your agent
+
+Optional hosted candidate plane (not deployed)
+  explicit Platform API-key scopes -> isolated tenant candidates
+
+Praxa personal memory
+  separate owner and consent boundary; never reachable with a Platform API key
+```
+
+- Provider credentials stay in your backend process or secret vault. Adapters accept an injected
+  client or transport; they do not discover credentials.
+- Results keep provider identity and record semantics. Scores from different providers are not
+  treated as globally calibrated.
+- The optional hosted plane stores candidates only. It does not silently promote them into Praxa
+  personal memory, prompts, Vectorize, the world model, Cognitive Events, or AHCE.
+- Conversation history maps to `message`, graph relationships to `edge`, and core memory blocks to
+  `pinned_context`. Provider-native detail may remain in bounded metadata; execution checkpoints are
+  rejected and never converted into a durable candidate.
+
+## Evaluate safely
+
+1. Read [provider semantics](/memory-federation/concepts) and choose a namespace mapping.
+2. Review the [security boundary](/memory-federation/security).
+3. Inspect the [SDK candidate](/memory-federation/sdk) and [CLI dry runs](/memory-federation/cli).
+4. Keep your existing provider authoritative while comparing source-labelled retrieval.
+5. Do not plan import, mirror, or cutover until the [candidate API](/memory-federation/api) is
+   deployed and the required management authority exists.
+
+<Note>
+  The signed-in Developer Platform page at `https://platform.praxa.io/memory` is a read-only setup
+  guide. It stores no provider choice, generated command, connection, or secret.
+</Note>

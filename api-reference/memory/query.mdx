@@ -6,6 +6,12 @@ description: "POST /v8/memory/query retrieves relevant entries from persistent m
 
 The `POST /v8/memory/query` endpoint retrieves entries from the persistent memory store associated with your Praxa deployment. Memory entries are purpose-scoped and compartment-scoped — you specify both when querying so that the gateway returns only entries your principal is permitted to read for your stated purpose. You query using natural language text, and the gateway performs semantic retrieval against the stored entries. This is useful for grounding a new mission with relevant history, surfacing prior results, or carrying context across multiple mission runs.
 
+<Warning>
+  This is the separate OAuth Integration Gateway contract. It does not create or manage external
+  provider connections, and it is not the source-ready `/v1/memory/query` candidate-plane route.
+  See [Memory Federation API status](/memory-federation/api) before choosing a memory plane.
+</Warning>
+
 <Info>
   The `principalId` field is injected automatically from your OAuth delegation token. You must not include it in the request body — the gateway rejects any request that contains it.
 </Info>

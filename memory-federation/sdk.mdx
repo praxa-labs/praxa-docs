@@ -1,0 +1,37 @@
+---
+title: "Memory SDK candidate"
+sidebarTitle: "SDK"
+description: "Inspect the source-ready @praxa/sdk/memory candidate without confusing it with the published 0.2.0 package."
+---
+
+<Warning>
+  `@praxa/sdk/memory` is source-ready in the `0.3.0` candidate but is not published to npm. The
+  current registry release is `@praxa/sdk@0.2.0`, which does not expose this entrypoint. Do not add
+  a production dependency on `0.3.0` until registry publication and a clean-install receipt exist.
+</Warning>
+
+After publication, installation will be:
+
+```bash
+npm install @praxa/sdk@0.3.0
+```
+
+The candidate covers Mem0, LangGraph, Zep, Graphiti, Letta, and OpenAI Agents sessions. Each adapter:
+
+- accepts an injected client or structural transport;
+- requires explicit namespace mapping;
+- performs no credential discovery;
+- exposes no provider-write API;
+- bounds time, result count, and payload size;
+- preserves source identity, record kind, provenance, and contradictions;
+- exposes partial provider failure instead of returning a false empty success.
+
+## Frozen source, unpublished package
+
+The `@praxa/sdk/memory` export signatures are frozen and the source candidate passes its package
+verification and local clean-install suite. These docs intentionally omit an npm-backed executable
+example until the exact tarball is published and clean-installed from the registry. The Developer
+Platform exposes the same boundary rather than implying an unpublished dependency can be installed.
+
+Use the [CLI dry runs](/memory-federation/cli) to inspect planned project metadata without a
+credential or provider write. Return here after `0.3.0` is published for exact imports and types.

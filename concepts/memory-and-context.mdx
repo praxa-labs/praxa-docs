@@ -6,6 +6,13 @@ description: "Praxa missions draw on persistent memory, context-twin goals, and 
 
 Praxa missions don't operate in a vacuum. The Integration Gateway maintains three sources of ambient awareness that agents can draw on during execution: **persistent memory** accumulated from past activity, a **context twin** that tracks the current set of active goals for your deployment, and a **world model** that holds certified, signed facts about the state of the world the agent operates in. You can query all three directly from your application — and the agent uses them automatically during mission execution.
 
+<Warning>
+  This page describes the OAuth Integration Gateway `/v8` contract. It is separate from
+  [Memory Federation](/memory-federation/overview), which retrieves from caller-owned providers,
+  and from the source-ready `/v1/memory/*` candidate plane. None of those surfaces creates a
+  managed provider connection in the Developer Platform.
+</Warning>
+
 ## Memory
 
 Persistent memory stores information that accumulates across missions and can be retrieved by future runs. This lets agents learn from past activity, recall previous decisions, and avoid repeating work that has already been done. Memory is scoped to your tenant and filtered by compartment and purpose, so different workloads can maintain isolated memory stores within the same deployment.

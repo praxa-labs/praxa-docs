@@ -1,0 +1,54 @@
+---
+title: "Security and data boundaries"
+sidebarTitle: "Security"
+description: "Understand credential ownership, tenant isolation, scope, retention, and deletion before adopting memory federation."
+---
+
+## Credential ownership
+
+Federated adapters accept clients or transports that your server already owns. They do not accept
+credentials through the Praxa Developer Platform, discover environment variables, open an OAuth
+flow, or persist a provider token. Keep provider keys in your backend secret store and never send
+them to browser code.
+
+The Developer Platform has no memory credential vault. Its Memory page is read-only and its public
+gateway diagnostic carries no console session, Platform key, or provider credential.
+
+## Tenant and identity boundary
+
+The source-ready hosted plane derives the tenant and actor from a reauthorized `praxa_sk_*` key.
+Request JSON cannot choose a Praxa tenant, organization, actor, or personal-memory owner.
+
+- `memory:read` permits candidate query and export.
+- `memory:write` permits candidate create and record deletion.
+- Existing keys receive neither scope automatically.
+- Organization availability is not implied until organization key authority passes authenticated
+  cross-tenant canaries.
+
+The hosted plane is separate from Praxa personal memory. Platform keys cannot access personal
+memory, prompts, the world model, Vectorize, Cognitive Events, or AHCE consent.
+
+## Data admission
+
+Portable records preserve provider, external ID, revision, kind, timestamps, visibility, source
+provenance, and bounded content. Identity-shaped values inside a record are tenant-local labels;
+they cannot select server authority.
+
+Import is unavailable in this slice and imported embeddings are not accepted. Any future import
+must re-embed content under the active Praxa generation unless model, dimensions, and normalization
+are proven byte-compatible.
+
+## Deletion and retention
+
+The candidate-plane design hard-erases record payload content and may retain only a content-free
+deletion receipt. It reports local Praxa deletion separately from any remote-provider outcome.
+Federation alone does not grant remote delete authority.
+
+No public retention period is promised yet. Do not claim regulatory erasure across a provider and
+Praxa until both outcomes have receipts and derivative indexes are inside the erasure fence.
+
+## Activation proof still required
+
+Source and tests do not prove deployed isolation. Activation requires the additive migration, full
+Worker deployment, exact-revision receipt, and authenticated positive, revoked-key, wrong-scope,
+two-tenant, idempotency, export, deletion, and degraded-provider canaries.

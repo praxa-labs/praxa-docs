@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "name": "Praxa",
   "theme": "mint",
-  "favicon": "https://media.brand.dev/5bf0c599-8404-485e-a929-a6e148e92ef2.jpg",
+  "favicon": "/favicon.svg",
   "colors": {
     "primary": "#909090",
     "light": "#dddddd",
@@ -34,6 +34,17 @@
               "concepts/resource-budgets",
               "concepts/capabilities",
               "concepts/memory-and-context"
+            ]
+          },
+          {
+            "group": "Memory Federation",
+            "pages": [
+              "memory-federation/overview",
+              "memory-federation/concepts",
+              "memory-federation/security",
+              "memory-federation/sdk",
+              "memory-federation/cli",
+              "memory-federation/api"
             ]
           },
           {

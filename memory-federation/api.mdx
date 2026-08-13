@@ -1,0 +1,52 @@
+---
+title: "Hosted candidate API"
+sidebarTitle: "API candidate plane"
+description: "Review the isolated /v1/memory candidate-plane routes and their source-ready, not-deployed status."
+---
+
+<Warning>
+  The routes on this page are source-ready contracts. They are not deployed, migration-proven, or
+  authenticated-canary proven. A `401` from `api.praxa.io` proves only the shared gateway
+  authentication boundary; it does not prove that a named Memory route is available.
+</Warning>
+
+## Candidate routes
+
+| Method | Route | Scope | Intended result |
+|---|---|---|---|
+| `POST` | `/v1/memory/records` | `memory:write` | Create or replay one bounded candidate record under the authenticated tenant. |
+| `POST` | `/v1/memory/query` | `memory:read` | Query candidates with an explicit `retrievalMode: "lexical"` in the first hosted slice. |
+| `GET` | `/v1/memory/export` | `memory:read` | Export a bounded cursor page, with JSONL only when the deployed response contract qualifies it. |
+| `DELETE` | `/v1/memory/records/{id}` | `memory:write` | Hard-erase candidate payload content and return a content-free deletion receipt. |
+
+Existing Platform keys gain no memory scope automatically. The key principal selects the tenant;
+the request body cannot provide tenant, actor, organization, or Praxa user authority.
+
+## Why there are no request examples
+
+The portable-envelope schema is frozen and aligned across the runtime and `@praxa/sdk/memory`
+source candidates. This page intentionally omits copy-paste hosted requests until the deployed
+OpenAPI, generated SDK types, and production service match byte for byte.
+
+The stable boundary is already explicit:
+
+- records remain isolated candidates;
+- hosted provider IDs are `mem0`, `zep`, `graphiti`, `langgraph`, `letta`, `openai_agents`, and
+  `custom`;
+- durable candidate kinds are exactly `message`, `fact`, `summary`, `episode`, `pinned_context`,
+  `document`, `entity`, and `edge`; LangGraph checkpoints are rejected rather than converted;
+- provenance names an `explicit`, `observed`, `inferred`, or `imported` origin, confidence from
+  `0` to `1`, a capture time, and bounded evidence IDs;
+- lexical retrieval is labelled lexical;
+- provider identity, external ID, revision, record kind, provenance, visibility, and timestamps
+  survive round trips;
+- retries bind an idempotency key to the same request digest;
+- all-provider failure is not an empty result;
+- deletion leaves no candidate content in its receipt;
+- no route promotes data into Praxa personal memory or AHCE.
+
+## Separate memory planes
+
+`POST /v8/memory/query` is an OAuth Integration Gateway contract for purpose- and
+compartment-scoped retrieval. It neither manages provider connections nor aliases this `/v1`
+candidate plane. See [Query Memory](/api-reference/memory/query) for that separate contract.
