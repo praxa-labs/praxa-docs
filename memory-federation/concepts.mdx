@@ -10,13 +10,13 @@ metadata that passed the adapter's bounds.
 
 ## Compatibility model
 
-| Provider ID | Source model preserved | Source-ready adapter boundary |
+| Provider ID | Source model preserved | Published adapter boundary |
 |---|---|---|
 | `mem0` | Memory IDs, text, metadata, and user/agent/run scope | Inject a Mem0 client and explicit namespace mapper. Mem0 add processing may be asynchronous, so a queued write is not a settled mirror. |
 | `langgraph` | Long-term store items and namespaces | Inject a LangGraph store. Checkpoints are thread execution state and never become facts automatically. |
 | `zep` | User graph context, episodes, entity nodes, and relationship edges | Inject a Zep client. Graph ingestion can be asynchronous; exact-key semantics must not be inferred from graph search. |
 | `graphiti` | Episodes, temporal facts, nodes, edges, validity windows, and provenance | Inject a caller-owned transport. Episode lineage is retained when the transport supplies it. |
-| `letta` | Core memory blocks and recent messages as different kinds | Inject a Letta client. Blocks map to `pinned_context`; messages map to `message`. The candidate does not claim Letta archival retrieval. |
+| `letta` | Core memory blocks and recent messages as different kinds | Inject a Letta client. Blocks map to `pinned_context`; messages map to `message`. The adapter does not claim Letta archival retrieval. |
 | `openai_agents` | Ordered session items and conversation history | Inject an Agents SDK session. Session items remain conversation state, not durable user facts. |
 
 These distinctions follow the providers' official models:
@@ -42,8 +42,10 @@ These distinctions follow the providers' official models:
   `0.8` from another as if they shared a calibration.
 - Source-qualified duplicates may be grouped for display, but provenance is never discarded.
 - Contradictions remain visible. Federation does not silently pick a universal truth.
-- A provider timeout produces a partial-degradation result. If every source fails, the result is
-  an error, not an empty success.
+- Each source reports `ok`, `timed_out`, `unavailable`, or `error`. The aggregate status is
+  `partial` only when at least one source succeeds, and `failed` when none succeeds. Provider
+  failures are returned with per-source errors rather than thrown, so callers must inspect
+  `result.status` and `result.sources`; `failed` is never disguised as an empty success.
 
 ## Candidate is not personal memory
 

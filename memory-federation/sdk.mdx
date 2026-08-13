@@ -1,37 +1,65 @@
 ---
-title: "Memory SDK candidate"
+title: "Memory federation SDK"
 sidebarTitle: "SDK"
-description: "Inspect the source-ready @praxa/sdk/memory candidate without confusing it with the published 0.2.0 package."
+description: "Install the published @praxa/sdk/memory entrypoint and query caller-owned memory providers through a bounded, read-only federation layer."
 ---
 
-<Warning>
-  `@praxa/sdk/memory` is source-ready in the `0.3.0` candidate but is not published to npm. The
-  current registry release is `@praxa/sdk@0.2.0`, which does not expose this entrypoint. Do not add
-  a production dependency on `0.3.0` until registry publication and a clean-install receipt exist.
-</Warning>
+`@praxa/sdk/memory` is published in `@praxa/sdk@0.3.0`. It is a dependency-free, read-only
+federation layer for provider clients and transports that your backend already owns.
 
-After publication, installation will be:
+## Install
 
 ```bash
 npm install @praxa/sdk@0.3.0
 ```
 
-The candidate covers Mem0, LangGraph, Zep, Graphiti, Letta, and OpenAI Agents sessions. Each adapter:
+## Query an existing LangGraph store
+
+```typescript
+import {
+  MemoryFederation,
+  createLangGraphMemorySource,
+} from "@praxa/sdk/memory";
+
+const memory = new MemoryFederation({
+  sources: [
+    createLangGraphMemorySource({
+      store,
+      mapNamespace: ({ tenantId, subjectId }) => [
+        tenantId,
+        subjectId,
+        "memory",
+      ],
+    }),
+  ],
+  maxConcurrency: 4,
+  defaultTimeoutMs: 5_000,
+});
+
+const result = await memory.recall({
+  query: "preferred editor",
+  namespace: { tenantId: "acme", subjectId: "person-1" },
+  limit: 10,
+});
+```
+
+The package covers Mem0, LangGraph, Zep, Graphiti, Letta, and OpenAI Agents sessions. Each adapter:
 
 - accepts an injected client or structural transport;
-- requires explicit namespace mapping;
+- requires an explicit namespace mapper or session resolver;
 - performs no credential discovery;
 - exposes no provider-write API;
 - bounds time, result count, and payload size;
 - preserves source identity, record kind, provenance, and contradictions;
 - exposes partial provider failure instead of returning a false empty success.
 
-## Frozen source, unpublished package
+## Release boundary
 
-The `@praxa/sdk/memory` export signatures are frozen and the source candidate passes its package
-verification and local clean-install suite. These docs intentionally omit an npm-backed executable
-example until the exact tarball is published and clean-installed from the registry. The Developer
-Platform exposes the same boundary rather than implying an unpublished dependency can be installed.
+The `0.3.0` release passed package verification and a clean install from the public npm registry.
+Adapters accept caller-owned clients, require caller-supplied tenant and subject namespace
+resolution,
+and implement no provider write, import, mirror, cutover, or hosted `/v1/memory` client.
 
-Use the [CLI dry runs](/memory-federation/cli) to inspect planned project metadata without a
-credential or provider write. Return here after `0.3.0` is published for exact imports and types.
+Use the [CLI dry runs](/memory-federation/cli) to inspect local project metadata without a
+credential or provider write. The [hosted candidate API](/memory-federation/api) has a separate
+deployment and authorization boundary.

@@ -4,10 +4,8 @@ sidebarTitle: "CLI"
 description: "Generate dry-run federation setup plans without connecting a provider or starting synchronization."
 ---
 
-<Warning>
-  These commands target the source-ready, unpublished `@praxa/cli@0.3.0` candidate. The published
-  `0.2.0` CLI does not contain them, so `npx` cannot install this exact version from npm yet.
-</Warning>
+These local-only planning commands are published in `@praxa/cli@0.3.0`. The explicit `praxa` bin
+is required because the package preserves both the current `praxa` and legacy `aura` binaries.
 
 ## Preview a source entry
 
@@ -30,8 +28,8 @@ npx --package=@praxa/cli@0.3.0 praxa memory sync plan --dry-run
 
 This inspects whether a proposed federation configuration is structurally complete. It does not
 start a job. There is no `sync run`, mirror, import, or cutover command because Praxa has not shipped
-the credential vault, durable scheduler, hosted activation, or transition receipts those commands
-would require.
+the credential vault, durable scheduler, authenticated management qualification, or transition
+receipts those commands would require.
 
 <Note>
   Keep provider credentials in your server-side vault. Generated files must contain references,

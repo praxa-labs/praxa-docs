@@ -16,12 +16,13 @@ npm install @praxa/mcp-contracts
 
 The package exports everything you need to describe Praxa tools to an MCP host:
 
-- **`PRAXA_MCP_TOOLS`** — An array of 12 `PraxaMcpTool` objects. Each object contains the tool name, description, `inputSchema` (JSON Schema), `operationId`, HTTP method and path, required OAuth scope, and idempotency behavior.
+- **`PRAXA_MCP_TOOLS`** — A Praxa-branded export alias for the 12 stable Aura-compatible wire definitions. Each `PraxaMcpTool` object contains the tool name, description, `inputSchema` (JSON Schema), annotations, `operationId`, HTTP method and path, required OAuth scope, and idempotency behavior.
 - **`praxaMcpTool(name)`** — A lookup function that returns a single tool definition by name, or `undefined` if the name is not found.
 - **`MCP_PROTOCOL_VERSION`** — The primary protocol revision, `"2025-11-25"`.
 - **`MCP_LEGACY_PROTOCOL_VERSION`** — The negotiated compatibility revision, `"2025-03-26"`.
 - **`MCP_SUPPORTED_PROTOCOL_VERSIONS`** — Both supported revisions in preference order.
-- **`MCP_SERVER_NAME`** — The string `"praxa-agent-os"`, the canonical server identifier used in the hosted `/mcp` endpoint.
+- **`MCP_SERVER_NAME`** — The stable wire identifier `"aura-agent-os"`, retained for compatibility.
+- **`MCP_SERVER_VERSION`** — The package/server software version, currently `"0.3.0"`; this is distinct from the negotiated protocol revision.
 - **JSON-RPC message types** — `JsonRpcRequest`, `JsonRpcResponse`, and `JsonRpcId` TypeScript types for building MCP server implementations on top of these contracts.
 
 ## Protocol Details
@@ -33,12 +34,16 @@ import {
   MCP_LEGACY_PROTOCOL_VERSION,
   MCP_PROTOCOL_VERSION,
   MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
 } from "@praxa/mcp-contracts";
 
 console.log(MCP_PROTOCOL_VERSION);        // "2025-11-25"
 console.log(MCP_LEGACY_PROTOCOL_VERSION); // "2025-03-26"
-console.log(MCP_SERVER_NAME);             // "praxa-agent-os"
+console.log(MCP_SERVER_NAME);             // "aura-agent-os"
+console.log(MCP_SERVER_VERSION);          // "0.3.0"
 ```
+
+The package and TypeScript aliases use Praxa branding, while the published wire identifiers remain Aura-compatible: tool names use the `aura_*` prefix and `MCP_SERVER_NAME` is `"aura-agent-os"`. Treat those values as protocol identifiers, not display branding.
 
 Connect an MCP 2025-11-25 Streamable HTTP client to the hosted `/mcp` endpoint and authenticate using a delegated Praxa OAuth token scoped to the specific operations your agent requires. Clients that only support 2025-03-26 can negotiate that compatibility revision.
 

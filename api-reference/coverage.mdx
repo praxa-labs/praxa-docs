@@ -61,7 +61,7 @@ The response body is a coverage report object. The report is scoped to your prin
 ```json Example 200 response
 {
   "gatewayVersion": "8.1.0",
-  "contractVersion": "praxa-integration-gateway-v8.1",
+  "contractVersion": "aura-integration-gateway-v8.1",
   "generatedAt": "2025-07-11T10:00:00Z",
   "endpoints": [
     {
@@ -115,7 +115,7 @@ The response body is a coverage report object. The report is scoped to your prin
 | Field | Type | Description |
 |---|---|---|
 | `gatewayVersion` | string | The Integration Gateway API version this report was generated against |
-| `contractVersion` | string | The Praxa contract version identifier (e.g., `"praxa-integration-gateway-v8.1"`) |
+| `contractVersion` | string | The stable wire-contract identifier (for example, `"aura-integration-gateway-v8.1"`) |
 | `generatedAt` | string | ISO 8601 UTC timestamp of when the report was produced |
 | `endpoints` | array | List of all API endpoints visible to your principal with their availability and evidence scores |
 | `endpoints[].operationId` | string | The operation identifier from the OpenAPI contract |

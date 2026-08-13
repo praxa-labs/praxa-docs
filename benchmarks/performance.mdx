@@ -50,7 +50,7 @@ const client = new PraxaClient({
 });
 ```
 
-**Contract version header.** Every request — including the SSE stream — carries `x-praxa-contract-version: praxa-integration-gateway-v8.1`. This header is set from the compiled `PRAXA_CONTRACT_VERSION` constant and adds negligible serialization overhead. The gateway uses it to route requests to the correct contract handler; mismatches result in a non-retryable 4xx response rather than a silent behavioural difference.
+**Contract version header.** Every request — including the SSE stream — carries `x-aura-contract-version: aura-integration-gateway-v8.1`. The Praxa-named `PRAXA_CONTRACT_VERSION` export aliases this stable compatibility value. The header adds negligible serialization overhead; mismatches result in a non-retryable 4xx response rather than a silent behavioural difference.
 
 **Body serialization.** Request bodies are serialized with `JSON.stringify`. The cost depends on your payload and runtime. If your `goalSpec` carries large embedded context objects, measure serialization time separately and consider moving large payloads to a memory compartment queryable via `queryMemory()` instead.
 
@@ -165,7 +165,7 @@ for (const task of tasks) {
 
 ### Parallel mission fan-out
 
-Submit multiple missions simultaneously using `Promise.all` when your tasks are independent and you want to minimize total wall-clock time. Each mission must carry a unique idempotency key — sharing a key across parallel submissions would cause the gateway to deduplicate them to a single mission.
+Submit multiple missions simultaneously using `Promise.all` when your tasks are independent and you want to minimize total wall-clock time. Give each distinct logical mission a different idempotency key — sharing one key across independent submissions would conflict, while retries of the same mission must reuse its original key.
 
 ```typescript
 const missions = await Promise.all(

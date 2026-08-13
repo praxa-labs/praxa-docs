@@ -1,13 +1,15 @@
 ---
 title: "Hosted candidate API"
 sidebarTitle: "API candidate plane"
-description: "Review the isolated /v1/memory candidate-plane routes and their source-ready, not-deployed status."
+description: "Review the deployed /v1/memory candidate-plane routes and their pending authenticated qualification."
 ---
 
 <Warning>
-  The routes on this page are source-ready contracts. They are not deployed, migration-proven, or
-  authenticated-canary proven. A `401` from `api.praxa.io` proves only the shared gateway
-  authentication boundary; it does not prove that a named Memory route is available.
+  These routes and their additive migration are deployed from Praxa AI revision
+  `5cb3d80d92c4783120175aa8da39d896e60536a5`. Exact-revision deployment, route smoke tests, and
+  fail-closed unauthenticated `401` responses are proven. Authenticated positive, wrong-scope,
+  revoked-key, cross-tenant, idempotency, export, and deletion canaries remain pending; a `401`
+  proves only the shared gateway authentication boundary, not authorized record behavior.
 </Warning>
 
 ## Candidate routes
@@ -24,8 +26,8 @@ the request body cannot provide tenant, actor, organization, or Praxa user autho
 
 ## Why there are no request examples
 
-The portable-envelope schema is frozen and aligned across the runtime and `@praxa/sdk/memory`
-source candidates. This page intentionally omits copy-paste hosted requests until the deployed
+The portable-envelope schema is frozen and aligned across the runtime and published
+`@praxa/sdk/memory` package. This page intentionally omits copy-paste hosted requests until the deployed
 OpenAPI, generated SDK types, and production service match byte for byte.
 
 The stable boundary is already explicit:
