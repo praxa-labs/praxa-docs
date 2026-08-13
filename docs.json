@@ -42,6 +42,17 @@
             ]
           },
           {
+            "group": "Memory Federation",
+            "pages": [
+              "memory-federation/overview",
+              "memory-federation/concepts",
+              "memory-federation/security",
+              "memory-federation/sdk",
+              "memory-federation/cli",
+              "memory-federation/api"
+            ]
+          },
+          {
             "group": "Use Cases",
             "pages": [
               "use-cases/task-automation",

@@ -1,0 +1,39 @@
+---
+title: "Memory CLI setup"
+sidebarTitle: "CLI"
+description: "Generate dry-run federation setup plans without connecting a provider or starting synchronization."
+---
+
+<Warning>
+  These commands target the source-ready, unpublished `@praxa/cli@0.3.0` candidate. The published
+  `0.2.0` CLI does not contain them, so `npx` cannot install this exact version from npm yet.
+</Warning>
+
+## Preview a source entry
+
+```bash
+npx --package=@praxa/cli@0.3.0 praxa memory source add mem0 --mode federated --dry-run
+```
+
+Supported provider IDs are `mem0`, `zep`, `graphiti`, `langgraph`, `letta`, and `openai_agents`.
+Use `--project-dir DIR` to inspect a different existing project directory.
+
+The dry run returns local source metadata: source ID, provider, `federated` mode, read-only access,
+and enabled state. It does not accept or store a provider credential, plan an endpoint or secret
+reference, call the provider, connect an account, or write a memory.
+
+## Preview a synchronization plan
+
+```bash
+npx --package=@praxa/cli@0.3.0 praxa memory sync plan --dry-run
+```
+
+This inspects whether a proposed federation configuration is structurally complete. It does not
+start a job. There is no `sync run`, mirror, import, or cutover command because Praxa has not shipped
+the credential vault, durable scheduler, hosted activation, or transition receipts those commands
+would require.
+
+<Note>
+  Keep provider credentials in your server-side vault. Generated files must contain references,
+  never secret values.
+</Note>
