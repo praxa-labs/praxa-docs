@@ -2,7 +2,12 @@
   "$schema": "https://mintlify.com/docs.json",
   "name": "Praxa",
   "theme": "mint",
-  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo-light.svg",
+    "dark": "/logo-dark.svg",
+    "href": "https://praxa.io"
+  },
+  "favicon": "/app-icon.png",
   "colors": {
     "primary": "#909090",
     "light": "#dddddd",
@@ -60,6 +65,7 @@
             "group": "SDK",
             "pages": [
               "sdk/overview",
+              "sdk/framework-integrations",
               "sdk/praxaclient",
               "sdk/mission-events",
               "sdk/error-handling"
@@ -102,6 +108,7 @@
           {
             "group": "Missions",
             "pages": [
+              "api-reference/intents/submit",
               "api-reference/missions/create",
               "api-reference/missions/get",
               "api-reference/missions/events",
@@ -171,6 +178,14 @@
               "fabric/approvals-and-policy/approvals",
               "fabric/approvals-and-policy/policy-engine",
               "fabric/approvals-and-policy/budgets-and-limits"
+            ]
+          },
+          {
+            "group": "Studio & workflows",
+            "pages": [
+              "fabric/studio-and-console",
+              "fabric/datasets",
+              "fabric/workflows"
             ]
           },
           {

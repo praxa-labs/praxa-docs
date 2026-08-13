@@ -94,7 +94,10 @@ curl -N https://your-gateway.example/v8/missions/018e2f3a-7c14-7000-b1e2-4d3f8a2
 ```typescript TypeScript SDK
 import { PraxaClient } from "@praxa/sdk";
 
-const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
 
 const runId = "018e2f3a-7c14-7000-b1e2-4d3f8a20c911";
 
@@ -119,7 +122,7 @@ for await (const event of client.missionEvents(runId)) {
 
 ```typescript
 for await (const event of client.missionEvents(runId)) {
-  // event: AuraSseEvent
+  // event: PraxaSseEvent
   // event.id    — cursor for Last-Event-ID resumption
   // event.event — event type string
   // event.data  — parsed JSON payload
@@ -130,7 +133,7 @@ for await (const event of client.missionEvents(runId)) {
 |---|---|---|
 | `runId` | `string` | UUID of the mission to stream events for |
 
-**Returns:** `AsyncGenerator<AuraSseEvent>`
+**Returns:** `AsyncGenerator<PraxaSseEvent>`
 
 <Note>
   The SDK's `missionEvents` async generator closes automatically when the stream reaches a terminal event (`mission.completed`, `mission.failed`, or `mission.cancelled`). You do not need to call `.return()` or wrap the loop in a `try/finally` block for normal termination. For early exits, use `break` inside your `for await` loop and the generator will clean up the underlying HTTP connection.

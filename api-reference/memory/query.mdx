@@ -91,7 +91,10 @@ curl -X POST https://your-gateway.example/v8/memory/query \
 ```typescript TypeScript SDK
 import { PraxaClient } from "@praxa/sdk";
 
-const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
 
 const results = await client.queryMemory({
   compartment: "team-emea",

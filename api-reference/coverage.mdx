@@ -38,7 +38,10 @@ curl https://your-gateway.example/v8/coverage \
 ```typescript TypeScript SDK
 import { PraxaClient } from "@praxa/sdk";
 
-const client = new PraxaClient({ accessToken: process.env.PRAXA_ACCESS_TOKEN });
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
 
 const coverage = await client.getReferenceCoverage();
 
@@ -58,7 +61,7 @@ The response body is a coverage report object. The report is scoped to your prin
 ```json Example 200 response
 {
   "gatewayVersion": "8.1.0",
-  "contractVersion": "aura-integration-gateway-v8.1",
+  "contractVersion": "praxa-integration-gateway-v8.1",
   "generatedAt": "2025-07-11T10:00:00Z",
   "endpoints": [
     {
@@ -112,7 +115,7 @@ The response body is a coverage report object. The report is scoped to your prin
 | Field | Type | Description |
 |---|---|---|
 | `gatewayVersion` | string | The Integration Gateway API version this report was generated against |
-| `contractVersion` | string | The Aura contract version identifier (e.g., `"aura-integration-gateway-v8.1"`) |
+| `contractVersion` | string | The Praxa contract version identifier (e.g., `"praxa-integration-gateway-v8.1"`) |
 | `generatedAt` | string | ISO 8601 UTC timestamp of when the report was produced |
 | `endpoints` | array | List of all API endpoints visible to your principal with their availability and evidence scores |
 | `endpoints[].operationId` | string | The operation identifier from the OpenAPI contract |

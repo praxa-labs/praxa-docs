@@ -1,70 +1,151 @@
 ---
 title: "FAQ"
 sidebarTitle: "FAQ"
-description: 'Straight answers, including to the questions whose honest answer is "not yet." Status labels below match the legend in README.md.'
+description: "Straight answers, including when the honest answer is not yet."
 ---
 
 Straight answers, including to the questions whose honest answer is "not yet." Status labels below match the legend in [`README.md`](/fabric#status-legend).
 
 ### Is the Execute API live today?
 
-No. `/v1/execute` and the rest of the run, event, and approval endpoints are **developer preview**: the wire contracts are stable and published, but no public endpoint serves them yet. What you can call today is the custom-agent API. See [`status-and-roadmap.md`](/fabric/status-and-roadmap) for what has to be true before that changes.
+Yes, for invited partners and a deliberately narrow contract. Personal tenant
+keys can submit minimal durable `task` requests, read runs, resume SSE, request
+cancellation, read usage, configure automatic signed webhooks, and manage
+webhook deliveries. Turn mode, request-level overrides, organization execution,
+and mature receipts remain unavailable. Exact browser approval remains pending.
+Cancellation final states have passed separate production canaries. See
+[`status-and-roadmap.md`](/fabric/status-and-roadmap).
 
 ### What can I actually build on today, before the Execute API opens up?
 
-Custom agents. The agent-builder platform is **available today**: create an agent, publish it, call it through an `aura_agent_*` API key or embed it on a website, with approvals gating any action that writes. That's the product the fabric is generalizing: from "call my one agent" to "execute arbitrary tasks under my tenant's policy." See [`use-cases/agent-builders.md`](/fabric/use-cases/agent-builders).
+Custom agents remain a separate available surface: create and publish an agent,
+then call that deployment with its deployment-scoped credential or supported embed
+channel. Its product-specific safety gates do not create generic public fabric
+tool/policy authority. See
+[`use-cases/agent-builders.md`](/fabric/use-cases/agent-builders).
+
+### Can I manage agents, workflows, teams, and billing in the developer portal?
+
+The portal-native personal agent/workflow routes, draft preview playground,
+profile/avatar/preferences, organization membership controls, subscription
+display, and eligible Stripe Checkout are source-ready. They are not documented
+as live until a compatible Worker deployment and authenticated production
+canaries are recorded. Organization API keys and execution remain unavailable.
+See [Studio and developer console](/fabric/studio-and-console).
+
+### Can I upload a dataset and compare models?
+
+Agent-scoped datasets are source-ready, pending their additive database
+migration, Worker deployment, and production isolation/immutability canary.
+Customer experiment execution and model comparison remain unavailable. A
+published dataset is immutable input evidence; it is not permission to call a
+model or spend credits. See [Agent evaluation datasets](/fabric/datasets).
+
+### Is the typed workflow DSL public?
+
+No. The strict plan/compiler/interpreter foundation exists in source, but there
+is no public route, published package, deployed customer-definition authority,
+or connection to `/v1/execute`. The portal's workflow page rehosts Praxa's
+existing automation system; it is not the public DSL. See
+[Typed workflow DSL](/fabric/workflows).
 
 ### How do approvals actually block an action?
 
-The policy engine classifies each action before it runs. Anything it marks as needing a person pauses the run instead of executing: the event stream emits `approval.required` carrying the exact action and an approval digest, and the run sits there until your system posts that digest back to `/v1/runs/:id/approve` with a decision. There's no path where the model decides on its own that an action was "probably fine." Execution only accepts the exact, byte-equivalent action it paused on. Altered arguments, an expired approval, or a replay all fail closed. Details: [`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals).
+Praxa's existing product gates consequential actions fail closed. The first
+source-ready public form is narrower: an immutable browser action can project
+its exact instruction/steps, target host, and digest, then accept only the
+matching `approve` or `deny` decision. Generic tool approvals and the unified
+configurable policy engine are unavailable; public browser approval remains
+pending production activation. Details:
+[`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals).
 
 ### What happens when a run hits its budget ceiling?
 
-The run stops before the step that would exceed the ceiling runs, not after. Funds are reserved ahead of a paid step, not billed after the fact, so hitting a ceiling means the run halts and you get a receipt showing what did complete and where it stopped. Not a surprise charge. Not a silent downgrade to a cheaper model to sneak under the limit. See [`approvals-and-policy/budgets-and-limits.md`](/fabric/approvals-and-policy/budgets-and-limits).
+Funds are reserved before an admitted paid run executes. A ceiling or billing
+failure stops new work rather than becoming a surprise charge. Follow the run's
+safe projection and usage readback for the public evidence available today;
+mature per-run receipts remain unavailable. See
+[`approvals-and-policy/budgets-and-limits.md`](/fabric/approvals-and-policy/budgets-and-limits).
 
 ### Do you train on my data?
 
-Learning is per-tenant by default. Anything that crosses tenant boundaries is metadata only: which model or tool tended to work for a given kind of task, typical latency and cost. It's aggregated, and opt-out-able. Your content, memory, and raw context are never part of that cross-tenant signal. Any change to how routing decisions get made ships versioned and evaluated before it rolls out, never silently, and every receipt records whether that run was even eligible for training use in the first place. Details: [`security/data-handling.md`](/fabric/security/data-handling).
+Praxa does not currently expose the planned cross-tenant learning system or its
+receipt consent labels as a completed fabric capability. The design keeps content,
+memory, and raw context out of cross-tenant signals and makes any future learning
+tenant-scoped or aggregated metadata, with explicit consent and evaluation gates.
+Details: [`security/data-handling.md`](/fabric/security/data-handling).
 
 ### Should I bring my own provider keys, or use bundled inference?
 
-Both are supported at general availability, and neither is a second-class option. Bundled means you run on Praxa's provider keys, billed as credits against fixed per-run pricing. Simplest way to start. BYO means you connect your own provider credentials, which stay encrypted and never leave the runtime, and you pay a platform fee on the spend that runs through them instead of a token margin. Routing quality is priced and delivered the same way in both modes. See [`how-to/bring-your-own-keys.md`](/fabric/how-to/bring-your-own-keys).
+Bundled inference is the only active fabric funding path. BYO provider funding is
+planned but unavailable. Its intended security and fee model is documented in
+[`how-to/bring-your-own-keys.md`](/fabric/how-to/bring-your-own-keys).
 
 ### What models do you route to?
 
-The fabric is model-neutral by design. That's deliberate, not a gap waiting to be filled in. Which specific providers and models sit in the routing ladder for a given kind of task will keep evolving as the market does; that's not the part of the contract we're asking you to pin your integration to. What is pinned: you submit a task and constraints, you can pin a model lane yourself through `policy` if you need to, and the receipt always records which model actually ran, every time.
+The fabric is model-neutral by design. The current minimal task lane is pinned
+server-side; callers cannot yet submit a `policy` model-lane override. Mature
+receipts that record the selected model also remain unavailable.
 
 ### Can I self-host Praxa?
 
-No. The runtime is built on Cloudflare's platform primitives (Durable Objects, Workflows, Vectorize), and self-hosting would mean forking that substrate, not deploying a container. What you get instead at the enterprise tier: a dedicated Cloudflare account and region so your workload isn't sharing infrastructure with anyone else's, BYO provider keys so your inference spend never has to touch Praxa's, and full evidence export so your audit tooling doesn't have to trust Praxa's UI either. See [`enterprise/deployment-and-isolation.md`](/fabric/enterprise/deployment-and-isolation).
+No. The runtime is built on Cloudflare platform primitives and self-hosting is not
+offered. Dedicated account or region isolation, BYO provider keys, and full
+evidence export are planned enterprise capabilities, not current alternatives.
+See [`enterprise/deployment-and-isolation.md`](/fabric/enterprise/deployment-and-isolation).
 
-### How do `aura_agent_*` keys relate to `praxa_sk_` keys?
+### How do custom-agent keys relate to `praxa_sk_` keys?
 
-`aura_agent_*` is the credential you already have if you've deployed a custom agent: it's scoped to that one agent. `praxa_sk_` is the new fabric key: scoped to a tenant, able to execute arbitrary tasks rather than just call one pinned agent. Existing `aura_agent_*` keys keep working. They are not being deprecated out from under anyone, and they migrate onto the tenant model later rather than being replaced in place. See [`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys).
+A custom-agent key is scoped to one existing deployment. `praxa_sk_`
+is scoped to one admitted personal fabric tenant and exact endpoint scopes; the
+current execute body is a strict minimal task, not arbitrary agent/tool/policy
+control. Existing custom-agent keys keep working and neither credential gains
+the other's authority. See
+[`keys-and-access/api-keys.md`](/fabric/keys-and-access/api-keys).
 
 ### What's the difference between `mode: "turn"` and `mode: "task"`?
 
-Same contract, two shapes. `turn` is synchronous: you get a stream back on the same request, which fits chat-shaped work where you're waiting on the result anyway. `task` is durable: the call returns a `run_id` immediately and the work continues server-side, with progress delivered through the events endpoint or webhooks. Built for anything long-running, or anything you need to walk away from and come back to. Approval behavior is identical either way. See [`api/execute.md`](/fabric/api/execute).
+The public contract defines only `task`, which returns a `run_id` and continues
+durably. Sending `mode: "turn"` returns `400 invalid_request`, and `/v1/chat` is
+not routed. Candidate turn schemas in source are unserved. See
+[`api/execute.md`](/fabric/api/execute).
 
 ### What exactly is in a receipt?
 
-What ran, which policy pack version evaluated it, who approved which action and when, and what the result was verified against. It's built to be the thing you hand to an auditor without having to also hand over trust in Praxa's dashboard. See [`security/receipts-and-audit.md`](/fabric/security/receipts-and-audit).
+That is the target receipt: what ran, policy version, exact approval evidence,
+and verification outcome. The current run and event resources are narrower safe
+projections; the mature receipt object is not shipped. See
+[`security/receipts-and-audit.md`](/fabric/security/receipts-and-audit).
 
 ### Is usage billed per token, per run, or per seat?
 
-Metered on runs and spend, not on raw model steps. Steps are an internal guardrail we use to keep a run from running away; they're not the number that shows up on your invoice. Bundled inference bills as credits against fixed per-run pricing; BYO bills a platform fee on the spend that routes through your own keys. See [`enterprise/billing-and-plans.md`](/fabric/enterprise/billing-and-plans).
+The active bundled lane reserves and settles credits from immutable execution
+economics. `GET /v1/usage` reports evidence-bounded run, token, call, and billable
+amount totals; it is not invoice authority. BYO fees are only a proposal because
+BYO is unavailable. See [`enterprise/billing-and-plans.md`](/fabric/enterprise/billing-and-plans).
 
 ### What happens if my system doesn't respond to an approval in time?
 
-Approvals carry a TTL. If it expires before you post a decision, the run treats that the same as "not approved" and closes out rather than executing by default. Fail closed, not fail open: a slow or broken approval endpoint on your side can never become an accidental auto-approve. See [`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals).
+After exact browser approval activation, a late, expired, stale, or already
+resolved decision is refused. The durable public contract does not promise a
+turn-style timeout event or a special `expired` run status; follow the run to its
+actual terminal projection. See
+[`approvals-and-policy/approvals.md`](/fabric/approvals-and-policy/approvals).
 
 ### Is the policy engine the same thing as approvals?
 
-Related, but not the same layer. The policy engine is what decides whether an action needs an approval at all: auto, peer review, human approval, or deny, based on what the action does and what it costs. Approvals are the mechanism that actually pauses and resumes a run once the engine has decided a human needs to weigh in. You configure the policy; the engine's decision is what produces, or skips, an approval pause. See [`approvals-and-policy/policy-engine.md`](/fabric/approvals-and-policy/policy-engine).
+They are different planned layers. A unified engine would choose among auto,
+peer review, human approval, and deny; an approval mechanism would pause and
+resume the exact action. Today Praxa has multiple product-specific gates, while
+the public configurable engine and request `policy` override are unavailable.
+See [`approvals-and-policy/policy-engine.md`](/fabric/approvals-and-policy/policy-engine).
 
 ### Can I use this from Praxa Control, the desktop coding tool?
 
-Yes. That's one of the three use cases the fabric is built for from day one. Praxa Control calls the fabric for cloud lanes (research, browsing, media, connectors, anything durable) from local coding sessions, while your local Codex or Claude Code sessions and your provider credentials stay on your machine. See [`use-cases/coding-and-desktop.md`](/fabric/use-cases/coding-and-desktop).
+Not directly from the Control composer yet. A server-side script can use the
+partner-preview task API today; first-party Control cloud-lane integration remains
+planned. Local Codex or Claude Code sessions and their provider credentials remain
+separate. See [`use-cases/coding-and-desktop.md`](/fabric/use-cases/coding-and-desktop).
 
 ### What happens if my connection drops mid-run?
 

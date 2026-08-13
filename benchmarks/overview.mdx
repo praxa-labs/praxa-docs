@@ -1,121 +1,141 @@
 ---
-title: "Praxa Benchmarks: Measuring Agentic Mission Performance"
+title: "Praxa benchmark and validation evidence"
 sidebarTitle: "Overview"
-description: "The Praxa benchmarks suite measures mission latency, event streaming throughput, SDK retry performance, and gateway reliability under load."
+description: "Interpret Praxa repository validation, the Terminal-Bench pilot, and the evidence that has not yet been established."
 ---
 
-The praxa-benchmarks suite provides reproducible performance measurements for the Praxa platform, helping you understand expected latency and throughput characteristics before production deployment. Because Praxa operates as a credential-free agentic mission platform — with the Integration Gateway enforcing tenant, consent, and budget validation on every request — accurate performance data helps you size resource budgets, tune retry parameters, and design mission fan-out patterns with confidence. All benchmark scenarios run against a real Integration Gateway using the `@praxa/sdk` client, so results reflect the full end-to-end path including token acquisition, contract validation, and SSE stream delivery.
+Praxa publishes evidence by lane so you can distinguish implementation checks
+from agent performance and production behavior. The public
+[`praxa-benchmarks`](https://github.com/praxa-labs/praxa-benchmarks)
+repository contains reviewed, redacted methods and publication artifacts.
 
-## What We Measure
+<CardGroup cols={2}>
+  <Card
+    title="Read the preprint"
+    icon="file-lines"
+    href="https://github.com/praxa-labs/praxa-benchmarks/releases/tag/preprint-v1.1.0"
+  >
+    Review the hypotheses, methods, results, limitations, and references.
+  </Card>
+  <Card
+    title="Download the PDF"
+    icon="file-pdf"
+    href="https://github.com/praxa-labs/praxa-benchmarks/releases/download/preprint-v1.1.0/praxa-harness-preprint.pdf"
+  >
+    Download the versioned preprint artifact.
+  </Card>
+</CardGroup>
 
-The benchmarks suite covers four categories of measurements, each targeting a distinct layer of the Praxa request lifecycle.
+<Warning>
+  The available results do not establish production readiness or superiority
+  over another agent harness. No production latency, throughput, reliability,
+  cost, or provider-effect benchmark has been published.
+</Warning>
 
-### Mission Lifecycle Latency
+## Evidence available today
 
-This category measures wall-clock time across the key state transitions of a single mission:
+The preprint [_From Proposal to Verified Effect: Praxa, an Evidence-Bound
+Harness for Governed AI Agent
+Execution_](https://github.com/praxa-labs/praxa-benchmarks/releases/tag/preprint-v1.1.0)
+reports two distinct empirical lanes.
 
-- **Time to first event** — the interval between calling `createMission()` and receiving the first `AuraSseEvent` from `missionEvents()`. This captures gateway acceptance latency, initial execution scheduling, and SSE stream setup overhead.
-- **Time to `mission.completed`** — the full elapsed time from `createMission()` to the terminal event on the SSE stream. This reflects the actual work duration for a given `goalSpec` and `resourceBudget` combination.
-- **`getMission()` polling latency** — round-trip time for a status-check read on an in-flight or completed mission, which exercises the `GET /v8/missions/{runId}` safe-read path.
+### Repository-local harness validation
 
-Each scenario uses a fixed, minimal `resourceBudget` so that results are dominated by platform overhead rather than task complexity.
+Repository-local validation checks whether the implementation satisfies its
+own executable contracts. The reported source revision passed 1,027 unit tests
+and 89 Workerd runtime tests. The instrumented source inventory covered all 363
+expected files. Measured statement, branch, function, and line coverage were
+68.09%, 62.31%, 75.09%, and 70.84%, respectively.
 
-### Event Stream Throughput
+These checks support scoped claims about regression behavior, route and schema
+contracts, packaging, and fail-closed gates at the tested revision. They do not
+measure general agent intelligence, task success on unseen work, production
+latency, or verified external effects.
 
-This category measures the rate at which `AuraSseEvent` objects are delivered through the SSE stream to the `missionEvents()` async generator. Praxa's SSE implementation uses a buffered UTF-8 line reader with a 1 MiB per-line and per-event ceiling; throughput measurements reveal how close to that ceiling a realistic mission workload comes. The benchmark emits synthetic missions with varying event frequencies to produce events-per-second figures at p50, p95, and p99 percentiles.
+### Terminal-Bench pilot
 
-### SDK Retry Performance
+A formative Terminal-Bench Core 0.1.1 study compared a baseline agent loop
+with a reliability-oriented loop. The study used one model, 12 curated tasks,
+and three attempts per task in each arm, for 36 trials per arm. Both arms used
+the same model, base prompt, step limit, wall-clock limit, and token budget.
 
-This category quantifies the overhead introduced when the automatic retry mechanism activates on transient failures. The `@praxa/sdk` client retries requests on HTTP 408, 425, 429, 500, 502, 503, and 504 responses, preserving the idempotency key and request body unchanged across all attempts. Benchmarks measure:
+| Metric         |  Baseline | Reliability-oriented |            Difference |
+| -------------- | --------: | -------------------: | --------------------: |
+| Trial accuracy |     47.2% |                47.2% | 0.0 percentage points |
+| Input tokens   | 1,624,737 |            2,233,805 |                +37.5% |
+| Output tokens  |    34,122 |               51,431 |                +50.7% |
 
-- **Retry decision latency** — time from a retryable response to the first byte of the next attempt.
-- **Backoff accuracy** — measured sleep duration versus the configured `retryBaseDelayMs × 2^(attempt−1)` target.
-- **Total added latency** — cumulative delay budget consumed by retries before a successful response.
+The aggregate trial-accuracy result is a tie with higher token use in the
+reliability-oriented arm. Individual tasks moved in both directions. Pass-at-k
+is intentionally omitted because the aggregate summary and one arm's raw
+metadata disagreed. The pilot therefore supports analysis of failure modes and
+harness tradeoffs, not a claim of improved accuracy or cost efficiency.
 
-### Concurrent Mission Scaling
+## Evidence classification
 
-This category evaluates platform behavior when you submit multiple missions in parallel using `Promise.all`. Key metrics include:
+Use the evidence class attached to a result before you rely on it.
 
-- **Fan-out submission time** — wall-clock time to receive `MissionProjection` responses for N concurrent `createMission()` calls.
-- **`maximumParallelism` interaction** — whether the gateway's per-mission `maximumParallelism` budget affects submission acceptance latency or only internal execution scheduling.
-- **Idempotency key collision resistance** — verification that unique keys per parallel mission prevent cross-contamination of retry state.
+| Evidence class                | What it can support                                                          | What it cannot support                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Repository-local validation   | Tested implementation and contract behavior at an identified source revision | Live provider behavior, production reliability, or general task performance |
+| Controlled benchmark pilot    | Results for the stated task sample, model, prompts, budgets, and attempts    | Broad generalization, causal superiority, or deployment readiness           |
+| Synthetic conformance fixture | Benchmark-runner and gate mechanics                                          | Model quality, provider performance, or production outcomes                 |
+| Protected provider run        | Provider-backed behavior under a recorded experimental setup                 | Production behavior unless the production environment was observed          |
+| Production observation        | Behavior in the identified deployment and observation window                 | Universal behavior outside that deployment and window                       |
 
-## Benchmark Methodology
+The current publication reports the first two classes. It also documents
+synthetic conformance fixtures only as protocol checks. A fixture that contains
+constructed outcomes is not a provider benchmark.
 
-All benchmark scenarios follow a consistent methodology to ensure you can compare results across gateway versions and deployment environments.
+## Results that remain unpublished
 
-**Test harness.** Benchmarks use the `@praxa/sdk` `PraxaClient` directly against a live Integration Gateway. No mock fetch adapters are used in benchmark mode — results reflect real network, TLS handshake, gateway validation, and execution overhead.
+Praxa has not published measurements for these production-sensitive questions:
 
-**Iteration count and statistics.** Each scenario runs a configurable number of warm-up iterations (discarded) followed by N measurement iterations. The benchmark harness reports p50, p95, and p99 latency percentiles, arithmetic mean, and standard deviation. Iteration counts default to 50 for latency benchmarks and 200 for throughput benchmarks to give stable tail percentiles.
+- End-to-end mission latency against a deployed Integration Gateway
+- SSE throughput or tail latency under controlled load
+- Provider-effect success confirmed by an independent verifier
+- Reliability across multiple model families and repeated task samples
+- Comparative cost, latency, or accuracy against another harness
+- Longitudinal behavior in a production deployment
 
-**Resource budget isolation.** Every benchmark scenario specifies a fixed `ResourceBudget` — identical `maximumSteps`, `maximumToolCalls`, `maximumElapsedMs`, and `maximumParallelism` values — so that budget validation overhead is constant across runs. Scenarios that explore budget effects vary exactly one parameter at a time.
+These results require controlled credentials, fixed bindings and budgets,
+redacted evidence, and independent review. A planned run or a passing local
+gate does not substitute for the run itself.
 
-**Reproducibility constraints.** Because results depend on your gateway deployment, network path, and the complexity of each `goalSpec`, the benchmarks suite records the `PRAXA_BASE_URL`, SDK version (`AURA_OPENAPI_VERSION = "8.1.0"`), and contract fingerprint (`AURA_CONTRACT_VERSION = "aura-integration-gateway-v8.1"`) alongside every result file. Do not compare results across different contract versions or gateway deployments without accounting for those variables.
+## How to interpret future results
 
-<Info>
-  The praxa-benchmarks repository is under active development. Benchmark scenarios, harness configuration, and result schemas may change before the first stable release. Watch [praxa-labs/praxa-benchmarks](https://github.com/praxa-labs/praxa-benchmarks) on GitHub for release announcements.
-</Info>
+Before comparing a Praxa benchmark, confirm that the artifact identifies:
 
-## Running the Benchmarks
+1. The source revision and package versions
+2. The model, provider, reasoning settings, and prompt bindings
+3. The task suite, sampling method, and number of attempts
+4. The resource budgets, time limits, and stopping conditions
+5. The metric definitions and aggregation method
+6. The execution environment and evidence class
+7. Missing trials, failures, exclusions, and limitations
 
-The `praxa-benchmarks` package is being developed and will be published to the `praxa-labs/praxa-benchmarks` GitHub repository. Once available, you can run the full suite against your own Integration Gateway deployment with the following steps.
+Compare results only when these conditions are compatible. Treat latency and
+throughput as deployment-specific measurements, not SDK constants.
 
-<Steps>
-  <Step title="Clone the repository">
-    ```bash
-    git clone https://github.com/praxa-labs/praxa-benchmarks
-    cd praxa-benchmarks
-    ```
-  </Step>
-  <Step title="Install dependencies">
-    ```bash
-    npm install
-    ```
-  </Step>
-  <Step title="Configure your gateway and token">
-    Set `PRAXA_BASE_URL` to the HTTPS origin of your Integration Gateway and `PRAXA_ACCESS_TOKEN` to a short-lived delegated OAuth token with at least the `missions:write` and `missions:read` scopes. Provider credentials must not appear in these variables — the gateway holds those internally.
+## Publication artifacts
 
-    ```bash
-    export PRAXA_BASE_URL=https://your-gateway.example
-    export PRAXA_ACCESS_TOKEN=<token>
-    ```
-  </Step>
-  <Step title="Run the benchmark suite">
-    ```bash
-    PRAXA_BASE_URL=https://your-gateway.example PRAXA_ACCESS_TOKEN=<token> npm run bench
-    ```
-
-    Results are written to `results/` as JSON files containing raw latency samples and computed percentile summaries.
-  </Step>
-</Steps>
-
-<Note>
-  The benchmark runner validates your `PRAXA_BASE_URL` as an HTTPS origin with no embedded credentials before issuing any requests — the same check performed by `PraxaClient` itself. Plain HTTP origins are rejected immediately.
-</Note>
-
-## Interpreting Results
-
-When you receive benchmark output, a few reference points help you judge whether your deployment is performing as expected.
-
-**Mission lifecycle latency.** Time-to-first-event p50 values under 500 ms typically indicate a healthy gateway with no queue backlog. p99 values exceeding 2–3 s may point to cold-start scheduling delays or token validation overhead accumulating under load. If your time-to-first-event p99 is significantly higher than p50, consider whether your `accessToken` function is re-fetching a token on every call — caching the token for its remaining lifetime dramatically reduces that variance.
-
-**Retry overhead.** If your p99 mission creation latency is an outlier compared to p50, check whether retries are activating. A single retry with `retryBaseDelayMs: 100` adds at least 100 ms plus network round-trip time. At the default `maximumAttempts: 3`, worst-case backoff reaches 100 + 200 + 400 = 700 ms of sleep time before the final attempt. If retry-induced tail latency is unacceptable for your use case, reduce `maximumAttempts` to 2 or 1 for latency-sensitive paths where you can tolerate handling failures in application code.
-
-**Factors that affect results.** The following variables have the largest influence on benchmark numbers across deployments:
-
-| Factor | Effect |
-|---|---|
-| Network round-trip time to gateway | Directly adds to every latency measurement |
-| Token acquisition time in `accessToken()` | Adds per-request overhead; mitigated by caching |
-| Gateway deployment region | Affects both latency and capacity |
-| `maximumElapsedMs` budget | Caps individual mission duration; does not affect submission latency |
-| `maximumParallelism` | Affects internal scheduling; may affect concurrent-submission throughput |
-| Mission `goalSpec` complexity | Drives time-to-completed; excluded from submission latency benchmarks |
-
-**What good throughput looks like.** The SSE stream reader processes events as fast as your network delivers bytes. For missions that emit many fine-grained events, the bottleneck is typically network bandwidth rather than the SDK's buffered line reader. If you observe event delivery rates far below your expected mission update frequency, check whether a proxy or load balancer is buffering the SSE response body before forwarding it — many HTTP/1.1 intermediaries buffer `text/event-stream` responses by default.
+- [Versioned preprint release](https://github.com/praxa-labs/praxa-benchmarks/releases/tag/preprint-v1.1.0)
+- [Canonical LaTeX source](https://github.com/praxa-labs/praxa-benchmarks/tree/preprint-v1.1.0/paper)
+- [Evidence data](https://github.com/praxa-labs/praxa-benchmarks/tree/preprint-v1.1.0/paper/data)
+- [Evaluation protocols](https://github.com/praxa-labs/praxa-benchmarks/tree/preprint-v1.1.0/paper/protocols)
+- [Pipeline improvement roadmap](https://github.com/praxa-labs/praxa-benchmarks/blob/preprint-v1.1.0/paper/PIPELINE-IMPROVEMENT-ROADMAP.md)
+- [PDF preprint](https://github.com/praxa-labs/praxa-benchmarks/releases/download/preprint-v1.1.0/praxa-harness-preprint.pdf)
+- [DOCX preprint](https://github.com/praxa-labs/praxa-benchmarks/releases/download/preprint-v1.1.0/praxa-harness-preprint.docx)
+- [Public SDK, CLI, and MCP contracts](https://github.com/praxa-labs/praxa)
+- [Praxa website](https://praxa.io)
 
 <CardGroup cols={1}>
-  <Card title="Performance Characteristics" icon="gauge-high" href="/benchmarks/performance">
-    Detailed guidance on SDK client overhead, retry backoff behavior, SSE stream memory footprint, and concurrent mission submission patterns.
+  <Card
+    title="Performance guidance"
+    icon="gauge-high"
+    href="/benchmarks/performance"
+  >
+    Learn how client configuration can affect latency, retries, streaming, and
+    mission fan-out without treating guidance as a measured production result.
   </Card>
 </CardGroup>

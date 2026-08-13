@@ -14,7 +14,7 @@ Understanding what your agent is doing — and why — is as important as gettin
 
 ## Real-Time Mission Events
 
-`missionEvents()` returns an async generator that yields `AuraSseEvent` objects as the agent works through each step. Each event has three fields:
+`missionEvents()` returns an async generator that yields `PraxaSseEvent` objects as the agent works through each step. Each event has three fields:
 
 - **`id`** — a monotonically increasing string identifier you can use to resume the stream after a reconnect
 - **`event`** — the event type string (see table below)

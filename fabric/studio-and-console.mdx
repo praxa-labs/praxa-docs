@@ -1,0 +1,105 @@
+---
+title: "Studio and developer console"
+sidebarTitle: "Studio and console"
+description: "See which developer-portal surfaces are live, source-ready, gated, or unavailable."
+---
+
+> **Production host:** Use
+> [`https://platform.praxa.io/developers`](https://platform.praxa.io/developers)
+> for the developer portal. The deployed shell preserves the platform origin
+> through authentication, clears supported email-link credentials from the URL,
+> restores the browser session after reload, and requires durable legal
+> acceptance before developer routes render.
+
+The portal uses your existing Praxa account. It does not create a second
+identity, subscription, or organization authority.
+
+## Read the status labels first
+
+This page separates three proof lanes:
+
+- **Live** means the capability is deployed and has production evidence.
+- **Source-ready** means the implementation and repository tests exist, but the
+  current documentation does not claim a migration, Worker deployment, or
+  authenticated production canary for that change.
+- **Unavailable** means there is no customer-callable product boundary.
+
+Passing source tests does not move a capability into the live lane.
+
+## Surface truth table
+
+| Area | Surface | Status |
+|---|---|---|
+| Access | Email-link/OTP fragment authentication | **Live** for the admitted cohort. The callback establishes a persisted session, removes callback credentials from the URL, and preserves the platform host. |
+| Access | Legal acceptance | **Live.** Acceptance is required and recorded durably before portal routes render. |
+| Build | Personal agents | **Source-ready, pending deploy and browser proof.** Portal-native routes reuse the existing authoritative custom-agent create, edit, preview, publish, conversation, and analytics systems. |
+| Build | Personal workflows | **Source-ready UI; mutation authority pending activation.** Portal-native routes rehost the existing durable automation workspace. AAL2/idempotent personal and organization workflow commands now exist in source, but their migration, Worker deployment, and authenticated canaries remain pending. This is not the public typed workflow DSL. |
+| Build | Draft preview playground | **Source-ready, pending deploy and browser proof.** It selects a personal agent and opens its exact server-owned draft in the real metered preview runtime. It does not retain an API-key secret or accept a client-selected model. |
+| Observe | Runs and projection timeline | **Live** for admitted signed-in personal workspaces. This is a customer-safe projection, not raw model or tool spans. |
+| Observe | Redacted causal traces | **Source-ready, pending migration, deployment, retention, permission, and redaction canaries.** The value-free span contract is not the live projection timeline. |
+| Observe | Exact browser-action approvals | **Source-ready, pending its production canary.** |
+| Observe | Replay | **Unavailable** until a tenant-authorized, read-only replay contract exists. |
+| Evaluate | Agent datasets | **Source-ready, pending the additive database migration, Worker deployment, and a production isolation/immutability canary.** |
+| Evaluate | Experiments and model comparison | **Backend authority source-ready; customer surface unavailable.** Immutable bindings, bounded credit reservation, durable shards, evaluator/result receipts, and cancel/resume fencing exist in source. Migrations, deployment, capacity proof, and authenticated canaries remain pending, and no portal execution control is active. |
+| Develop | Personal API keys | **Live** for the admitted cohort. |
+| Develop | Webhook configuration and deliveries | **Live partner preview** for admitted personal workspaces. Signed-delivery HMAC has production evidence; retry, dead-letter, and eligible replay still need their separate live canaries. |
+| Develop | SDK install | **Source-only.** The npm package is not published. |
+| Manage | Usage | **Live** as evidence-bounded personal usage. |
+| Manage | Profile, avatar, and preferences | **Source-ready, pending deploy and browser proof.** The portal reuses the existing authenticated profile and image-upload authorities. |
+| Manage | Organizations and members | **Source-ready, pending deploy and browser proof.** Authorized owners/admins can manage existing Praxa membership and roles. This does not grant organization API keys or public execution. |
+| Manage | Subscription display and checkout | **Source-ready, pending deploy and billing canary.** The portal reads subscription evidence and lets an eligible user begin an allowlisted Stripe Checkout. Active or retrying subscriptions fail closed instead of opening a duplicate purchase flow. |
+| Manage | Subscription cancellation and payment methods | **Unavailable in the portal.** These remain with the original purchase provider until a verified Stripe Customer Portal/account mapping exists. |
+| Manage | Organization keys and execution | **Unavailable.** |
+
+## Portal-native build surfaces
+
+The source-ready agent and workflow routes keep users on the platform origin.
+They reuse the same server authorization, row-level security, publishing,
+metering, and approval rules as the existing Praxa product surfaces. Rehosting
+the UI does not create a new execution authority. The newer workflow mutation
+authority is a separate source-ready backend seam and stays hidden until its
+migration, deployment, and denial/success canaries pass.
+
+The draft preview playground is also separate from `POST /v1/execute`. It tests
+the selected agent's current server-owned draft. Preview calls consume real
+model capacity, do not retain the preview conversation, and do not let the
+browser inject a model or recover a one-time API-key secret.
+
+## Run and trace explorer
+
+The current Observe surface shows owner-safe task state, lifecycle phase,
+projection events, and safe totals. It never exposes raw prompts, private
+reasoning, executor leases, credentials, provider costs, or margins.
+
+Call the live surface a **projection timeline**, not a full distributed trace.
+Langfuse and internal task events are implementation infrastructure. A newer
+source-ready causal-trace contract exposes only value-free lineage and digests;
+it is not live until its migration, retention worker, permission checks, and
+redaction canary pass. Neither source creates a tenant-safe replay API or mature
+receipt by itself.
+
+## API-key console
+
+The personal console supports list, create, rotate, and revoke. A new secret is
+shown once. Authoritative storage keeps a SHA-256 hash and display suffix, not
+recoverable plaintext. The browser cannot select an arbitrary tenant.
+Organization keys remain unavailable.
+
+## Account and organization boundary
+
+The source-ready account page edits the authenticated user's name, nickname,
+private agent preferences, and avatar. It also shows the account provider,
+email, verification state, and sign-out action. Praxa's current production web
+authentication is OAuth/email-link based; the portal does not pretend there is
+a separate Praxa password to recover.
+
+The source-ready organization page can list and create Praxa organizations,
+list members, add an existing Praxa username, change eligible member/admin
+roles, and remove access when the caller has existing owner/admin authority.
+Membership does not authorize organization-scoped `/v1` keys, usage, billing,
+or execution.
+
+Read [Agent evaluation datasets](/fabric/datasets) for the source-ready dataset
+boundary and [Status and roadmap](/fabric/status-and-roadmap) for activation
+gates. Developer documentation is published at
+[`https://docs.praxa.io`](https://docs.praxa.io).

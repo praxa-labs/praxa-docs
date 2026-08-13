@@ -1,0 +1,86 @@
+---
+title: "Typed workflow DSL"
+sidebarTitle: "Workflow DSL"
+description: "Understand the source-only typed workflow foundation and the gates before customer execution."
+---
+
+> **Status:** Gated source foundation. Strict schemas, canonical compilation,
+> serialization, interpreter behavior, and Cloudflare adapter contracts are
+> implemented and tested in the Praxa source tree. There is no public workflow
+> DSL route, published package, deployed customer-definition migration, or
+> connection to `POST /v1/execute`.
+
+Praxa's typed workflow DSL is intended to be a runtime-neutral plan format over
+durable workflow engines. Cloudflare Workflows remains the intended execution
+substrate. The DSL keeps Cloudflare-specific classes out of product and SDK
+contracts.
+
+The portal's source-ready **Workflows** page is a rehost of Praxa's existing
+automation workspace. It is not evidence that the public DSL is active.
+
+## Developer-platform workflow authority
+
+Praxa now has a separate source-ready authority for managing and dispatching
+the existing workflow product from the developer platform. It supports create,
+update, pause, resume, complete, archive, run, and cancel commands for personal
+or authorized organization workspaces. The source contract requires AAL2,
+server-derived idempotency, optimistic stale-state checks, immutable run
+ownership, organization RBAC/RLS, and point-of-use revocation checks.
+
+This authority is not the typed DSL. Its migration is not recorded as applied,
+its Worker routes are not documented as deployed, and authenticated
+cross-tenant and lifecycle canaries remain pending. No customer should infer a
+callable workflow mutation API from this source status.
+
+## Primitives
+
+| Primitive | Intended behavior |
+|---|---|
+| `sequence` | Run child nodes in definition order. |
+| `branch` | Select one deterministic path from input or a recorded step output. |
+| `parallel` | Run independent branches and return definition-ordered results. |
+| `loop` | Repeat a body while its condition holds, up to a required maximum. |
+| `suspend` | Produce a serializable checkpoint or map to a durable event wait. |
+| `resume` | Require the active run, plan digest, step, event type, and resume correlation to match. |
+
+## Source contract
+
+The foundation currently enforces these design properties in source:
+
+- plans and persisted state pass strict schemas;
+- step names are globally unique within a plan;
+- canonical plans produce deterministic identities and digests;
+- loops require a finite iteration ceiling;
+- action and suspension timeouts are bounded separately;
+- persisted state is JSON-only and size-capped;
+- a suspend node cannot run inside a parallel branch; and
+- operation side effects cross an explicit durable-step adapter rather than
+  evaluating arbitrary customer code.
+
+An unknown operation fails closed. The foundation does not expose dynamic code
+execution, arbitrary imports, or a workflow marketplace.
+
+## Why the public route remains closed
+
+A validated plan is not execution authority. Public activation still needs a
+complete tenant boundary around definition ownership, version immutability,
+idempotent admission, billing reservation and settlement, approval handling,
+cancellation, suspension delivery, resumption authorization, customer-safe
+events, and cross-tenant negative tests.
+
+The source foundation must also be deployed and proven against the actual
+Cloudflare Workflow lifecycle. Unit tests for a compiler or step adapter do not
+prove production suspension, retry, reconciliation, or billing behavior.
+
+Until those gates are complete:
+
+- `/v1/execute` continues to accept only its documented minimal task contract;
+- customers cannot upload or activate a typed workflow definition;
+- portal workflow records remain part of Praxa's existing automation product;
+- the SDK exposes no supported public DSL package; and
+- no plan can bypass Praxa's server-enforced policy, approval, or billing
+  authorities.
+
+See [Studio and developer console](/fabric/studio-and-console) for the existing
+workflow surface and [Status and roadmap](/fabric/status-and-roadmap) for the
+activation boundary.

@@ -1,190 +1,109 @@
 ---
 title: "Errors and retries"
 sidebarTitle: "Errors and retries"
-description: "Every error the platform returns — as the initial HTTP response, or embedded in a terminal request.failed event — is shaped as AiPlatformProblem, an RFC 9457"
+description: "Handle HTTP problems and durable run failures without confusing the unavailable turn contract."
 ---
 
-> **Status:** Developer preview — the SDK (`@nexislabs/ai-platform`) is source-available in the Praxa repo and contract-stable; npm publication follows the public API launch and its security review.
+> **Status:** The source SDK's minimal durable methods work with the live
+> partner-preview gateway. The package is not published to npm. Turn streaming
+> remains unavailable; exact approval remains pending activation.
+> Cancellation-reconciliation code is deployed, but final-status behavior
+> remains pending a separate live canary.
 
-## problem+json handling
+## Two failure lanes
 
-Every error the platform returns — as the initial HTTP response, or embedded in a terminal `request.failed` event — is shaped as `AiPlatformProblem`, an RFC 9457-style `application/problem+json` body (`AI_PLATFORM_ERROR_MEDIA_TYPE`):
+1. A rejected HTTP request can throw `AiPlatformHttpError`. Its validated
+   `.problem` can still be `null` when a proxy/body is not valid
+   `application/problem+json`.
+2. An accepted durable task reports execution failure through a terminal
+   `run.failed` event and `RunResource.failure`. It does not emit the
+   turn-only `request.failed` event.
 
-```typescript
-type AiPlatformProblem = {
-  type: string;               // a URL identifying the problem type
-  title: string;
-  status: number;             // 400–599
-  detail?: string;
-  instance?: string;
-  code: AiPlatformErrorCode;  // the stable enum — see below
-  requestId?: string;
-  retryable: boolean;
-  retryAfterMs?: number;
-  fieldErrors?: Array<{ path: string; code: string; message: string }>;
-};
-```
-
-There are two distinct places a problem shows up, and the SDK treats them differently:
-
-1. **The initial HTTP response is not `ok`.** `streamChat()` throws `AiPlatformHttpError` before yielding anything.
-2. **The run fails after the stream has already started.** You get a normal `request.failed` event carrying a `problem` field — the generator ends cleanly (it does not throw) once that event has been yielded.
-
-```typescript
-import { AiPlatformClient, AiPlatformHttpError } from "@nexislabs/ai-platform";
+```ts
+import { AiPlatformHttpError } from "@nexislabs/ai-platform";
 
 try {
-  for await (const event of client.streamChat(request)) {
-    if (event.type === "request.failed") {
-      handleProblem(event.problem); // in-stream failure, not a throw
-      break;
-    }
-    // ...handle other event types
+  const run = await client.execute(request);
+  for await (const event of client.streamRunEvents(run.run_id)) {
+    if (event.type === "run.failed") handleRunFailure(event.failure);
   }
-} catch (err) {
-  if (err instanceof AiPlatformHttpError) {
-    handleProblem(err.problem); // may be null — see below
+} catch (error) {
+  if (error instanceof AiPlatformHttpError) {
+    handleHttpProblem(error.status, error.problem);
   } else {
-    throw err; // see "What else can throw" below
+    throw error;
   }
 }
 ```
 
-`AiPlatformHttpError` has `.status: number` and `.problem: AiPlatformProblem | null`. `.problem` is `null` when the error response body isn't valid JSON or doesn't match `AiPlatformProblemSchema` — never assume it's populated. `.message` falls back through `problem?.detail`, then `problem?.title`, then a generic "AI platform request failed" string carrying the HTTP status, so it stays log/display-safe even when `.problem` is `null`.
+Use the exact client method available in the source package version you vendor;
+the package is not yet a public install contract.
 
-## What else can throw
+## HTTP retry rules
 
-`AiPlatformHttpError` is only one of several exceptions a `streamChat()` loop can raise:
+- `problem.retryable` is authoritative when a valid problem exists.
+- Honor `Retry-After` or `retryAfterMs` when supplied.
+- Authentication, authorization, entitlement, validation, and conflict errors
+  require a credential, authority, request, or state change.
+- Schema/stream parser errors are client/contract bugs, not transient network
+  errors.
+- Abort errors stop the local request/read; they do not prove a durable task
+  stopped.
 
-| Source | Thrown type | When |
-|---|---|---|
-| Your own request | `ZodError` | `AiPlatformChatRequestV1Schema.parse(input)` runs first, before any network call — invalid input never reaches the network. |
-| Initial HTTP response | `AiPlatformHttpError` | `!response.ok`. |
-| Response shape | `Error` | Missing/mismatched `content-type` (not `text/event-stream`), or a missing response body. |
-| Event payload | `ZodError` | A `data:` payload fails `AiPlatformEventV1Schema` — unknown `type`, a missing required field, or an extra field on a `.strict()` variant. |
-| Stream invariants | `Error` | requestId mismatch, non-increasing `sequence`, an event after a terminal event, or EOF without a terminal event — see `typescript.md`. |
-| Abort | Whatever your `fetch`/runtime throws (typically `DOMException("AbortError")`) | You called `controller.abort()` on the `AbortSignal` passed as `options.signal`. The SDK does not catch, wrap, or normalize this — check `err.name === "AbortError"` or `controller.signal.aborted` yourself. |
+## Idempotency
 
-A `catch` block that only checks `instanceof AiPlatformHttpError` mis-handles the other five rows. Check `instanceof AiPlatformHttpError` first, then `instanceof z.ZodError` if you want to distinguish a malformed-input or malformed-event bug from everything else, then fall back to an abort/generic-error path.
+Generate one key per logical task and reuse it only for network retries of the
+same normalized request. If header and body keys are both present, they must be
+identical. Same key plus same request returns the existing run; same key plus a
+different request returns `409 conflict`.
 
-## Error codes
+After a dropped submission response, retry the identical request with the same
+key or read a known run. Never mint a new key merely because the client did not
+see the first response.
 
-`AiPlatformErrorCode` is a closed, 15-value enum. The SDK does not hardcode a code-to-retryable table — **`problem.retryable` and `problem.retryAfterMs` on the actual response are always the authoritative signal.** The table below is guidance for what each code generally means, not a contract the SDK enforces:
+## Durable SSE reconnect
 
-| Code | Generally means | Generally retryable? |
-|---|---|---|
-| `authentication_failed` | The access token is missing, invalid, or expired. | No — refresh the token first. |
-| `authorization_failed` | The authenticated principal can't do this (wrong tenant, wrong scope). | No — retrying with the same token repeats the same denial. |
-| `entitlement_failed` | The tenant's plan/entitlement doesn't cover this. | No. |
-| `rate_limited` | Too many requests. | Often, honoring `retryAfterMs`. |
-| `invalid_request` | The request failed server-side validation the SDK's own schema didn't catch. | No, not without changing the request. |
-| `provider_failed` | The upstream model provider errored. | Often. |
-| `tool_failed` | A tool call errored — also surfaces as a `tool.failed` event with its own `retryable`. | Depends on the tool. |
-| `tool_timed_out` | A tool call exceeded its budget. | Depends on the tool. |
-| `approval_timed_out` | An `approval.required` window lapsed unanswered. | No — re-propose the action instead of retrying blindly. |
-| `memory_failed` | A memory read/write failed. | Often. |
-| `stream_interrupted` | The stream broke before a terminal event. | Only with the same `Idempotency-Key`, after checking state. |
-| `cancelled` | The run was cancelled. | No. |
-| `conflict` | Commonly a mismatched idempotency replay — see below. | No, not with the same key and body. |
-| `idempotency_replay` | The server recognized an idempotency key outside the normal `request.accepted { replayed: true }` success path. Source doesn't pin down the exact trigger beyond the code name — treat as non-retryable until you've read `.detail`. | Unclear — inspect `.detail`. |
-| `internal_failed` | Unhandled platform error. | Often, cautiously. |
+Persist an event sequence only after your handler commits it. Reconnect
+`GET /v1/runs/{run_id}/events` with that numeric value as `Last-Event-ID`.
+The source client rejects mismatched SSE ids, non-increasing sequences, events
+after a terminal event, and EOF before a terminal event.
 
-## Idempotency-Key discipline
-
-Per the extraction ADR's protocol decision: *"Idempotency-Key for action-capable requests. Keys are scoped to the authenticated principal, tenant, API version, and normalized request digest. A mismatched replay is a conflict."*
-
-Two ways to set the header — `streamChat()`'s explicit option wins if both are set:
-
-```typescript
-// Option A: per-call override.
-client.streamChat(request, { idempotencyKey: "checkout-8f21" });
-
-// Option B: embedded in the request body.
-// AiPlatformChatRequestV1Schema.parse({ ...request, idempotencyKey: "checkout-8f21" })
-
-// If both are set, options.idempotencyKey wins:
-//   headers["Idempotency-Key"] = options.idempotencyKey ?? request.idempotencyKey
-```
-
-Rules that follow from the ADR:
-
-- **Generate one key per logical action**, not per network attempt — once when the person hits "send," not once per retry.
-- **Reuse the exact same key and the exact same request body on retry.** The server scopes the key together with a digest of the normalized request; changing anything about the request while reusing the key is a mismatched replay and comes back as `conflict`, not as a silent success.
-- **A clean replay is not an error.** If the server recognizes the same key with the same body as one it already ran (or is running), the resulting stream's first event is `request.accepted` with `replayed: true` — handle that as a normal, successful outcome, not a failure path.
-- **Only retry after consulting state**, per the ADR — never retry blind on any thrown error. Check `problem.retryable` (HTTP path) or the `request.failed` event's `problem.retryable` (in-stream path) first, and honor `retryAfterMs` when present.
-
-```typescript
-import {
-  AiPlatformClient,
-  AiPlatformHttpError,
-  type AiPlatformChatRequestV1,
-  type AiPlatformEventV1,
-} from "@nexislabs/ai-platform";
-
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-async function sendWithRetry(
-  client: AiPlatformClient,
-  request: AiPlatformChatRequestV1,
-  onEvent: (event: AiPlatformEventV1) => void,
-  maxAttempts = 3,
-): Promise<void> {
-  const idempotencyKey = request.idempotencyKey ?? crypto.randomUUID();
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      for await (const event of client.streamChat(request, { idempotencyKey })) {
-        onEvent(event);
-        if (event.type === "request.failed") {
-          if (!event.problem.retryable || attempt === maxAttempts) return;
-          await delay(event.problem.retryAfterMs ?? 0);
-          break; // fall through to the next attempt, same key + same request
-        }
-      }
-      return; // reached response.final or request.cancelled
-    } catch (err) {
-      if (err instanceof AiPlatformHttpError && err.problem?.retryable && attempt < maxAttempts) {
-        await delay(err.problem.retryAfterMs ?? 0);
-        continue;
-      }
-      throw err;
-    }
-  }
-}
-```
-
-`streamChat()` never loops or retries for you — there's no `maxAttempts` option and no built-in backoff. The package deliberately contains no automatic retry of streamed `POST` requests; the loop above is entirely caller-owned, by design.
-
-Don't confuse this with the `retry` **event** type documented in `streaming.md` — that's the server reporting an internal retry (a provider fallback, for example) it already performed on your behalf, inside a stream that's still running. It has nothing to do with, and doesn't require, retrying the `streamChat()` call itself.
+Only `run.completed`, `run.failed`, and `run.cancelled` are terminal.
 
 ## Cancellation
 
-Pass an `AbortSignal` to cancel:
+`cancelRun()` requests cooperative cancellation. Its returned run can still be
+`running`; cancellation does not undo a committed action. Continue reading the
+run or SSE until a real terminal projection.
 
-```typescript
-const controller = new AbortController();
-const stream = client.streamChat(request, { signal: controller.signal });
+Once the reconciliation final-status canary clears, the no-retry progress
+message is:
 
-setTimeout(() => controller.abort(), 30_000);
+```text
+The run is reconciling an uncertain execution outcome. Do not retry or resubmit it.
+```
 
-try {
-  for await (const event of stream) handle(event);
-} catch (err) {
-  if (controller.signal.aborted) {
-    // locally cancelled — see the exact semantics below
-  } else {
-    throw err;
-  }
+Recovery emits `Run reconciliation completed; execution is resuming.` If a
+committing outcome cannot be verified, the terminal failure is:
+
+```json
+{
+  "code": "run_outcome_unknown",
+  "message": "A committing action may have happened, but the final outcome could not be verified. Do not retry automatically.",
+  "retryable": false
 }
 ```
 
-The rule, verbatim from the extraction ADR: *"Cancellation: client abort stops streaming and propagates an abort signal. Durable actions already committed require explicit status/reconciliation; cancellation never implies rollback."* Concretely:
+The migration and compatible Workers are deployed, but this final-status
+behavior remains pending a separate live canary. If received after that gate
+clears, inspect the external system before submitting replacement work.
 
-- Calling `controller.abort()` stops **your local read of the stream** — the pending `fetch` is aborted, the reader rejects, and the exception propagates out of your `for await` loop (see "What else can throw," above). It does not yield a tidy `request.cancelled` event; that event type is for runs the server itself ends as cancelled through some other channel, which is a distinct case from you aborting your own local read.
-- Aborting is **not a rollback.** Anything the run already committed before your signal took effect — a `tool.completed` you already received, or any durable side effect the server started — stays committed. This package has no reconciliation call today: the design spec's task-mode `GET /v1/runs/:id` status read and `POST /v1/runs/:id/cancel` are planned, not implemented here (same caveat as the reconnect section in `streaming.md`). If a turn might have committed something before you cancelled it, your application needs its own way to check — re-reading your own domain state, not this package.
-- Cancellation is local-first: aborting stops *your* connection; it is a signal, not a guarantee that the run stops executing server-side.
+## Offline turn schemas
 
-## Versioning
+The source repository contains candidate turn schemas with `request.failed`,
+`response.final`, tool events, and an approval-resume receipt. They are not
+served SDK methods: `mode: "turn"` returns `400 invalid_request`, and
+`/v1/chat` is not routed. Do not mix them into durable task retry logic.
 
-Additive event fields are allowed within `v1` without notice; event types, required fields, semantics, and error codes are not silently changed underneath you, and a breaking change gets a new API version rather than a mutation of `v1`. `X-AI-Platform-Version: v1` is sent on every request so the server can enforce this from its side too.
-
-See [`typescript.md`](/fabric/sdk/typescript) for the request/response contract and [`streaming.md`](/fabric/sdk/streaming) for the full event union and approval flow.
+See [Errors](/fabric/api/errors), [Events](/fabric/api/events), and
+[TypeScript SDK](/fabric/sdk/typescript).

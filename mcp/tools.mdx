@@ -1,7 +1,7 @@
 ---
-title: "Praxa MCP Tools: Reference for All 11 Tool Definitions"
+title: "Praxa MCP Tools: Reference for All 12 Tool Definitions"
 sidebarTitle: "MCP Tools"
-description: "Reference for all 11 Praxa MCP tools: input schemas, OAuth scopes, HTTP paths, and idempotency behavior for the Praxa Integration Gateway."
+description: "Reference for all 12 Praxa MCP tools: input schemas, OAuth scopes, HTTP paths, and idempotency behavior for the Praxa Integration Gateway."
 ---
 
 `PRAXA_MCP_TOOLS` is the complete, authoritative list of MCP tools exposed by the Praxa Integration Gateway. You import this array from `@praxa/mcp-contracts` and register its entries with your MCP host — no manual schema authoring required. Every tool definition includes a `name`, human-readable `description`, `inputSchema` (JSON Schema draft-07 compatible), the gateway `operationId`, HTTP `method` and `path`, a `requiredScope` for OAuth authorization, and an `idempotency` field indicating whether the tool mutates state.
@@ -26,33 +26,35 @@ type PraxaMcpTool = {
 
 | Tool Name | HTTP Method | Path | Required Scope | Idempotency |
 |---|---|---|---|---|
-| `aura_create_mission` | POST | `/v8/missions` | `missions:write` | `required` |
-| `aura_get_mission` | GET | `/v8/missions/{runId}` | `missions:read` | `safe-read` |
-| `aura_signal_mission` | POST | `/v8/missions/{runId}/signals` | `missions:write` | `required` |
-| `aura_cancel_mission` | POST | `/v8/missions/{runId}/cancel` | `missions:write` | `required` |
-| `aura_search_capabilities` | POST | `/v8/capabilities/search` | `capabilities:read` | `safe-read` |
-| `aura_query_memory` | POST | `/v8/memory/query` | `memory:read` | `safe-read` |
-| `aura_get_skill` | GET | `/v8/skills/{skillId}` | `skills:read` | `safe-read` |
-| `aura_get_trace` | GET | `/v8/traces/{traceId}` | `traces:read` | `safe-read` |
-| `aura_list_goals` | GET | `/v8/context-twin/goals` | `context:read` | `safe-read` |
-| `aura_list_world_certificates` | GET | `/v8/world-model/certificates` | `world:read` | `safe-read` |
-| `aura_get_coverage` | GET | `/v8/coverage` | `coverage:read` | `safe-read` |
+| `praxa_submit_intent` | POST | `/v8/intents` | `missions:write` | `required` |
+| `praxa_create_mission` | POST | `/v8/missions` | `missions:write` | `required` |
+| `praxa_get_mission` | GET | `/v8/missions/{runId}` | `missions:read` | `safe-read` |
+| `praxa_signal_mission` | POST | `/v8/missions/{runId}/signals` | `missions:write` | `required` |
+| `praxa_cancel_mission` | POST | `/v8/missions/{runId}/cancel` | `missions:write` | `required` |
+| `praxa_search_capabilities` | POST | `/v8/capabilities/search` | `capabilities:read` | `safe-read` |
+| `praxa_query_memory` | POST | `/v8/memory/query` | `memory:read` | `safe-read` |
+| `praxa_get_skill` | GET | `/v8/skills/{skillId}` | `skills:read` | `safe-read` |
+| `praxa_get_trace` | GET | `/v8/traces/{traceId}` | `traces:read` | `safe-read` |
+| `praxa_list_goals` | GET | `/v8/context-twin/goals` | `context:read` | `safe-read` |
+| `praxa_list_world_certificates` | GET | `/v8/world-model/certificates` | `world:read` | `safe-read` |
+| `praxa_get_coverage` | GET | `/v8/coverage` | `coverage:read` | `safe-read` |
 
 Tools with `idempotency: "required"` mutate gateway state and must receive a unique `idempotencyKey` field in their input on every call. Tools with `idempotency: "safe-read"` are read-only and carry no idempotency requirement.
 
 Brief descriptions of what each tool does:
 
-- **`aura_create_mission`** — Submits a goal to Praxa policy and broker orchestration. Grants no action authority on its own.
-- **`aura_get_mission`** — Reads an authoritative mission projection for a given run ID.
-- **`aura_signal_mission`** — Records a mission signal for policy-controlled handling; does not directly commit a provider effect.
-- **`aura_cancel_mission`** — Requests durable cancellation of a running mission.
-- **`aura_search_capabilities`** — Searches policy-eligible capability manifests before semantic ranking.
-- **`aura_query_memory`** — Queries purpose-filtered memory for the given compartment and purpose.
-- **`aura_get_skill`** — Reads a versioned governed skill and its evidence state.
-- **`aura_get_trace`** — Reads a redacted causal trace.
-- **`aura_list_goals`** — Lists purpose- and compartment-filtered context goals.
-- **`aura_list_world_certificates`** — Lists signed model capability certificates. Certificates grant zero action authority.
-- **`aura_get_coverage`** — Reads reference coverage evidence. Coverage is not a measure of production readiness.
+- **`praxa_submit_intent`** — Records natural-language intent for deterministic compilation. It implies no provider action or outcome.
+- **`praxa_create_mission`** — Submits a goal to Praxa policy and broker orchestration. Grants no action authority on its own.
+- **`praxa_get_mission`** — Reads an authoritative mission projection for a given run ID.
+- **`praxa_signal_mission`** — Records a mission signal for policy-controlled handling; does not directly commit a provider effect.
+- **`praxa_cancel_mission`** — Requests durable cancellation of a running mission.
+- **`praxa_search_capabilities`** — Searches policy-eligible capability manifests before semantic ranking.
+- **`praxa_query_memory`** — Queries purpose-filtered memory for the given compartment and purpose.
+- **`praxa_get_skill`** — Reads a versioned governed skill and its evidence state.
+- **`praxa_get_trace`** — Reads a redacted causal trace.
+- **`praxa_list_goals`** — Lists purpose- and compartment-filtered context goals.
+- **`praxa_list_world_certificates`** — Lists signed model capability certificates. Certificates grant zero action authority.
+- **`praxa_get_coverage`** — Reads reference coverage evidence. Coverage is not a measure of production readiness.
 
 ## Using `PRAXA_MCP_TOOLS`
 
@@ -67,7 +69,7 @@ for (const tool of PRAXA_MCP_TOOLS) {
 }
 
 // Look up a specific tool
-const createTool = praxaMcpTool("aura_create_mission");
+const createTool = praxaMcpTool("praxa_create_mission");
 console.log(createTool?.inputSchema);
 ```
 
@@ -92,7 +94,7 @@ for (const tool of PRAXA_MCP_TOOLS) {
 
 ## Tool Name Convention
 
-Every tool in `PRAXA_MCP_TOOLS` has a name prefixed with `aura_`. These names are **stable wire-protocol identifiers** retained for backward compatibility with MCP hosts and agent configurations that were built against earlier versions of the gateway. Renaming them on the wire would break existing deployments. The public package name and TypeScript type aliases (`PRAXA_MCP_TOOLS`, `PraxaMcpTool`, `praxaMcpTool`) use the Praxa brand, but the tool names your MCP host and AI model see remain `aura_*`.
+Every tool in `PRAXA_MCP_TOOLS` has a name prefixed with `praxa_`. The package name, TypeScript exports, and wire-protocol identifiers therefore use one product namespace: `PRAXA_MCP_TOOLS`, `PraxaMcpTool`, `praxaMcpTool`, and `praxa_*`.
 
 ## JSON-RPC Types
 
@@ -113,5 +115,5 @@ function handleMessage(message: JsonRpcRequest): JsonRpcResponse {
 Use these types when building the request/response handling layer of your own MCP server implementation on top of these contracts.
 
 <Note>
-Any tool with `idempotency: "required"` — `aura_create_mission`, `aura_signal_mission`, and `aura_cancel_mission` — must receive a unique `idempotencyKey` field in its input on every invocation. Reusing the same key for two logically different calls causes the gateway to return the cached result of the first. Generate a fresh UUID v4 per call.
+Any tool with `idempotency: "required"` — `praxa_submit_intent`, `praxa_create_mission`, `praxa_signal_mission`, and `praxa_cancel_mission` — must receive a unique `idempotencyKey` field in its input on every invocation. Reusing the same key for two logically different calls causes the gateway to return the cached result of the first. Generate a fresh UUID v4 per call.
 </Note>

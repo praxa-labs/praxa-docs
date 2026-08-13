@@ -1,149 +1,72 @@
 ---
 title: "Data handling"
 sidebarTitle: "Data handling"
-description: "Scope: what the fabric stores and why, the pipeline that turns a captured"
+description: "Understand current public projections, internal execution evidence, and unimplemented learning and receipt products."
 ---
 
-> **Status:** The storage model for runs/events/receipts, and the
-> learning-data policy (per-tenant default, cross-tenant aggregation,
-> opt-out) — **Developer preview** (designed, not built). The PII
-> pseudonymization pipeline in section 2 — **Available today**: implemented,
-> tested code, not a promise.
+> **Status:** Durable task/run/event and usage evidence exists for the live
+> personal partner preview. Mature receipts, public traces, datasets,
+> experiments, model comparison, and routing-learning governance are
+> unavailable.
 
-Scope: what the fabric stores and why, the pipeline that turns a captured
-production issue into a test case without carrying a customer's identifying
-content forward, and the learning-data policy that governs what, if
-anything, crosses tenant boundaries.
+## Current durable records
 
-Sources: `docs/superpowers/specs/2026-07-30-maas-execution-fabric-design.md`
-(design spec) §§1, 2, 4, 6; `src/lib/platform-corpus/normalize.ts`.
+Praxa's task substrate stores internal task and task-event records required for
+durability, billing authority, retries, and recovery. The public API projects a
+strict customer-safe subset:
 
-## What is stored
+- run identity, lifecycle status, safe timestamps, and links;
+- sequenced durable lifecycle events;
+- verified text only when stored result, action digest, and verification
+  evidence pass the projector's checks;
+- generic customer-safe failure information;
+- tenant-scoped usage derived from completed provider and settled retail rows.
 
-Three kinds of durable record:
+It does not expose prompts, private reasoning, raw tool arguments, provider
+payloads, credentials, executor leases, internal billing references, provider
+cost, or margin.
 
-- **Runs** — `task_runs`: the execution record behind `POST /v1/execute`
-  (or its internal equivalent), including leases, attempt counts, budgets,
-  and a first-class `waiting_approval` state.
-- **Events** — `task_run_events`: an append-only log of what happened during
-  a run, sequenced so `GET /v1/runs/:id/events` can resume from a
-  `Last-Event-ID` without re-delivering or skipping anything.
-- **Receipts** — a per-run summary of what ran, the policy version applied,
-  approvals granted (referenced by digest), and cost. Full contents in
-  `receipts-and-audit.md`. The hash-chained evidence ledger behind receipts,
-  and their PDF/SIEM export, is a named, not-yet-shipped build item (design
-  spec §4, workstream S3).
+Exact browser-action approval projection is source-ready pending production
+activation. It exposes only the validated instruction/steps, target host,
+approval reference, and matching action digest.
 
-**Retention.** The design does not specify retention windows for runs,
-events, or receipts. This document does not state one — a specific retention
-period for any of these record types is not yet part of the published
-design and should not be assumed until it is.
+## Retention
 
-## Turning production issues into test cases without keeping customer content
+No public retention window for runs, events, webhook deliveries, or future
+receipts is committed in this documentation. Do not infer one from database
+existence. Contractual retention/deletion, backup, legal hold, and regional
+residency require an explicit policy before enterprise procurement.
 
-`src/lib/platform-corpus/normalize.ts` is implemented, tested code — not a
-design commitment. It sits alongside its own test suite
-(`normalize.test.ts`, `sanitizer-parity.test.ts`, `corpus-replay.test.ts`,
-`equivalence.test.ts`) in `src/lib/platform-corpus/`. It is the mechanism
-that turns a captured event stream into a comparable, replayable fixture —
-for the locked-behavior corpus and shadow-equivalence testing that back the
-platform's migration work — without carrying the original customer's
-identifying content forward into that fixture. Every normalized batch is
-re-validated against the platform's own event schema
-(`AiPlatformEventV1Schema`) before use, so a bad substitution can't silently
-produce an invalid fixture.
+## Behavior-corpus pseudonymization
 
-### Six pseudonymization categories
+Praxa's implemented platform-corpus normalizer replaces common timestamp, IPv4,
+email, UUID, key-shaped-token, and hostname patterns with stable safe values
+inside one normalization batch. Semantic comparison can replace streamed text
+with a length marker; exact comparison retains scrubbed text.
 
-`sanitizeText()` runs six pattern-matched categories, in a fixed order
-chosen so an earlier, narrower substitution can't be re-caught by a later,
-broader one:
+This is a testing safeguard, not a universal de-identification claim. Pattern
+scrubbing cannot prove that every retained free-form string is anonymous, and a
+normalized behavior corpus is not the same product as a customer dataset or
+experiment workspace.
 
-| Category | Matches | Replacement |
-|---|---|---|
-| Timestamp | ISO 8601 (`…T…Z`) | constant `1970-01-01T00:00:00.000Z` |
-| IPv4 | four dot-separated octets | `ipNNNN`, counter-stable |
-| Email | standard email shape | `userNNNN@example.test` |
-| UUID | 8-4-4-4-12 hex | `id_NNNN` |
-| Key-shaped token | `sk-…`, `praxa_sk_…`, `aura_agent_…` | `token_NNNN` |
-| Hostname | dotted domain, alphabetic TLD | `hostNNNN.example.test` |
+## Learning and training
 
-Order matters: timestamps and IPs are scrubbed before hostnames so the
-hostname pattern — the broadest of the six — never gets a chance to match a
-timestamp's tail or a raw IP literal; emails are scrubbed before hostnames so
-a hostname embedded inside an email address is already gone by the time the
-hostname pattern runs. Already-safe values (`localhost`, `*.example.test`,
-an email already ending `@example.test`) are recognized and left alone,
-which also makes the function idempotent — running it twice on already-
-sanitized output changes nothing further.
+Per-tenant routing learning, cross-tenant aggregated metadata, opt-out controls,
+consent/training labels, and evaluation-gated learned-policy updates are design
+directions, not live public execution guarantees. Current model routing does
+not establish those data-governance properties by implication.
 
-Substitution is **stable within a single normalization run**: a lookup table
-plus per-category counters means the same original value always maps to the
-same pseudonym for the batch of events being normalized together. A test
-case built this way can still show "this is the same user across three
-events" — the referential structure survives — without that identifier ever
-being the real one.
+Before activation, Praxa must document and verify:
 
-### Structural fields versus content
-
-The normalizer treats position differently. At the top level, a fixed set of
-structural/discriminator fields — `type`, `sequence`, `requestId`,
-`replayed`, `toolCallId`, `approvalId`, `memoryId`, `schemaId`, `model`,
-`code`, `finishReason`, `status`, `retryable`, `apiVersion` — is left
-completely untouched, because these are protocol shape, not content, and
-altering them would break the comparison the corpus exists to do. The `at`
-timestamp is always zeroed to the same epoch constant used above. Every
-other string — top-level or nested at any depth — passes through the
-six-category scrubber; at depth 1 and below there are no key-name
-exceptions, so every string value gets sanitized without exception.
-
-### Streamed text: an extra option, not a weaker guarantee
-
-For `text.delta` events, the normalizer supports two postures, chosen by
-comparison mode:
-
-- **`semantic` / `intentionally_changed` mode** — the delta's actual text is
-  discarded outright and replaced with a length-only marker (`⟨len:N⟩`). The
-  content itself does not survive normalization in this mode; only its
-  length does.
-- **`exact` mode** — the delta text is retained, because an exact-mode
-  comparison needs to check output byte-for-byte, but it still passes
-  through the same six-category scrubber as any other string.
-
-Precision matters here: the six-category pipeline removes *known PII shapes*
-from whatever text is retained. It is not a claim that all retained text is
-content-free — only `semantic`/`intentionally_changed` mode reduces message
-text to a length marker. A test case that must not carry any message text
-forward at all needs `semantic` mode specifically, not just the scrubber.
-
-## Learning: per-tenant by default
-
-This section describes design intent (design spec §3.5). There is no
-evidence of a live routing-policy learning system in the product today —
-model routing currently runs on static effort/cost lanes and failover
-ladders, not a learned one — so treat everything below as target behavior
-for a system not yet built, not a description of something already running.
-
-- **Per-tenant learning only, by default.** A tenant's own history informs
-  its own future routing, not another tenant's.
-- **Cross-tenant signal, where it exists at all, is metadata only** —
-  task-class → model/tool success priors, latency/cost distributions —
-  aggregated. Never content, never memory, never raw context. The design
-  states this as a deliberate anti-move, not an oversight: raw context or
-  state is not sold or shared across tenants.
-- **Opt-out-able and contractual.** A tenant can decline participation in
-  cross-tenant aggregation, on contractual terms, not just a UI toggle with
-  nothing backing it.
-- **Consent labels from the first write.** Every receipt is designed to
-  carry consent/training-eligibility labels starting at creation, so that
-  data captured for debugging can never be retroactively reclassified as
-  training data after the fact.
-- **Policy updates are eval-gated and reversible.** Any learned
-  routing-policy update is designed to ship versioned, gated by `bun run
-  eval:agentic` plus Langfuse contract evals, and to be reversible — policy
-  learning gated like a code change, never applied silently.
+- exact source fields and retention;
+- tenant partitioning and deletion;
+- aggregation thresholds and privacy review;
+- opt-out authority and enforcement;
+- training/diagnostic consent semantics from first write;
+- evaluation, approval, rollout, and rollback for learned changes.
 
 ## See also
 
-- `security-model.md` — trust boundaries and credential handling.
-- `receipts-and-audit.md` — receipt contents and export paths.
+- [Security model](/fabric/security/security-model)
+- [Receipts and audit](/fabric/security/receipts-and-audit)
+- [Usage](/fabric/api/usage)

@@ -1,14 +1,22 @@
 ---
-title: "Praxa SDK Performance Characteristics and Tuning Guide"
+title: "Praxa SDK performance characteristics and tuning guide"
 sidebarTitle: "Performance"
 description: "Performance characteristics of the Praxa SDK: mission latency, SSE streaming overhead, automatic retry backoff, and concurrent mission fan-out patterns."
 ---
 
 Understanding the performance profile of the Praxa SDK helps you design your application's mission submission patterns and error handling strategy. The `PraxaClient` is a thin, stateless HTTP and SSE client — it adds no local queuing, no background threads, and no persistent connection pool of its own. Every performance characteristic described here flows directly from how your application configures the client, how quickly your `accessToken` function resolves, and the network path between your runtime and the Integration Gateway.
 
-## SDK Client Overhead
+<Warning>
+  This page explains client behavior and tuning considerations. It does not
+  report a production benchmark or promise a latency or throughput level. Read
+  the [benchmark and validation evidence](/benchmarks/overview) and the
+  [preprint](https://github.com/praxa-labs/praxa-benchmarks/releases/tag/preprint-v1.1.0)
+  before interpreting measured results.
+</Warning>
 
-`PraxaClient` adds three sources of overhead to every outbound request, all of which are deterministic and measurable.
+## SDK client overhead
+
+`PraxaClient` adds three identifiable sources of overhead to every outbound request.
 
 **Token retrieval.** Each call to `createMission()`, `getMission()`, `missionEvents()`, or any other SDK method invokes your `accessToken` function once to obtain a bearer token. If your function performs a network call to a token endpoint on every invocation, that round-trip adds directly to your observed request latency. The SDK does not cache the returned token — caching is your responsibility, and it is the single most effective optimization you can make for high-frequency mission submission.
 
@@ -42,15 +50,19 @@ const client = new PraxaClient({
 });
 ```
 
-**Contract version header.** Every request — including the SSE stream — carries `x-aura-contract-version: aura-integration-gateway-v8.1`. This header is set from the compiled `AURA_CONTRACT_VERSION` constant and adds negligible serialization overhead. The gateway uses it to route requests to the correct contract handler; mismatches result in a non-retryable 4xx response rather than a silent behavioural difference.
+**Contract version header.** Every request — including the SSE stream — carries `x-praxa-contract-version: praxa-integration-gateway-v8.1`. This header is set from the compiled `PRAXA_CONTRACT_VERSION` constant and adds negligible serialization overhead. The gateway uses it to route requests to the correct contract handler; mismatches result in a non-retryable 4xx response rather than a silent behavioural difference.
 
-**Body serialization.** Request bodies are serialized with `JSON.stringify`. For typical `CreateMissionRequest` payloads — a `goalSpec` object and a `ResourceBudget` with four numeric fields — this is sub-millisecond. If your `goalSpec` carries large embedded context objects, measure serialization time separately and consider moving large payloads to a memory compartment queryable via `queryMemory()` instead.
+**Body serialization.** Request bodies are serialized with `JSON.stringify`. The cost depends on your payload and runtime. If your `goalSpec` carries large embedded context objects, measure serialization time separately and consider moving large payloads to a memory compartment queryable via `queryMemory()` instead.
 
 <Note>
-  The SDK validates your `baseUrl` as an HTTPS origin with no embedded credentials and validates the `accessToken` string length and character set before each request. Both checks are synchronous and complete in microseconds, but they will throw synchronously for invalid inputs rather than producing a network error.
+  The SDK validates your `baseUrl` as an HTTPS origin with no embedded
+  credentials and validates the `accessToken` string length and character set
+  before each request. Both checks run synchronously and throw for invalid
+  inputs rather than producing a network error. Measure their cost in your
+  runtime if it matters to your workload.
 </Note>
 
-## Retry and Backoff Behavior
+## Retry and backoff behavior
 
 The `PraxaClient` retry mechanism activates automatically on transient failures, preserving the idempotency key and request body unchanged across all attempts. This means you do not need to implement your own retry loop for `createMission()` calls — the SDK handles transient gateway unavailability for you.
 
@@ -58,15 +70,15 @@ The `PraxaClient` retry mechanism activates automatically on transient failures,
 
 **Retryable status codes.** The SDK retries on the following HTTP status codes:
 
-| Status | Meaning | Typical cause |
-|---|---|---|
-| 408 | Request Timeout | Gateway or upstream timeout |
-| 425 | Too Early | Request arrived before gateway was ready |
-| 429 | Too Many Requests | Rate limit exceeded |
-| 500 | Internal Server Error | Transient gateway fault |
-| 502 | Bad Gateway | Upstream dependency unavailable |
-| 503 | Service Unavailable | Gateway overloaded or deploying |
-| 504 | Gateway Timeout | Upstream response timeout |
+| Status | Meaning               | Typical cause                            |
+| ------ | --------------------- | ---------------------------------------- |
+| 408    | Request Timeout       | Gateway or upstream timeout              |
+| 425    | Too Early             | Request arrived before gateway was ready |
+| 429    | Too Many Requests     | Rate limit exceeded                      |
+| 500    | Internal Server Error | Transient gateway fault                  |
+| 502    | Bad Gateway           | Upstream dependency unavailable          |
+| 503    | Service Unavailable   | Gateway overloaded or deploying          |
+| 504    | Gateway Timeout       | Upstream response timeout                |
 
 Non-retryable 4xx errors (401, 403, 404, 409, 422, etc.) are thrown immediately as `PraxaClientError` without consuming retry budget.
 
@@ -74,24 +86,27 @@ Non-retryable 4xx errors (401, 403, 404, 409, 422, etc.) are thrown immediately 
 
 **Backoff formula.** Between attempts, the client sleeps for `retryBaseDelayMs × 2^(attempt − 1)` milliseconds. `retryBaseDelayMs` defaults to 100 ms and is clamped to the range 0–30,000 ms. The progression for the default configuration:
 
-| Attempt | Delay before this attempt | Cumulative sleep |
-|---|---|---|
-| 1 | 0 ms (no sleep before first try) | 0 ms |
-| 2 | 100 ms | 100 ms |
-| 3 | 200 ms | 300 ms |
-| 4 | 400 ms | 700 ms |
+| Attempt | Delay before this attempt        | Cumulative sleep |
+| ------- | -------------------------------- | ---------------- |
+| 1       | 0 ms (no sleep before first try) | 0 ms             |
+| 2       | 100 ms                           | 100 ms           |
+| 3       | 200 ms                           | 300 ms           |
+| 4       | 400 ms                           | 700 ms           |
 
 The sleep respects the `AbortSignal` you pass to the method call — if the signal fires during a backoff sleep, the delay is cancelled and the abort reason is thrown immediately.
 
 **Idempotency key preservation.** The SDK sets the `Idempotency-Key` header to the same value on every attempt. The Integration Gateway uses this key to deduplicate accepted missions: if the first attempt actually succeeded but the response was lost in transit, the retry receives the original `MissionProjection` rather than creating a duplicate mission. Always supply a `crypto.randomUUID()` value unless you intentionally want idempotent re-submission of the same logical mission.
 
 <Warning>
-  If you reuse the same idempotency key for logically distinct missions — for example, by using a static string in a loop — the gateway will return the original mission's result for every call after the first. Generate a fresh UUID per mission submission.
+  If you reuse the same idempotency key for logically distinct missions — for
+  example, by using a static string in a loop — the gateway will return the
+  original mission's result for every call after the first. Generate a fresh
+  UUID per mission submission.
 </Warning>
 
-## SSE Stream Performance
+## SSE stream performance
 
-`missionEvents()` returns an async generator that yields `AuraSseEvent` objects as they arrive from the Integration Gateway. The implementation uses a buffered UTF-8 line reader directly over the response body stream, with no intermediate buffering layer beyond what the underlying `fetch` implementation provides.
+`missionEvents()` returns an async generator that yields `PraxaSseEvent` objects as they arrive from the Integration Gateway. The implementation uses a buffered UTF-8 line reader directly over the response body stream, with no intermediate buffering layer beyond what the underlying `fetch` implementation provides.
 
 **Memory footprint.** The reader holds at most one unfinished line in memory at a time. Event data accumulates until the blank-line dispatch boundary, after which it is parsed and the buffer is cleared. Memory usage scales with the size of the largest single event, not with the total number of events emitted or the duration of the mission. The SDK enforces a 1 MiB ceiling per line and per event; events exceeding this limit cause the generator to throw.
 
@@ -101,7 +116,9 @@ The sleep respects the `AbortSignal` you pass to the method call — if the sign
 const controller = new AbortController();
 setTimeout(() => controller.abort(), 10_000); // hard deadline
 
-for await (const event of client.missionEvents(runId, { signal: controller.signal })) {
+for await (const event of client.missionEvents(runId, {
+  signal: controller.signal,
+})) {
   if (event.event === "mission.completed") break;
 }
 ```
@@ -111,7 +128,9 @@ for await (const event of client.missionEvents(runId, { signal: controller.signa
 ```typescript
 let lastId: string | undefined;
 
-for await (const event of client.missionEvents(runId, { lastEventId: lastId })) {
+for await (const event of client.missionEvents(runId, {
+  lastEventId: lastId,
+})) {
   lastId = event.id;
   // process event...
 }
@@ -120,14 +139,17 @@ for await (const event of client.missionEvents(runId, { lastEventId: lastId })) 
 **Resumption and the `Last-Event-ID` header.** The SDK validates `lastEventId` against the pattern `/^[\x21-\x7e]{1,256}$/` — printable ASCII, 1–256 characters — before sending the `Last-Event-ID` request header. Values that fail this check throw synchronously before opening the stream.
 
 <Note>
-  The SSE stream does not retry automatically on connection drops the way a browser `EventSource` does. If you need reconnection logic, wrap `missionEvents()` in a loop that catches network errors and resumes with the last received `event.id` as `lastEventId`.
+  The SSE stream does not retry automatically on connection drops the way a
+  browser `EventSource` does. If you need reconnection logic, wrap
+  `missionEvents()` in a loop that catches network errors and resumes with the
+  last received `event.id` as `lastEventId`.
 </Note>
 
-## Concurrent Mission Patterns
+## Concurrent mission patterns
 
 You can submit missions sequentially or in parallel. The right pattern depends on whether your tasks are independent and whether your token budget and gateway rate limits can accommodate burst submission.
 
-### Sequential Missions
+### Sequential missions
 
 Submit one mission at a time when tasks have ordering dependencies or when you want predictable, metered resource consumption. Sequential submission is simple to reason about and produces a clear per-mission latency profile.
 
@@ -141,7 +163,7 @@ for (const task of tasks) {
 }
 ```
 
-### Parallel Mission Fan-Out
+### Parallel mission fan-out
 
 Submit multiple missions simultaneously using `Promise.all` when your tasks are independent and you want to minimize total wall-clock time. Each mission must carry a unique idempotency key — sharing a key across parallel submissions would cause the gateway to deduplicate them to a single mission.
 
@@ -150,13 +172,13 @@ const missions = await Promise.all(
   tasks.map((task) =>
     client.createMission(
       { goalSpec: { task }, resourceBudget },
-      crypto.randomUUID() // unique key per mission
-    )
-  )
+      crypto.randomUUID(), // unique key per mission
+    ),
+  ),
 );
 ```
 
-Fan-out submission scales well for moderate parallelism. At high concurrency, expect the following behaviours:
+Fan-out can reduce submission wall-clock time for independent tasks. Actual throughput depends on your application, network path, and gateway deployment. At high concurrency, expect the following behaviours:
 
 - **429 Too Many Requests** — the gateway may rate-limit burst submissions. The SDK will back off and retry automatically (up to `maximumAttempts`). If your tasks array is large, consider submitting in batches with `Promise.all` on a fixed-size window.
 - **Token acquisition.** With caching in place, all parallel `createMission()` calls share the same cached token and incur no additional token fetches during their concurrent window.
@@ -202,9 +224,10 @@ for (const task of tasks) {
   }
 }
 ```
+
 </CodeGroup>
 
-## Optimizing Resource Budgets
+## Optimizing resource budgets
 
 Every mission carries a `ResourceBudget` that caps four dimensions of resource consumption: `maximumSteps`, `maximumToolCalls`, `maximumElapsedMs`, and `maximumParallelism`. Tight budgets reduce costs, limit blast radius from runaway missions, and surface unexpected mission behaviour earlier in development.
 
@@ -217,5 +240,11 @@ Every mission carries a `ResourceBudget` that caps four dimensions of resource c
 **`maximumParallelism` affects throughput, not submission.** Higher values allow the execution plane to run more steps concurrently within a mission, which can reduce `maximumElapsedMs` consumption for parallelisable tasks — but it also increases peak resource usage. For latency-sensitive missions where predictable serialized execution matters more than speed, `maximumParallelism: 1` gives the clearest execution trace.
 
 <Tip>
-  Call `client.getReferenceCoverage()` against your gateway deployment before building production workflows. The response documents which endpoints and capability kinds your specific deployment supports. If a capability you depend on — such as `browser` or `a2a_agent` — is absent from the coverage response, submission may succeed but execution will fail when the agent attempts to invoke that capability. Checking coverage at startup saves you from mysterious mid-mission failures.
+  Call `client.getReferenceCoverage()` against your gateway deployment before
+  building production workflows. The response documents which endpoints and
+  capability kinds your specific deployment supports. If a capability you depend
+  on — such as `browser` or `a2a_agent` — is absent from the coverage response,
+  submission may succeed but execution will fail when the agent attempts to
+  invoke that capability. Checking coverage at startup saves you from mysterious
+  mid-mission failures.
 </Tip>

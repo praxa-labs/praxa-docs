@@ -1,190 +1,82 @@
 ---
-title: "Teams and Organizations"
-sidebarTitle: "Teams and Organizations"
-description: "How the Praxa Execution Fabric models a company, who can call it on the"
+title: "Teams and organizations"
+sidebarTitle: "Teams and organizations"
+description: "Separate source-ready membership management from personal-only public execution."
 ---
 
-*How the Praxa Execution Fabric models a company, who can call it on the
-company's behalf, and what an org admin can see.*
+> **Execution status:** Public `/v1` execution remains limited to admitted
+> personal tenants. Organization `praxa_sk_` keys, organization execution,
+> pooled organization billing, organization key administration, and enterprise
+> governance are unavailable.
 
-This page describes the tenancy and access-control design for the **Praxa
-Execution Fabric** — the API that submits tasks under an explicit policy and
-returns a receipt for every run. It is written for the person evaluating
-whether Praxa fits their org's identity, access, and audit requirements
-before a technical integration starts.
+Praxa's existing product has organizations, memberships, roles, and team
+surfaces. The developer portal now has a source-ready management view over that
+existing authority. This documentation does not claim that the new portal view
+is deployed or production-canaried.
 
----
+## Source-ready portal management
 
-## What "organization" means on the fabric
+After deployment, a signed-in user can use the developer portal to:
 
-> **Status:** Developer preview
+- list the Praxa organizations they belong to and see their current role;
+- create an organization through the existing organization authority;
+- inspect an organization's member directory;
+- add an existing Praxa username as a member or admin;
+- change eligible member/admin roles; and
+- remove an eligible member after explicit confirmation.
 
-A tenant on the fabric (`platform_tenants`) is owned by either an
-organization or an individual user — never both — mirroring the billing-
-account model Praxa already runs internally. Today, an organization's usage
-is funded by one owner's personal plan; the fabric build promotes the
-organization itself to a first-class billing subject, so a company — not a
-person on the company's behalf — owns the tenant, its keys, and its spend.
-See [Billing and Plans](/fabric/enterprise/billing-and-plans) for how org-level
-subscriptions and budget policy work once that lands.
+Owners and admins receive the mutation controls allowed by the existing
+organization rules. Other members receive a read-only directory. Owner roles
+and self-removal constraints remain protected by the existing server and
+database authority.
 
-The tenant model generalizes machinery that already runs in production for
-custom-agent deployments today. It is not a new, unproven substrate — it is
-the existing deployment-key system widened to cover arbitrary task
-execution under a tenant's policy instead of one fixed agent.
+An add action is not an email invitation or SCIM provisioning flow. It requires
+an existing Praxa username and uses the existing membership contract.
 
----
+## Current public tenant
 
-## Principals: who — or what — can call the fabric
+A live preview key resolves to one server-derived personal tenant. The client
+cannot set or switch tenant, user, organization, billing account, or role in a
+request body. Keys, runs, events, cancellations, webhooks, and usage are
+re-authorized against that personal tenant.
 
-> **Status:** Developer preview
+The signed-in personal key console supports list, create, rotate, and revoke for
+admitted accounts. Membership shown in the portal does not make an organization
+key appear and does not delegate organization execution.
 
-Three credential families resolve through one principal resolver, and all
-three get the *same* downstream authority derivation: fail-closed and
-server-derived. No principal type is checked more loosely than another.
+## What an admitted user can inspect today
 
-| Principal | Used by | Status |
-|---|---|---|
-| Supabase JWT (user session) | The Expo app and Praxa Control (desktop) | Production today |
-| Legacy agent key (`aura_agent_*`) | Existing custom-agent API/embed deployments | Production today |
-| Platform API key (`praxa_sk_`) | New tenant-scoped fabric keys | Developer preview (building) |
+- customer-safe durable run projections;
+- resumable lifecycle events;
+- evidence-bounded personal usage and API-key attribution when proven; and
+- existing Praxa organization data through already-deployed product surfaces.
 
-The legacy `aura_agent_*` keys are real and already enforced — SHA-256 at
-rest, constant-time verification, rotation support. They are not being
-deprecated out from under existing deployments; they migrate onto the new
-tenant model on their own timeline, not on a forced cutover.
+The new developer-portal membership UI remains in the source-ready lane until a
+Worker deployment and authenticated browser canary are recorded.
 
-Praxa Control (the desktop coding surface) authenticates the same way the
-Expo app does. Provider credentials for local coding sessions stay on the
-desktop and never transit through the fabric — only the cloud-execution
-lanes (research, browse, media, connectors, durable tasks) that Praxa
-Control calls out to go through this principal model.
+## Organization execution gates
 
----
+Organization execution requires more than attaching an `organizationId`:
 
-## Member key management
+1. server-authoritative organization-unit delegation for every public route;
+2. organization billing ownership and fail-closed reservation authority;
+3. least-privilege organization key create, rotate, revoke, and audit controls;
+4. tenant-isolation and cross-tenant negative tests across keys, runs, events,
+   approvals, webhooks, usage, and cancellation;
+5. offboarding and revocation semantics that invalidate delegated access; and
+6. authenticated production canaries before documentation moves the capability
+   to live.
 
-> **Status:** Developer preview
+SSO, SCIM, invitation lifecycle, segregation-of-duties policy, centralized
+broker revocation, organization evidence export, and dedicated isolation remain
+enterprise roadmap capabilities.
 
-Platform API keys (`platform_api_keys`, prefix `praxa_sk_`) are scoped,
-hash-at-rest credentials with:
+Existing custom-agent organization deployments are a separate
+supported surface. They do not prove organization Execution Fabric access.
 
-- Explicit scopes (what the key is allowed to call)
-- Expiry and last-used tracking
-- A per-key rate-limit tier
-- Revocation
+## See also
 
-Key issuance and management is part of the same build as the tenant model
-itself. A self-serve key console is planned but not yet available — during
-this build phase, key access is provisioned as part of onboarding (see
-[Access model today](#access-model-today-design-partners-not-self-serve)
-below), not through open sign-up.
-
-**What this means if you need API access now:** if you are already a
-custom-agent API or embed deployment, your existing `aura_agent_*` key
-keeps working unchanged. If you want the newer tenant-scoped model —
-per-key scopes, org-level pooling, a management console — that is in
-active build, not yet self-serve.
-
----
-
-## Roles and permissions direction (RBAC)
-
-> **Status:** Planned (enterprise tier)
-
-The direction is a connector-level grant model: connect one shared company
-account per provider, then grant each member or role `can_use` versus
-`can_write` on it, with a one-toggle offboard that revokes any in-flight
-tokens immediately. Underneath, this reuses Praxa's existing
-organization-connector-scopes design — a member can act through a shared
-connector without ever holding its secret, and a role-permission resolver
-already exists to receive provisioned identities.
-
-Be precise about what that means today: **the data layer for scoped
-connector access already exists in production; the admin UI to grant and
-review those scopes does not.** There is no grant-editor console yet, and
-the centralized broker-revocation list that makes "offboard kills tokens
-immediately" a hard guarantee (rather than an eventual one) has not been
-built. Segregation-of-duties patterns — for example, requiring a senior
-role to approve a write-off — are supported as a concept in the connector
-and approval layers, but a general-purpose role/permission authoring
-surface is future work, not a shipped feature.
-
-Do not treat "RBAC" as available for procurement purposes until the console
-and the revocation list both ship — the same caveat applies to
-[SSO/SCIM below](#whats-not-here-yet-honest-gaps).
-
----
-
-## What org admins can see
-
-> **Status:** Developer preview
-
-The fabric's admin-facing surface is built around three read paths:
-
-- **Usage** — `GET /v1/usage`: tenant-scoped usage and spend readback.
-- **Runs** — `GET /v1/runs/:id` and `GET /v1/runs/:id/events`: a public
-  projection of a run's state and its event stream (Server-Sent Events,
-  resumable via `Last-Event-ID`). Internal fields — lease hashes, margin
-  micros, pricing references — never cross into this projection.
-- **Receipts** — every run returns a record of what ran, which policy
-  version evaluated it, who approved what, and what it was verified
-  against, billed against a reservation rather than settled after the
-  fact with no prior hold.
-
-None of this is a new audit system bolted on after the fact — the
-run/event state machine, the approval-park mechanism, and the reserve-then-
-settle billing flow already run in production for the existing product.
-What's still building is the *external*, tenant-scoped projection of that
-state: the public run/event types, the SSE pump, and `/v1/usage` itself.
-
-For the fuller trust story — approvals, policy versioning, what "receipt"
-guarantees — see [Deployment and Isolation](/fabric/enterprise/deployment-and-isolation).
-
----
-
-## Access model today: design partners, not self-serve
-
-> **Status:** Developer preview
-
-The fabric is not open for self-serve signup yet. The first external cohort
-is capped at three tenants: two existing custom-agent deployments selected
-by actual usage (an active API or authenticated-embed channel in the last
-30 days, plus at least one approval-gated connector action already
-executed — chat-only usage doesn't qualify), and one Praxa Control power
-user with daily local coding sessions and cloud-lane usage. The cohort is
-deliberately small to keep support load and behavioral-equivalence checks
-bounded while the execute API, tenancy, and billing enforcement are new.
-
-Broader availability follows a phased rollout — a read-only authenticated
-flow first, then side effects enabled for the design-partner cohort, then a
-wider developer-surface release (SDK, docs, console) — each gated on its
-own correctness and billing checks passing, not on a calendar date.
-
----
-
-## What's not here yet (honest gaps)
-
-> **Status:** Planned (enterprise tier)
-
-The following are explicitly **not** part of the current build and have no
-committed ship date:
-
-- **SSO (SAML/OIDC)** and **SCIM provisioning** — mapping an identity
-  provider's groups onto Praxa roles.
-- **A centralized broker-revocation list** checked on the credential-use
-  hot path — today, "revoke a member's access" is not yet backed by a
-  single, immediately-effective kill switch.
-- **A server-authoritative approval re-check** that doesn't depend on
-  transport auth alone.
-
-These are scheduled for the quarter before the first enterprise deal
-closes, deliberately — not built speculatively earlier, and deliberately
-not represented as available before then. Governance sells expansion into
-an organization that already has users on the platform; it does not sell
-the first deal.
-
----
-
-*Related: [Billing and Plans](/fabric/enterprise/billing-and-plans) ·
-[Deployment and Isolation](/fabric/enterprise/deployment-and-isolation)*
+- [Scopes and tenancy](/fabric/keys-and-access/scopes-and-tenancy)
+- [Billing and plans](/fabric/enterprise/billing-and-plans)
+- [Studio and developer console](/fabric/studio-and-console)
+- [Deployment and isolation](/fabric/enterprise/deployment-and-isolation)
