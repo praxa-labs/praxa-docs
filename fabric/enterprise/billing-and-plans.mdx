@@ -9,10 +9,12 @@ description: "Separate live execution funding from the source-ready developer-po
 > BYO provider keys, request-defined budgets, organization pooling, and public
 > organization billing remain unavailable.
 
-> **Portal status:** Subscription display and eligible Stripe Checkout are
-> source-ready, pending Worker deployment and an authenticated billing canary.
-> Subscription cancellation, payment-method changes, and a Stripe Customer
-> Portal are not implemented in the developer portal.
+> **Console status:** The developer console at `https://platform.praxa.io`
+> opens an AAL2-gated Stripe Customer Portal session for the exact
+> service-mapped account, and ambiguous account discovery fails closed instead
+> of guessing. Subscription changes and payment methods are handled inside that
+> Stripe-hosted session, not by console-native forms. Consumer entitlement
+> remains separate from developer API cost.
 
 ## Current bundled funding
 
@@ -28,6 +30,11 @@ settles its frozen ceiling once before the exact non-retryable
 `run_outcome_unknown` projection.
 
 ## Source-ready developer-portal billing
+
+*This section describes the superseded consumer-app portal's billing page,
+which no longer fronts the platform host. It remains source-ready work in the
+consumer product. The live console's billing surface is the Stripe Customer
+Portal session described above.*
 
 The source-ready billing page reads the signed-in user's existing usage and
 subscription evidence. It can show:

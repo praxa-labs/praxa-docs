@@ -43,11 +43,12 @@ scope enforcement, and a signed webhook delivery whose HMAC matched the exact
 raw request body. Separate live cancellation canaries proved both a claimed
 model-backed run cancelled before provider mutation and a provider-in-flight
 cancellation that remained non-terminal while reconciling, then converged to
-the exact non-retryable `run_outcome_unknown` failure. An authenticated browser
-canary proved callback credential removal, persisted session reuse, durable
-legal acceptance, and platform-origin preservation through `/`, `/developer`,
-and `/developers`; read-only HTTP checks proved nested developer routes and the
-consumer-host deep-link return. This evidence does not make the preview
+the exact non-retryable `run_outcome_unknown` failure. An earlier authenticated
+browser canary proved callback credential removal, persisted session reuse,
+durable legal acceptance, and platform-origin preservation for the consumer-app
+portal that fronted this host before the standalone-console cutover; that
+evidence now belongs to the superseded surface described below, while the API
+canaries above remain current. This evidence does not make the preview
 generally available.
 
 ## Deployed, pending separate production canaries
@@ -75,6 +76,10 @@ evidence named below.
 
 ### Portal-native personal build surfaces
 
+*These routes belong to the superseded consumer-app portal. They no longer
+target the platform host, which now serves the standalone console described
+above; they remain source-ready work in the consumer product.*
+
 - personal agent list, create, detail, edit, preview, chat, analytics, and
   conversation routes rehost the existing custom-agent system under
   `/developers/build/agents`;
@@ -90,6 +95,10 @@ states. The rehosted workflow UI is not the public typed workflow DSL.
 
 ### Portal-native account, organization, and billing views
 
+*Also superseded-portal scope. The standalone console's live account,
+organization, billing, and notification surfaces are documented on
+[Studio and console](/fabric/studio-and-console).*
+
 - profile name, nickname, private preferences, avatar upload, provider/email
   facts, and sign-out reuse the existing account authorities;
 - organization list/create, member directory, add-existing-username,
@@ -101,9 +110,11 @@ states. The rehosted workflow UI is not the public typed workflow DSL.
 
 The checkout server guard refuses a new subscription flow for `active`,
 `in_grace`, or `in_retry` evidence and fails closed when subscription state
-cannot be proven. There is no developer-portal Stripe Customer Portal,
-payment-method editor, cross-provider cancellation flow, organization key, or
-organization execution authority.
+cannot be proven. That portal design included no Stripe Customer Portal,
+payment-method editor, or cross-provider cancellation flow, and granted no
+organization key or organization execution authority. The live console's
+billing surface is the AAL2-gated Stripe Customer Portal session documented on
+[Studio and console](/fabric/studio-and-console).
 
 Activation requires a compatible Worker deployment plus authenticated profile,
 avatar, membership/RBAC refusal, subscription-state, trusted-redirect, and
@@ -140,7 +151,7 @@ The source tree now contains two separate platform authorities:
 These are source-ready backend boundaries, not customer availability claims.
 Their migrations are not recorded as applied, the Worker release is pending,
 and authenticated two-tenant, billing, capacity-race, cancellation, redaction,
-and browser canaries have not been completed. The portal therefore keeps
+and browser canaries have not been completed. The console therefore keeps
 workflow mutation and experiment execution controls unavailable.
 
 ### Redacted causal-trace authority
@@ -149,8 +160,8 @@ A source-ready trace projection records value-free span lineage, phase,
 actor kind, argument key names, digests, safe retail credits, and retention
 metadata. It deliberately excludes prompts, outputs, credentials, provider
 cost, and infrastructure cost. Migration, retention deployment, permission
-proof, and an authenticated redaction canary remain pending, so the live portal
-continues to expose only its narrower projection timeline.
+proof, and an authenticated redaction canary remain pending, so the live
+console continues to expose only its narrower projection timeline.
 
 ### Typed workflow DSL foundation
 
@@ -187,41 +198,53 @@ and `retryable: false`. The resumed stream ended with one byte-identical
 bounded canary observations, not a promise that every provider exposes a
 recoverable cancellation receipt.
 
-## Live canonical developer portal host
+## Live canonical developer console host
 
-The intended origin is `https://platform.praxa.io/developers`, with consumer
-destinations on `https://app.praxa.io` and API traffic on
-`https://api.praxa.io`. The deployed portal accepts email-link/OTP fragment
-callbacks, clears the callback credentials from the URL, persists the resulting
-browser session, and requires durable legal acceptance before developer routes
-render. This release does not add provider-button sign-in or an account-recovery
-flow. A production browser canary proved callback credentials were removed from
-the URL, the authenticated session survived reload, legal acceptance persisted,
-and `/`, `/developer`, and `/developers` all retained the platform origin.
-Read-only HTTP checks separately proved `200` responses for nested API-key,
-run, webhook, and usage routes and an exact `app.praxa.io` developer deep-link
-redirect back to the matching platform route.
+The canonical origin is `https://platform.praxa.io`, with consumer destinations
+on `https://app.praxa.io` and API traffic on `https://api.praxa.io`. The
+platform host serves the standalone developer console: sign-in at `/sign-in`
+with email/password and Google OAuth, MFA step-up (AAL2) before
+credential-sensitive mutations, and a deployment receipt at
+`/api/deploy-version` identifying the application and its exact stamped commit.
+On 2026-08-08 that receipt identified `praxa-developer-platform` at stamped
+commit `b05a4c54a37e4bb6106d90fc17abbed658ebd680`; read-only HTTP checks the
+same day proved the root redirects unauthenticated visitors to `/sign-in` and
+`app.praxa.io` developer deep links redirect to the platform host.
+
+Serving the host is a routing fact, not full production activation. The
+console's remaining named gates include an authoritative MFA-factor enrollment
+boundary, universal organization-mutation authority, an address-pinned webhook
+egress path, authenticated tenant QA, additional sign-in hardening, and an
+observability canary. Per-surface consequences are on
+[Studio and console](/fabric/studio-and-console).
+
+The consumer-app portal that previously fronted this host — email-link/OTP
+fragment callbacks, a durable legal-acceptance gate, and nested `/developers`
+routes — is a superseded surface. Its recorded browser canaries remain
+historical evidence for that surface and are no longer descriptions of the
+platform host.
 
 ## Unavailable
 
 - `mode:"turn"` and the rich turn event stream;
 - request-level `agent`, `context`, `tools`, `policy`, or `delivery` overrides;
-- organization execution and organization API keys;
+- organization `/v1` execution and organization-tenant `/v1` API keys;
 - configurable unified policy packs;
 - generic tool approvals and mature approval receipts;
 - published npm SDK;
 - BYO provider credentials;
 - customer experiment execution and model comparison;
 - a public typed-workflow definition or execution route;
-- developer-portal subscription cancellation, payment-method changes, and
-  Stripe Customer Portal sessions;
 - mature hash-chained receipts/evidence export;
 - dedicated/self-hosted deployment and enterprise governance surfaces.
 
 ## Remaining preview gates
 
-1. Deploy and browser-canary the source-ready portal agent, workflow,
-   playground, profile/avatar, organization, and billing surfaces.
+1. Close the deployed console's named gates: the authoritative MFA-factor
+   enrollment boundary, universal organization-mutation authority,
+   address-pinned webhook egress, authenticated tenant QA, sign-in hardening,
+   and an observability canary. The superseded consumer-portal build surfaces
+   remain tracked in the consumer product.
 2. Review/apply the additive dataset, workflow, experiment, and trace
    migrations; deploy the matching Worker routes; then prove authorization,
    cross-tenant refusal, receipt binding, billing/capacity races, redaction,

@@ -185,6 +185,7 @@
             "pages": [
               "fabric/studio-and-console",
               "fabric/datasets",
+              "fabric/experiments",
               "fabric/workflows"
             ]
           },

@@ -10,13 +10,34 @@ description: "Separate source-ready membership management from personal-only pub
 > governance are unavailable.
 
 Praxa's existing product has organizations, memberships, roles, and team
-surfaces. The developer portal now has a source-ready management view over that
-existing authority. This documentation does not claim that the new portal view
-is deployed or production-canaried.
+surfaces. The developer console serving `https://platform.praxa.io` manages
+that same authority — it does not create a second one.
 
-## Source-ready portal management
+## Console organization management
 
-After deployment, a signed-in user can use the developer portal to:
+The deployed console provides:
+
+- organization create, owner/admin updates, and owner deletion behind MFA
+  step-up (AAL2), with immutable audit records;
+- email-bound invitation acceptance — an invite is honored only for the
+  invited address;
+- member, role, and invite editing with idempotency keys and
+  optimistic-concurrency versions; and
+- a server-resolved organization workspace switcher that threads an entitled
+  organization through keys, usage, webhooks, deliveries, billing, and team.
+
+These surfaces are activation-gated: the upstream authorization state must be
+re-proved against the exact deployment before transactional production claims,
+and mutations refuse rather than silently crossing a tenant boundary when the
+workspace directory cannot be read. Runs, approvals, agents, datasets, and
+browser workflow reads stay personal by upstream contract and say so.
+
+## Superseded portal management view
+
+*The consumer-app portal's membership UI below is a superseded surface for the
+platform host; it remains source-ready work in the consumer product.*
+
+After deployment, a signed-in user could use that portal to:
 
 - list the Praxa organizations they belong to and see their current role;
 - create an organization through the existing organization authority;
@@ -51,8 +72,8 @@ key appear and does not delegate organization execution.
 - evidence-bounded personal usage and API-key attribution when proven; and
 - existing Praxa organization data through already-deployed product surfaces.
 
-The new developer-portal membership UI remains in the source-ready lane until a
-Worker deployment and authenticated browser canary are recorded.
+The console's organization management surfaces remain activation-gated until
+their upstream authorization proof is recorded against the exact deployment.
 
 ## Organization execution gates
 

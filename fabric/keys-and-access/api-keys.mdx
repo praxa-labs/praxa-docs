@@ -58,13 +58,13 @@ The signed-in personal-workspace key console supports:
 - viewing the display suffix, creation, expiry, projection, and last-used timestamps.
 
 The server resolves the signed-in person's tenant. The browser cannot submit an
-arbitrary tenant id. Organization keys remain unavailable. The canonical
-`https://platform.praxa.io` routing fix is deployed. The portal accepts
-email-link/OTP fragment callbacks, persists the resulting browser session, and
-records legal acceptance durably. A production browser canary proved that the
-authenticated session survives reload and retains `platform.praxa.io` through
-the canonical aliases; read-only HTTP checks separately proved the nested key
-route and the exact consumer-host deep-link return.
+arbitrary tenant id. Public `/v1` execution keys remain personal-tenant only.
+The console additionally offers organization-scoped key management behind a
+server-resolved workspace entitlement; that lane is activation-gated on its
+upstream production proof, and an unentitled selection is refused rather than
+silently downgraded. The console serving `https://platform.praxa.io` uses
+password and Google sign-in with MFA step-up (AAL2) required for key creation
+and rotation, and exposes a deployment receipt at `/api/deploy-version`.
 
 ## Storage and edge admission
 

@@ -15,9 +15,9 @@ note below separates that direction from what is currently implemented.
 > **Current status:** the production partner preview serves personal tenant keys,
 > minimal durable-task execution, run reads, resumable SSE, cancellation requests,
 > public and signed-in usage readback, automatic signed task webhooks, and bearer
-> webhook management. The deployed portal accepts email-link/OTP fragment
-> callbacks, persists the resulting browser session, and records legal acceptance
-> durably before it renders developer routes. Exact recorded browser-action
+> webhook management. The platform host serves the standalone developer console
+> with password and Google sign-in, MFA step-up for sensitive mutations, and a
+> deployment receipt at `/api/deploy-version`. Exact recorded browser-action
 > approval remains pending.
 > Production canaries have separately proved zero-cost pre-dispatch cancellation
 > and the scheduled non-retryable `run_outcome_unknown` terminal state for a
@@ -142,11 +142,10 @@ Every capability in these docs carries one of three labels. They tell you what y
 - [`status-and-roadmap.md`](/fabric/status-and-roadmap) — what's shipped and what's next, in customer terms
 - [`glossary.md`](/fabric/glossary) — terms used across these docs
 
-Partner-preview access is invitation-only. The deployed portal supports an
-email-link/OTP fragment callback, a persisted browser session, and durable legal
-acceptance for admitted accounts. Production canaries proved authenticated
-platform-origin preservation through the canonical aliases, `200` responses on
-nested developer routes such as
-`https://platform.praxa.io/developers/develop/api-keys`, and exact developer
-deep-link return from `app.praxa.io`. See the bounded evidence and remaining
-gates on the [status page](/fabric/status-and-roadmap).
+Partner-preview access is invitation-only. The developer console is served at
+`https://platform.praxa.io` with sign-in at `/sign-in` and a deployment receipt
+at `/api/deploy-version` identifying the application and its exact stamped
+commit. Consumer-host developer deep links on `app.praxa.io` redirect to the
+platform host. See [Studio and console](/fabric/studio-and-console) for the
+per-surface truth table and the bounded evidence and remaining gates on the
+[status page](/fabric/status-and-roadmap).

@@ -1,0 +1,37 @@
+---
+title: "Experiments"
+sidebarTitle: "Experiments"
+description: "Pin an immutable dataset revision and configuration snapshot today; execution, results, and comparisons remain gated."
+---
+
+> **Status:** Experiment definitions are live in the developer console.
+> Experiment execution, results, evaluator output, and model comparison remain
+> unavailable pending backend activation. The console shows those surfaces as
+> explicitly unavailable instead of simulating them.
+
+An experiment binds the things that must not drift while you evaluate a
+change: which data it ran against and which configuration produced the result.
+
+## What a definition pins
+
+Creating an experiment in the console records:
+
+- an immutable dataset revision, addressed by its revision ID and digest — not
+  "the dataset as it happens to look later"; and
+- a configuration snapshot captured at definition time.
+
+Because the revision is immutable and receipt-bound (see
+[Agent evaluation datasets](/fabric/datasets)), two people reading the same
+experiment later are reading the same inputs, byte for byte.
+
+## What is not yet claimable
+
+The execution authority behind experiments — immutable run/result bindings,
+evaluator and result receipts, authoritative cost projections, and shared
+quota/budget controls — exists in source with contract coverage, but its
+production activation evidence is not complete. Until it is, the console keeps
+execution, results, evaluators, and comparisons unavailable, and this
+documentation does not describe request or response shapes for them.
+
+Read [Status and roadmap](/fabric/status-and-roadmap) for the activation gates
+that must close before execution becomes a live claim.
