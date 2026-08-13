@@ -19,7 +19,7 @@ An accepted mission request is not proof that an external effect has occurred. T
 
 ## Key Principles
 
-**Credential-free design.** Your application never holds or supplies provider API keys. The gateway manages provider credentials server-side. The SDK, CLI, and MCP contracts contain no provider adapters and no embedded secrets.
+**Credential separation.** Gateway mission calls never require provider API keys in your application. The optional `@praxa/sdk/memory` entrypoint exposes read-only adapters for clients your backend already owns; it discovers and stores no credential. The SDK, CLI, and MCP contracts contain no embedded secrets.
 
 **OAuth governance.** Every Praxa API operation requires a specific OAuth scope. Tokens are short-lived, delegated, and scoped to the minimum set of operations your integration needs. A scope grants access to gateway policy evaluation — it does not itself authorize a provider effect.
 

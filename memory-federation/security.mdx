@@ -16,7 +16,7 @@ gateway diagnostic carries no console session, Platform key, or provider credent
 
 ## Tenant and identity boundary
 
-The source-ready hosted plane derives the tenant and actor from a reauthorized `praxa_sk_*` key.
+The deployed hosted plane derives the tenant and actor from a reauthorized `praxa_sk_*` key.
 Request JSON cannot choose a Praxa tenant, organization, actor, or personal-memory owner.
 
 - `memory:read` permits candidate query and export.
@@ -47,8 +47,9 @@ Federation alone does not grant remote delete authority.
 No public retention period is promised yet. Do not claim regulatory erasure across a provider and
 Praxa until both outcomes have receipts and derivative indexes are inside the erasure fence.
 
-## Activation proof still required
+## Qualification proof still required
 
-Source and tests do not prove deployed isolation. Activation requires the additive migration, full
-Worker deployment, exact-revision receipt, and authenticated positive, revoked-key, wrong-scope,
-two-tenant, idempotency, export, deletion, and degraded-provider canaries.
+The additive migration, full Worker deployment, exact-revision receipt, route smoke tests, and
+unauthenticated fail-closed boundary are proven. They do not prove authorized tenant isolation.
+Qualification still requires authenticated positive, revoked-key, wrong-scope, two-tenant,
+idempotency, export, deletion, and degraded-provider canaries.

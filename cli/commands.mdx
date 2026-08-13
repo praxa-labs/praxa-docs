@@ -1,10 +1,14 @@
 ---
 title: "Praxa CLI Commands: Flags, Env Vars, and Usage Examples"
 sidebarTitle: "Commands"
-description: "Full reference for Praxa CLI commands: init, version, doctor, and mission submit, get, create, and cancel."
+description: "Full reference for Praxa CLI commands: init, version, local memory federation planning, doctor, and mission submit, get, create, and cancel."
 ---
 
-This page covers every command available in `@praxa/cli`. Each section includes a description of what the command does, the full flag set, which environment variables it reads, and a runnable example. All commands write JSON to stdout and errors to stderr, exiting with code `1` on failure.
+This page covers every command available in `@praxa/cli@0.3.0`. Each section includes a description of what the command does, the full flag set, which environment variables it reads, and a runnable example. Gateway commands (`doctor` and `mission`), `version`, and memory planning write JSON to stdout. `praxa init` requires `--json` for JSON output, help output is text, and errors are written to stderr with exit code `1` on failure.
+
+For `doctor` and `mission` commands, the gateway URL resolves from `--base-url`, then
+`PRAXA_BASE_URL` (or legacy `AURA_BASE_URL`), then `.praxa/config.json` in the current working
+directory. `PRAXA_ACCESS_TOKEN` remains an environment-only secret.
 
 ## `praxa version`
 
@@ -30,10 +34,10 @@ None required.
 
 ```json
 {
-  "cliVersion": "0.2.0",
+  "cliVersion": "0.3.0",
   "openapiVersion": "8.1.0",
-  "contractVersion": "praxa-integration-gateway-v8.1",
-  "openapiSha256": "<hex fingerprint>"
+  "contractVersion": "aura-integration-gateway-v8.1",
+  "openapiSha256": "a9835faa4654246f83c452ae968a569c85be28f93017882e710ca35c10dbbecc"
 }
 ```
 
@@ -62,6 +66,51 @@ praxa init --target codex --target cursor --project-dir . --json
 
 ---
 
+## `praxa memory source add`
+
+Previews or writes one read-only memory-provider entry in `.praxa/memory.json`. The command accepts
+no provider credential and makes no provider or gateway request.
+
+**Syntax**
+
+```bash
+praxa memory source add <provider> --mode federated \
+  [--project-dir <path>] [--dry-run] [--json]
+```
+
+`<provider>` must be `mem0`, `zep`, `graphiti`, `langgraph`, `letta`, or `openai_agents`.
+`--mode federated` is required. Use `--dry-run` to return the exact local file plan without writing.
+
+```bash
+npx --package=@praxa/cli@0.3.0 praxa memory source add mem0 \
+  --mode federated --dry-run
+```
+
+The result identifies the project directory, `.praxa/memory.json` action, provider, read-only
+access, and local-only execution boundary. It never reports a provider connection or sync.
+
+---
+
+## `praxa memory sync plan`
+
+Reads local source metadata and returns a bounded, non-executable plan. It cannot start a sync,
+mirror, import, cutover, provider write, or migration.
+
+**Syntax**
+
+```bash
+praxa memory sync plan --dry-run [--project-dir <path>] [--json]
+```
+
+```bash
+npx --package=@praxa/cli@0.3.0 praxa memory sync plan --dry-run
+```
+
+`--dry-run` is required. The returned `executable` field is always `false` and `operations` is
+empty in `0.3.0`.
+
+---
+
 ## `praxa doctor`
 
 Makes an authenticated read-only request to your gateway to verify that the URL is reachable, the TLS certificate is valid, and the access token is accepted. It fetches reference coverage data and returns it alongside an `ok: true` field on success.
@@ -76,13 +125,13 @@ praxa doctor [--base-url <url>]
 
 | Flag | Description |
 |---|---|
-| `--base-url <url>` | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+| `--base-url <url>` | Gateway HTTPS URL. Overrides environment variables and `.praxa/config.json`. |
 
 **Environment variables**
 
 | Variable | Description |
 |---|---|
-| `PRAXA_BASE_URL` | Gateway HTTPS URL (required if `--base-url` is not provided) |
+| `PRAXA_BASE_URL` | Gateway HTTPS URL; overrides `.praxa/config.json` when no flag is present |
 | `PRAXA_ACCESS_TOKEN` | Short-lived delegated OAuth token (required) |
 
 **Example**
@@ -114,7 +163,7 @@ praxa mission submit --intent <text> --idempotency-key <key> [--base-url <url>]
 |---|---|---|
 | `--intent <text>` | Yes | Natural-language intent between 1 and 4,000 characters |
 | `--idempotency-key <key>` | Yes | A stable 16–128 character key for this logical submission |
-| `--base-url <url>` | No | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+| `--base-url <url>` | No | Gateway HTTPS URL. Overrides environment variables and `.praxa/config.json`. |
 
 ```bash
 praxa mission submit \
@@ -139,13 +188,13 @@ praxa mission get --run-id <uuid> [--base-url <url>]
 | Flag | Required | Description |
 |---|---|---|
 | `--run-id <uuid>` | Yes | The UUID of the mission run to retrieve |
-| `--base-url <url>` | No | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+| `--base-url <url>` | No | Gateway HTTPS URL. Overrides environment variables and `.praxa/config.json`. |
 
 **Environment variables**
 
 | Variable | Description |
 |---|---|
-| `PRAXA_BASE_URL` | Gateway HTTPS URL (required if `--base-url` is not provided) |
+| `PRAXA_BASE_URL` | Gateway HTTPS URL; overrides `.praxa/config.json` when no flag is present |
 | `PRAXA_ACCESS_TOKEN` | Short-lived delegated OAuth token (required) |
 
 **Example**
@@ -169,7 +218,7 @@ Submits a new mission to the Praxa Integration Gateway by reading a JSON file fr
 **Syntax**
 
 ```bash
-praxa mission create --input <path> --idempotency-key <uuid> [--base-url <url>]
+praxa mission create --input <path> --idempotency-key <key> [--base-url <url>]
 ```
 
 **Flags**
@@ -177,14 +226,14 @@ praxa mission create --input <path> --idempotency-key <uuid> [--base-url <url>]
 | Flag | Required | Description |
 |---|---|---|
 | `--input <path>` | Yes | Path to a JSON file containing the mission payload |
-| `--idempotency-key <uuid>` | Yes | A unique UUID (v4 recommended) to make this request safely retryable |
-| `--base-url <url>` | No | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+| `--idempotency-key <key>` | Yes | One stable 16–128 character key for this logical mission; reuse it for retries |
+| `--base-url <url>` | No | Gateway HTTPS URL. Overrides environment variables and `.praxa/config.json`. |
 
 **Environment variables**
 
 | Variable | Description |
 |---|---|
-| `PRAXA_BASE_URL` | Gateway HTTPS URL (required if `--base-url` is not provided) |
+| `PRAXA_BASE_URL` | Gateway HTTPS URL; overrides `.praxa/config.json` when no flag is present |
 | `PRAXA_ACCESS_TOKEN` | Short-lived delegated OAuth token (required) |
 
 **Mission file format**
@@ -225,7 +274,7 @@ echo "Mission started: $RUN_ID"
 
 ## `praxa mission cancel`
 
-Requests durable cancellation of a running mission. The reason string is recorded in the mission audit log. You must provide a unique idempotency key so the cancellation request is safely retryable in the event of a network failure.
+Requests durable cancellation of a running mission. The reason string is recorded in the mission audit log. Create one stable idempotency key for this logical cancellation and reuse it if a network failure requires a retry.
 
 **Syntax**
 
@@ -233,7 +282,7 @@ Requests durable cancellation of a running mission. The reason string is recorde
 praxa mission cancel \
   --run-id <uuid> \
   --reason <text> \
-  --idempotency-key <uuid> \
+  --idempotency-key <key> \
   [--base-url <url>]
 ```
 
@@ -243,14 +292,14 @@ praxa mission cancel \
 |---|---|---|
 | `--run-id <uuid>` | Yes | The UUID of the mission run to cancel |
 | `--reason <text>` | Yes | Human-readable cancellation reason recorded in the audit log |
-| `--idempotency-key <uuid>` | Yes | A unique UUID (v4 recommended) to make this request safely retryable |
-| `--base-url <url>` | No | Gateway HTTPS URL. Overrides `PRAXA_BASE_URL` for this invocation. |
+| `--idempotency-key <key>` | Yes | One stable 16–128 character key for this logical cancellation; reuse it for retries |
+| `--base-url <url>` | No | Gateway HTTPS URL. Overrides environment variables and `.praxa/config.json`. |
 
 **Environment variables**
 
 | Variable | Description |
 |---|---|
-| `PRAXA_BASE_URL` | Gateway HTTPS URL (required if `--base-url` is not provided) |
+| `PRAXA_BASE_URL` | Gateway HTTPS URL; overrides `.praxa/config.json` when no flag is present |
 | `PRAXA_ACCESS_TOKEN` | Short-lived delegated OAuth token (required) |
 
 **Example**
@@ -265,9 +314,9 @@ praxa mission cancel \
 ---
 
 <Note>
-All commands write their result as pretty-printed JSON to stdout. This makes it easy to pipe output to `jq` for scripting. Errors are written to stderr and the process exits with code `1`.
+Gateway commands (`doctor` and `mission`), `version`, and memory planning write pretty-printed JSON to stdout, making them easy to pipe to `jq`. Pass `--json` to `praxa init` when you need machine-readable output; help remains human-readable text. Errors are written to stderr and the process exits with code `1`.
 </Note>
 
 <Warning>
-Idempotency keys must be unique UUIDs. Using the same key for two logically different requests (e.g. creating two different missions) causes the gateway to treat the second request as a duplicate and return the cached result of the first. Generate a fresh key per invocation using `$(uuidgen)` or an equivalent UUID v4 generator.
+Idempotency keys must contain 16–128 supported characters and match `^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$`. Create one key per logical mutation and reuse it for every retry of that same mutation. A value from `$(uuidgen)` is valid, but UUIDs are not required. Never reuse a key for a different mutation because the gateway binds the key to the original request.
 </Warning>

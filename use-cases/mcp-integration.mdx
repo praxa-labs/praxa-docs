@@ -1,7 +1,7 @@
 ---
 title: "Integrate Praxa Capabilities with MCP-Compatible Agents"
 sidebarTitle: "MCP Integration"
-description: "Add Praxa to any MCP-compatible agent with @praxa/mcp-contracts. Get typed tool definitions, input schemas, and OAuth scopes for all 12 Praxa operations."
+description: "Add Praxa to any MCP-compatible agent with @praxa/mcp-contracts. Get typed definitions, schemas, and scopes for all 12 tools in the Praxa MCP surface."
 ---
 
 Praxa ships first-class MCP (Model Context Protocol) 2025-11-25 support, with negotiated 2025-03-26 compatibility, via the `@praxa/mcp-contracts` package. The package exports the full set of typed tool definitions — names, input schemas, required scopes, and HTTP operation metadata — so you can register Praxa capabilities with any MCP-compatible server or agent framework in a few lines of code, without having to hand-craft JSON Schema or maintain route mappings yourself.
@@ -24,28 +24,29 @@ The package has no runtime dependencies and is safe to import in both Node.js an
 
 ## Available MCP Tools
 
-`PRAXA_MCP_TOOLS` exports an array of 12 tool definitions covering the full Praxa Integration Gateway surface. The table below lists each tool, the operation it maps to, and the OAuth scope your access token must carry for the call to be authorised.
+`PRAXA_MCP_TOOLS` exports all 12 definitions in the Praxa MCP tool surface. The wider Integration Gateway also includes transport operations that are not MCP tools. The table below lists each MCP tool, the operation it maps to, and the OAuth scope your access token must carry for the call to be authorised.
 
 | Tool name | Operation | Required scope |
 |---|---|---|
-| `praxa_submit_intent` | Record natural-language intent for deterministic compilation | `missions:write` |
-| `praxa_create_mission` | Submit a new agent mission | `missions:write` |
-| `praxa_get_mission` | Read a mission projection by `runId` | `missions:read` |
-| `praxa_signal_mission` | Send a named signal to a running mission | `missions:write` |
-| `praxa_cancel_mission` | Request durable mission cancellation | `missions:write` |
-| `praxa_search_capabilities` | Search policy-eligible capability manifests | `capabilities:read` |
-| `praxa_query_memory` | Query purpose-filtered memory | `memory:read` |
-| `praxa_get_skill` | Read a versioned governed skill | `skills:read` |
-| `praxa_get_trace` | Read a redacted causal trace | `traces:read` |
-| `praxa_list_goals` | List context-twin goals | `context:read` |
-| `praxa_list_world_certificates` | List signed model capability certificates | `world:read` |
-| `praxa_get_coverage` | Read reference coverage evidence | `coverage:read` |
+| `aura_submit_intent` | Record natural-language intent for deterministic compilation | `missions:write` |
+| `aura_create_mission` | Submit a new agent mission | `missions:write` |
+| `aura_get_mission` | Read a mission projection by `runId` | `missions:read` |
+| `aura_signal_mission` | Send a named signal to a running mission | `missions:write` |
+| `aura_cancel_mission` | Request durable mission cancellation | `missions:write` |
+| `aura_search_capabilities` | Search policy-eligible capability manifests | `capabilities:read` |
+| `aura_query_memory` | Query purpose-filtered memory | `memory:read` |
+| `aura_get_skill` | Read a versioned governed skill | `skills:read` |
+| `aura_get_trace` | Read a redacted causal trace | `traces:read` |
+| `aura_list_goals` | List context-twin goals | `context:read` |
+| `aura_list_world_certificates` | List signed model capability certificates | `world:read` |
+| `aura_get_coverage` | Read reference coverage evidence | `coverage:read` |
 
 Each entry in the array also carries `inputSchema` (a JSON Schema object), `operationId`, `method`, `path`, `idempotency`, and an optional `pathArgument` field that names the input key to interpolate into the URL path.
 
 ## Registering Tools with Your MCP Server
 
-Pass `PRAXA_MCP_TOOLS` directly to your server's tool registration loop. The `inputSchema` field on each tool is a ready-to-use JSON Schema object — most MCP server libraries accept this directly.
+Use `PRAXA_MCP_TOOLS` as the source for your server's registration loop. Each `inputSchema` is raw
+JSON Schema draft 2020-12; convert it through the adapter required by your chosen MCP server library.
 
 ```typescript
 import { PRAXA_MCP_TOOLS, MCP_PROTOCOL_VERSION } from "@praxa/mcp-contracts";
@@ -56,9 +57,14 @@ const praxaClient = new PraxaClient({
   accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
 });
 
-// Register all Praxa tools with your MCP server
+// Framework-neutral pseudocode: adapt raw JSON Schema to your MCP host API.
 for (const tool of PRAXA_MCP_TOOLS) {
-  mcpServer.registerTool(tool.name, tool.inputSchema, async (args) => {
+  mcpHost.registerJsonSchemaTool({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: tool.annotations,
+  }, async (args) => {
     // Route to PraxaClient based on operationId
     switch (tool.operationId) {
       case "submitIntent":
@@ -97,6 +103,10 @@ for (const tool of PRAXA_MCP_TOOLS) {
 console.log(`Registered ${PRAXA_MCP_TOOLS.length} Praxa tools (MCP ${MCP_PROTOCOL_VERSION})`);
 ```
 
+The registration loop is framework-neutral pseudocode because MCP server libraries accept raw
+JSON Schema through different adapters. Preserve `tool.annotations` when converting the schema so
+read-only, destructive, idempotent, and open-world hints reach the host.
+
 <Tip>
   You can narrow which tools you expose by filtering the array before iterating.
   For example, to register only read-only tools in a restricted context:
@@ -115,7 +125,7 @@ Use `praxaMcpTool()` to retrieve the definition for a single tool by name. This 
 ```typescript
 import { praxaMcpTool } from "@praxa/mcp-contracts";
 
-const createMissionTool = praxaMcpTool("praxa_create_mission");
+const createMissionTool = praxaMcpTool("aura_create_mission");
 
 if (createMissionTool) {
   console.log("Tool name:", createMissionTool.name);
@@ -129,25 +139,26 @@ if (createMissionTool) {
 
 ## Protocol Version
 
-The package exports two constants that identify the MCP server:
+The package exports protocol revisions separately from the server wire name and software version:
 
 ```typescript
 import {
   MCP_LEGACY_PROTOCOL_VERSION,
   MCP_PROTOCOL_VERSION,
   MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
 } from "@praxa/mcp-contracts";
 
 console.log(MCP_PROTOCOL_VERSION);        // "2025-11-25"
 console.log(MCP_LEGACY_PROTOCOL_VERSION); // "2025-03-26"
-console.log(MCP_SERVER_NAME);             // "praxa-agent-os"
+console.log(MCP_SERVER_NAME);             // "aura-agent-os"
+console.log(MCP_SERVER_VERSION);          // "0.3.0"
 ```
 
 Pass `MCP_PROTOCOL_VERSION` to your server's handshake or capability advertisement to prefer MCP 2025-11-25. Negotiate `MCP_LEGACY_PROTOCOL_VERSION` only for a 2025-03-26 client. Use `MCP_SERVER_NAME` when configuring client discovery or logging so that your server identifies itself consistently.
 
 <Note>
-  `MCP_SERVER_NAME` (`"praxa-agent-os"`) is the stable identifier the Praxa
-  gateway uses on the MCP protocol layer. Always reference this constant rather
-  than hard-coding the string, so your integration automatically picks up any
-  future updates.
+  The package and TypeScript exports use Praxa branding, but the stable wire
+  identifiers remain Aura-compatible: `MCP_SERVER_NAME` is `"aura-agent-os"`
+  and tool names use `aura_*`. Always register the exported values unchanged.
 </Note>

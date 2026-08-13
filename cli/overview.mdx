@@ -4,7 +4,7 @@ sidebarTitle: "Overview"
 description: "@praxa/cli submits, inspects, and cancels Praxa missions from the terminal. Install globally or run on demand with npx — no provider credentials needed."
 ---
 
-`@praxa/cli` is a thin command-line adapter over `@praxa/sdk` that lets you submit, inspect, and cancel Praxa missions directly from your terminal. The CLI never stores provider credentials or calls AI providers directly — it communicates exclusively with your Praxa Integration Gateway over HTTPS using a short-lived OAuth token that you supply.
+`@praxa/cli` is a thin command-line adapter over `@praxa/sdk`. It submits, inspects, and cancels Praxa missions through your Integration Gateway, and it can plan read-only memory federation metadata locally. The CLI never stores provider credentials or calls AI providers directly.
 
 ## Installation
 
@@ -13,19 +13,19 @@ Install the CLI globally to make the `praxa` binary available everywhere on your
 ```bash
 npm install --global @praxa/cli
 # or use without installing
-npx @praxa/cli mission submit --intent "Prepare a governed deployment plan" --idempotency-key $(uuidgen)
+npx --package=@praxa/cli@0.3.0 praxa mission submit --intent "Prepare a governed deployment plan" --idempotency-key $(uuidgen)
 ```
 
 ## Configuration
 
-Every command except `praxa version` requires two pieces of configuration: the URL of your Praxa Integration Gateway and a valid OAuth access token. You can provide both as environment variables, which is the recommended approach for scripts and CI pipelines.
+Gateway commands (`praxa doctor` and `praxa mission …`) require the URL of your Praxa Integration Gateway and a valid OAuth access token. The gateway URL resolves in this order: `--base-url`, `PRAXA_BASE_URL` (or the legacy `AURA_BASE_URL`), then `.praxa/config.json` in the current project. `praxa version`, `praxa init`, and the local `praxa memory` planning commands do not require a gateway connection or provider credential.
 
-| Variable | Required | Description |
+| Variable | Required for gateway commands | Description |
 |---|---|---|
-| `PRAXA_BASE_URL` | Yes (or `--base-url`) | The HTTPS base URL of your Praxa Integration Gateway, e.g. `https://api.example.com` |
+| `PRAXA_BASE_URL` | When no flag or project config supplies it | The HTTPS base URL of your Praxa Integration Gateway, e.g. `https://api.example.com` |
 | `PRAXA_ACCESS_TOKEN` | Yes | A short-lived delegated OAuth token scoped to the operations you need |
 
-The `--base-url` flag overrides `PRAXA_BASE_URL` for a single invocation, which is useful when targeting a staging gateway without changing your environment.
+The `--base-url` flag overrides the environment and `.praxa/config.json` for one invocation. An environment URL overrides project config. This is useful when targeting a staging gateway without changing the initialized project.
 
 <Note>
 The CLI validates that `PRAXA_BASE_URL` (and `--base-url`) use the `https:` protocol and contain no embedded credentials. Plain HTTP URLs and `https://user:pass@…` URLs are rejected at startup.
@@ -47,15 +47,17 @@ Never place a provider API key in `PRAXA_BASE_URL` or `PRAXA_ACCESS_TOKEN`. Thes
 
 | Command | Description |
 |---|---|
-| `praxa version` | Prints SDK, OpenAPI spec, and contract version info — no network call required |
+| `praxa version` | Prints CLI, OpenAPI spec, and contract version info — no network call required |
 | `praxa init` | Configures a project-scoped client without writing an access token |
+| `praxa memory source add <provider> --mode federated [--dry-run]` | Previews or writes read-only local source metadata |
+| `praxa memory sync plan --dry-run` | Inspects a non-executable local federation plan |
 | `praxa doctor` | Performs an authenticated read-only health check against your gateway |
 | `praxa mission submit` | Records natural-language intent for deterministic compilation |
 | `praxa mission get` | Fetches a mission by its run ID |
 | `praxa mission create` | Submits a new mission from a JSON file |
 | `praxa mission cancel` | Cancels a running mission |
 
-All commands write JSON to stdout, making it straightforward to pipe output to `jq` or other tools.
+Gateway commands (`doctor` and `mission`), `version`, and memory planning write JSON to stdout. `praxa init` writes human-readable output unless you pass `--json`, and help output is text. Memory planning implements no provider connection, synchronization, import, mirror, or cutover operation.
 
 <CardGroup cols={2}>
   <Card title="Command Reference" icon="terminal" href="/cli/commands">

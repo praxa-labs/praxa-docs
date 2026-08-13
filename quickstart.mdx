@@ -76,7 +76,7 @@ This guide walks you through installing `@praxa/sdk`, configuring your connectio
     }
     ```
 
-    The second argument to `createMission` is your **idempotency key** — a stable UUID that ensures retrying the call never creates a duplicate mission. `crypto.randomUUID()` generates a fresh key each run; in production, generate and persist this key before the call so retries are safe.
+    The second argument to `createMission` is your **idempotency key** — a stable 16–128 character key that prevents a retry from creating a duplicate mission. `crypto.randomUUID()` produces a valid value. Generate and persist one key before each new logical mission, then reuse that same value for every retry of that mission.
 
     The `resourceBudget` fields cap what the mission may consume:
 

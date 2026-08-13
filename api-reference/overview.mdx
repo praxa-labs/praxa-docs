@@ -4,7 +4,7 @@ sidebarTitle: "Overview"
 description: "The Praxa Integration Gateway REST API v8.1.0 lets you submit and manage governed AI agent missions. All 15 operations require scoped OAuth Bearer tokens."
 ---
 
-The Praxa Integration Gateway exposes a REST API at version 8.1.0 (contract: `praxa-integration-gateway-v8.1`) for submitting and managing governed AI agent missions. Models, SDKs, CLIs, and MCP tools grant no action authority of their own — all effects are governed by the platform's policy and consent controls. This reference covers all 15 operations available in v8.1.0.
+The Praxa Integration Gateway exposes a REST API at version 8.1.0. Its stable wire contract remains `aura-integration-gateway-v8.1` for compatibility, including through Praxa-named SDK exports. Models, SDKs, CLIs, and MCP tools grant no action authority of their own — all effects are governed by the platform's policy and consent controls. This reference covers all 15 operations available in v8.1.0.
 
 ## Base URL
 
@@ -26,7 +26,7 @@ Every request must use HTTPS. HTTP origins are rejected by the gateway.
 The current API version is **v8.1.0**, accessible under the `/v8/` path prefix. All v8 paths share a single wire-compatibility contract that is identified by the following header, which the server includes in every response:
 
 ```
-x-praxa-contract-version: praxa-integration-gateway-v8.1
+x-aura-contract-version: aura-integration-gateway-v8.1
 ```
 
 You can use this header to confirm that the gateway you are talking to is

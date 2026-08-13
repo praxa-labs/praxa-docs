@@ -4,7 +4,7 @@ sidebarTitle: "Home"
 description: "Praxa lets you submit and observe AI agent missions without holding provider credentials. Get started with the TypeScript SDK or CLI."
 ---
 
-Praxa is an agentic mission platform that lets your application submit and observe governed AI agent missions through the Praxa Integration Gateway — without ever holding provider API keys in your code. You define a goal and a resource budget; Praxa handles execution, consent, and scope enforcement entirely server-side. Whether you integrate through the TypeScript SDK, the CLI, or MCP contracts, your application never touches provider credentials.
+Praxa is an agentic mission platform that lets your application submit and observe governed AI agent missions through the Praxa Integration Gateway — without ever holding provider API keys in your mission-integration code. You define a goal and a resource budget; Praxa handles execution, consent, and scope enforcement entirely server-side. This credential boundary applies to Gateway mission integrations through the TypeScript SDK, CLI, and MCP contracts. The optional [memory-federation SDK](/memory-federation/sdk) is credential-blind itself, but runs against provider clients that your backend creates and owns.
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
