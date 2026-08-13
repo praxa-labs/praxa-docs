@@ -43,8 +43,8 @@
           },
           {
             "group": "Memory Federation",
+            "root": "memory-federation/overview",
             "pages": [
-              "memory-federation/overview",
               "memory-federation/concepts",
               "memory-federation/security",
               "memory-federation/sdk",
@@ -63,8 +63,8 @@
           },
           {
             "group": "SDK",
+            "root": "sdk/overview",
             "pages": [
-              "sdk/overview",
               "sdk/framework-integrations",
               "sdk/praxaclient",
               "sdk/mission-events",
@@ -73,22 +73,22 @@
           },
           {
             "group": "CLI",
+            "root": "cli/overview",
             "pages": [
-              "cli/overview",
               "cli/commands"
             ]
           },
           {
             "group": "MCP Contracts",
+            "root": "mcp/overview",
             "pages": [
-              "mcp/overview",
               "mcp/tools"
             ]
           },
           {
             "group": "Benchmarks & Research",
+            "root": "benchmarks/overview",
             "pages": [
-              "benchmarks/overview",
               "benchmarks/performance"
             ]
           }
@@ -99,8 +99,8 @@
         "groups": [
           {
             "group": "Overview",
+            "root": "api-reference/overview",
             "pages": [
-              "api-reference/overview",
               "api-reference/authentication",
               "api-reference/errors"
             ]
@@ -145,11 +145,16 @@
         "groups": [
           {
             "group": "Overview",
+            "root": "fabric/index",
             "pages": [
-              "fabric/index",
-              "fabric/getting-started/overview",
-              "fabric/getting-started/concepts",
-              "fabric/getting-started/quickstart"
+              {
+                "group": "Getting started",
+                "root": "fabric/getting-started/overview",
+                "pages": [
+                  "fabric/getting-started/concepts",
+                  "fabric/getting-started/quickstart"
+                ]
+              }
             ]
           },
           {
@@ -206,8 +211,8 @@
           },
           {
             "group": "Use cases",
+            "root": "fabric/use-cases/overview",
             "pages": [
-              "fabric/use-cases/overview",
               "fabric/use-cases/agent-builders",
               "fabric/use-cases/coding-and-desktop",
               "fabric/use-cases/business-workflows"
