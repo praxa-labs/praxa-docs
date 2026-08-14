@@ -17,6 +17,7 @@ function collectPages(value, output = []) {
 }
 
 function canonicalPagePath(page) {
+  if (page === "index") return "";
   return page.endsWith("/index") ? page.slice(0, -"/index".length) : page;
 }
 
@@ -53,7 +54,8 @@ for (const page of pages) {
   const markdownUrl = `${origin}/${page}.md`;
   if (!index.body.includes(markdownUrl)) throw new Error(`/llms.txt is missing ${markdownUrl}`);
   if (!full.body.includes(`Source: ${origin}/${page}`)) throw new Error(`/llms-full.txt is missing ${page}`);
-  const sitemapUrl = `${origin}/${canonicalPagePath(page)}`;
+  const canonicalPath = canonicalPagePath(page);
+  const sitemapUrl = canonicalPath ? `${origin}/${canonicalPath}` : origin;
   if (!sitemap.body.includes(`<loc>${sitemapUrl}</loc>`)) throw new Error(`/sitemap.xml is missing ${sitemapUrl}`);
 }
 
