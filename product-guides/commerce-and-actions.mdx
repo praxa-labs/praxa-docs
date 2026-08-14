@@ -1,0 +1,39 @@
+---
+title: "Commerce and real-world actions"
+sidebarTitle: "Commerce and real-world actions"
+description: "Research products, meals, travel, and connected-device actions while keeping purchase or control consequences explicit."
+---
+
+{/* Generated from data/public-capabilities.json. Run npm run docs:generate after changing the catalog. */}
+
+
+Research products, meals, travel, and connected-device actions while keeping purchase or control consequences explicit.
+
+<Note>
+Research and preparation do not imply autonomous purchase authority. AgentCard remains beta, and travel booking uses an explicit handoff.
+</Note>
+
+## Provided capabilities
+
+| Capability | Status | Surfaces | Who it helps |
+|---|---|---|---|
+| **AgentCard purchases**<br />Pilot approval-gated purchases through single-use virtual card authority in the supported environment. | Beta | iOS, web | Individual, Business |
+| **Shopping and deals**<br />Research products, compare options, and prepare carts or shopping lists. | Live | iOS, web | Individual, Business |
+| **Food ordering and meal planning**<br />Search menus, plan meals, and use approval-gated handoff for supported ordering flows. | Live | iOS, web | Individual, Business, Team |
+| **Travel planning**<br />Research and compare flights, stays, and itineraries while leaving booking to an explicit handoff. | Live | iOS, web | Individual, Business, Team |
+| **Smart home control**<br />Inspect and control connected SmartThings or Home Assistant devices through supported actions. | Live | iOS, web, voice | Individual |
+
+## Example outcomes
+
+1. **Compare products.** Ask for a criteria-based comparison and inspect the cited price and availability sources.
+2. **Plan a meal.** Build a meal plan and use the supported approval-gated ordering handoff if available.
+3. **Prepare a trip.** Compare itinerary options, then complete booking yourself through the provided handoff.
+4. **Control a device.** Ask for the current smart-home state, then approve the exact supported change.
+
+## Verify the surface
+
+1. Confirm the capability status and listed surface in the [Capability Atlas](/overview/capabilities).
+2. Sign in to the intended Praxa product surface and select the correct personal or organization workspace.
+3. Exercise the example with the smallest safe scope and inspect the visible result or approval card.
+4. Test one unavailable, denied, or disconnected state so the surface fails honestly.
+5. Use a developer tutorial only when this guide links to a supported public developer contract.

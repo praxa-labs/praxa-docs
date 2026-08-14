@@ -1,0 +1,41 @@
+---
+title: "Teams, organizations, and social"
+sidebarTitle: "Teams, organizations, and social"
+description: "Coordinate people and agents across conversations, channels, organizations, billing, and social surfaces."
+---
+
+{/* Generated from data/public-capabilities.json. Run npm run docs:generate after changing the catalog. */}
+
+
+Coordinate people and agents across conversations, channels, organizations, billing, and social surfaces.
+
+<Note>
+Product organization membership and public developer-key tenancy are separate contracts. Do not infer API authority from a product role alone.
+</Note>
+
+## Provided capabilities
+
+| Capability | Status | Surfaces | Who it helps |
+|---|---|---|---|
+| **Multi-user conversations**<br />Invite multiple people and the agent into one governed conversation. | Live | iOS, web | Team, Organization |
+| **Team channels and messaging**<br />Use channel-based team communication with Praxa as a participant. | Live | iOS, web | Team, Organization |
+| **Organizations and RBAC**<br />Manage organization workspaces, membership, and role-based product access. | Live | iOS, web | Business, Team, Organization |
+| **Organization AI spend and usage**<br />View organization-level usage and AI spend on supported product surfaces. | Live | iOS, web | Business, Organization |
+| **Billing, subscriptions, and Sparks**<br />Manage product subscriptions, trials, payment surfaces, and Sparks balances. | Live | iOS, web | Individual, Business, Organization |
+| **Social explore and community**<br />Discover profiles and shared agent content through Praxa's social surfaces. | Live | iOS, web | Individual, Team |
+| **Gamification and streaks**<br />Track streaks, achievements, and leagues tied to product activity. | Live | iOS, web | Individual, Team |
+
+## Example outcomes
+
+1. **Run a multi-user conversation.** Invite participants and verify everyone sees the same scoped conversation and agent output.
+2. **Use a team channel.** Ask Praxa for a channel summary and confirm it only uses content visible to the current member.
+3. **Review organization usage.** Open the organization usage view and verify the selected workspace and reporting period.
+4. **Manage a subscription.** Change a plan through the platform-specific billing surface and confirm the resulting entitlement.
+
+## Verify the surface
+
+1. Confirm the capability status and listed surface in the [Capability Atlas](/overview/capabilities).
+2. Sign in to the intended Praxa product surface and select the correct personal or organization workspace.
+3. Exercise the example with the smallest safe scope and inspect the visible result or approval card.
+4. Test one unavailable, denied, or disconnected state so the surface fails honestly.
+5. Use a developer tutorial only when this guide links to a supported public developer contract.

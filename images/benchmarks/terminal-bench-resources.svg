@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="430" viewBox="0 0 860 430" role="img" aria-labelledby="title desc">
+  <title id="title">Terminal-Bench pilot resource use</title>
+  <desc id="desc">The reliability-layer arm used more input tokens, output tokens, steps, and elapsed time than the baseline arm in this pilot.</desc>
+  <style>
+    .title{font:700 20px ui-sans-serif,system-ui;fill:#171717}.label{font:600 14px ui-sans-serif,system-ui;fill:#262626}.value{font:500 13px ui-monospace,SFMono-Regular,monospace;fill:#525252}.axis{stroke:#d4d4d4}.muted{fill:#a3a3a3}.accent{fill:#007fff}.warning{fill:#f59e0b}.panel{fill:#fafafa;stroke:#e5e5e5}
+    @media (prefers-color-scheme:dark){.title,.label{fill:#f5f5f5}.value{fill:#d4d4d4}.axis{stroke:#404040}.panel{fill:#181818;stroke:#2a2a2a}.muted{fill:#737373}}
+  </style>
+  <rect class="panel" x="1" y="1" width="858" height="428" rx="16"/>
+  <text class="title" x="36" y="42">Resource use by pilot arm</text>
+  <text class="value" x="36" y="68">Bars are normalized within each metric; labels show the measured values.</text>
+  <text class="label" x="36" y="114">Input tokens</text>
+  <text class="value" x="180" y="136">Baseline</text>
+  <rect class="muted" x="320" y="124" width="320.03" height="15" rx="4"/>
+  <text class="value" x="650.03" y="136">1,624,737</text>
+  <text class="value" x="180" y="158">Reliability layer</text>
+  <rect class="accent" x="320" y="146" width="440.00" height="15" rx="4"/>
+  <text class="value" x="770.00" y="158">2,233,805</text>
+  <text class="label" x="36" y="194">Output tokens</text>
+  <text class="value" x="180" y="216">Baseline</text>
+  <rect class="muted" x="320" y="204" width="291.92" height="15" rx="4"/>
+  <text class="value" x="621.92" y="216">34,122</text>
+  <text class="value" x="180" y="238">Reliability layer</text>
+  <rect class="accent" x="320" y="226" width="440.00" height="15" rx="4"/>
+  <text class="value" x="770.00" y="238">51,431</text>
+  <text class="label" x="36" y="274">Agent steps</text>
+  <text class="value" x="180" y="296">Baseline</text>
+  <rect class="muted" x="320" y="284" width="369.72" height="15" rx="4"/>
+  <text class="value" x="699.72" y="296">384</text>
+  <text class="value" x="180" y="318">Reliability layer</text>
+  <rect class="accent" x="320" y="306" width="440.00" height="15" rx="4"/>
+  <text class="value" x="770.00" y="318">457</text>
+  <text class="label" x="36" y="354">Elapsed seconds</text>
+  <text class="value" x="180" y="376">Baseline</text>
+  <rect class="muted" x="320" y="364" width="432.86" height="15" rx="4"/>
+  <text class="value" x="762.86" y="376">1257.8</text>
+  <text class="value" x="180" y="398">Reliability layer</text>
+  <rect class="accent" x="320" y="386" width="440.00" height="15" rx="4"/>
+  <text class="value" x="770.00" y="398">1278.5</text>
+</svg>

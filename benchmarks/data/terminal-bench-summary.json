@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "praxa-docs-terminal-bench-summary-v1",
+  "source": {
+    "release": "preprint-v1.1.0",
+    "artifactRevision": "e7726c8310b18b1e6929007d92986b23db81ea5d",
+    "sourceFile": "paper/data/terminal-bench-pilot.json",
+    "studySourceRevision": "e801af0b44b441ac6c76a752bccf5f03268bfe7e",
+    "aggregateRevision": "db6fdce8522d94f0def2e51dc2be1ec7cfa82713"
+  },
+  "study": {
+    "name": "Praxa reliability-layer Terminal-Bench pilot",
+    "evidenceClass": "tracked_provider_experiment_pilot",
+    "benchmark": "terminal-bench-core==0.1.1",
+    "modelBinding": "vercel_ai_gateway/openai/gpt-4.1-mini",
+    "tasks": 12,
+    "attemptsPerTaskPerArm": 3,
+    "trialsPerArm": 36,
+    "armOrderRandomized": false,
+    "armsInterleaved": false,
+    "buildCacheParity": false
+  },
+  "arms": [
+    {
+      "id": "baseline",
+      "label": "Baseline",
+      "passed": 17,
+      "unresolved": 16,
+      "parseErrors": 3,
+      "total": 36,
+      "accuracyPercent": 47.2,
+      "inputTokens": 1624737,
+      "outputTokens": 34122,
+      "steps": 384,
+      "rollbacks": 0,
+      "verificationRounds": 0,
+      "elapsedSeconds": 1257.764621
+    },
+    {
+      "id": "reliability-layer",
+      "label": "Reliability layer",
+      "passed": 17,
+      "unresolved": 16,
+      "parseErrors": 3,
+      "total": 36,
+      "accuracyPercent": 47.2,
+      "inputTokens": 2233805,
+      "outputTokens": 51431,
+      "steps": 457,
+      "rollbacks": 13,
+      "verificationRounds": 42,
+      "elapsedSeconds": 1278.512403
+    }
+  ],
+  "coverage": {
+    "statements": 68.09,
+    "branches": 62.31,
+    "functions": 75.09,
+    "lines": 70.84,
+    "unitTests": 1027,
+    "workerdTests": 89,
+    "independentlyReproduced": false,
+    "productionStatus": "hold"
+  },
+  "claimBoundary": "This descriptive pilot found equal aggregate trial accuracy with higher token use in the reliability-layer arm. It does not establish superiority, production reliability, or causal benefit."
+}

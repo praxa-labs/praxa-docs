@@ -5,11 +5,8 @@ description: "Verify, persist, deduplicate, and order signed Praxa task-event we
 ---
 
 > **Status:** Production partner preview for admitted personal tenants.
-> Production migration history records the forward-projection migration
-> `20260801092339 platform_task_webhook_projection` and authority migration
-> `20260801092356 platform_webhook_api_authority`. Projection starts with events
-> inserted after the projection migration and does not backfill earlier task
-> events.
+> Projection starts with events created after activation and does not backfill
+> earlier task events.
 
 Webhooks let your server receive durable run progress without holding an SSE
 connection open. Praxa signs every request, retries failed deliveries, and may
@@ -296,14 +293,7 @@ The gateway checks `runs:write`, while the backend requires both `runs:read`
 and `runs:write`. A successful replay returns `202` and the created or
 idempotently reused delivery record.
 
-## Production rollout evidence
-
-The compatible Worker fleet is deployed at exact ref
-`7e347f497e8f56395abc541569c018977287da8f`. Production migration history
-records:
-
-- `20260801092339 platform_task_webhook_projection`;
-- `20260801092356 platform_webhook_api_authority`.
+## Production evidence
 
 A production canary created an endpoint, received a delivery, and verified its
 HMAC over the exact raw body. Retry, dead-letter, eligible replay, and redirect

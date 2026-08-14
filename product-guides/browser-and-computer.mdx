@@ -1,0 +1,37 @@
+---
+title: "Browser and computer automation"
+sidebarTitle: "Browser and computer automation"
+description: "Understand when Praxa can read a page, continue a browser session, or hand control to you for credentials."
+---
+
+{/* Generated from data/public-capabilities.json. Run npm run docs:generate after changing the catalog. */}
+
+
+Understand when Praxa can read a page, continue a browser session, or hand control to you for credentials.
+
+<Note>
+Browser actions remain governed by the current approval and credential boundary. A connected account does not grant every possible provider action.
+</Note>
+
+## Provided capabilities
+
+| Capability | Status | Surfaces | Who it helps |
+|---|---|---|---|
+| **Persistent browser sessions**<br />Keep a governed cloud browser session alive across multiple browser steps. | Live | iOS, web | Individual, Business, Team |
+| **In-chat browser**<br />Use a browser dock inside cloud text chat for explicit browsing and login handoffs. | Live | iOS | Individual |
+| **Credential vault and agent-owned accounts**<br />Complete account sign-in flows without exposing the secret itself to the language model. | Live | iOS | Individual, Business |
+
+## Example outcomes
+
+1. **Continue a browser task.** Ask Praxa to revisit a page in the same conversation and verify the session context is preserved.
+2. **Complete a login handoff.** Take control for credential entry and confirm the model never receives the secret value.
+3. **Approve a browser action.** Inspect the exact target and action before allowing a state-changing browser step.
+4. **Prefer extraction for reading.** Ask for page content and confirm Praxa uses a read path rather than an unnecessary interactive session.
+
+## Verify the surface
+
+1. Confirm the capability status and listed surface in the [Capability Atlas](/overview/capabilities).
+2. Sign in to the intended Praxa product surface and select the correct personal or organization workspace.
+3. Exercise the example with the smallest safe scope and inspect the visible result or approval card.
+4. Test one unavailable, denied, or disconnected state so the surface fails honestly.
+5. Use a developer tutorial only when this guide links to a supported public developer contract.

@@ -4,6 +4,21 @@ sidebarTitle: "Missions"
 description: "A mission is the core unit of work in Praxa: a governed, goal-directed agent task. Learn about mission structure, lifecycle states, and real-time events."
 ---
 
+~~~mermaid
+stateDiagram-v2
+  [*] --> Queued: admitted
+  Queued --> Running
+  Running --> AwaitingApproval
+  AwaitingApproval --> Running: approved
+  AwaitingApproval --> Cancelled: refused or cancelled
+  Running --> Completed
+  Running --> Failed
+  Running --> Cancelled
+  Completed --> [*]
+  Failed --> [*]
+  Cancelled --> [*]
+~~~
+
 A **mission** is the fundamental unit of work in Praxa. When you submit a mission, you hand the Integration Gateway a natural-language goal and a resource budget. The gateway validates your request against policy — checking tenant, principal, consent, purpose, scope, and idempotency — then orchestrates an AI agent to accomplish the goal entirely server-side. You never embed provider API keys in your code; Praxa's authority and execution plane handles all credential management on your behalf.
 
 ## Mission Structure

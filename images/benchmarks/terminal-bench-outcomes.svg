@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="330" viewBox="0 0 860 330" role="img" aria-labelledby="title desc">
+  <title id="title">Terminal-Bench pilot outcomes</title>
+  <desc id="desc">Both baseline and reliability-layer arms had 17 resolved trials, 16 scored unresolved trials, and 3 scorer-null parse errors out of 36 trials.</desc>
+  <style>
+    .title{font:700 20px ui-sans-serif,system-ui;fill:#171717}.label{font:600 14px ui-sans-serif,system-ui;fill:#262626}.value{font:500 13px ui-monospace,SFMono-Regular,monospace;fill:#525252}.axis{stroke:#d4d4d4}.muted{fill:#a3a3a3}.accent{fill:#007fff}.warning{fill:#f59e0b}.panel{fill:#fafafa;stroke:#e5e5e5}
+    @media (prefers-color-scheme:dark){.title,.label{fill:#f5f5f5}.value{fill:#d4d4d4}.axis{stroke:#404040}.panel{fill:#181818;stroke:#2a2a2a}.muted{fill:#737373}}
+  </style>
+  <rect class="panel" x="1" y="1" width="858" height="328" rx="16"/>
+  <text class="title" x="36" y="42">Terminal-Bench pilot outcomes</text>
+  <text class="value" x="36" y="68">36 trials per arm · descriptive pilot · no superiority claim</text>
+  <text class="label" x="36" y="133">Baseline</text>
+  <rect class="accent" x="175" y="112" width="283.33" height="34" rx="5"/>
+  <rect class="muted" x="458.33" y="112" width="266.67" height="34"/>
+  <rect class="warning" x="725.00" y="112" width="50.00" height="34" rx="5"/>
+  <text class="value" x="175" y="168">17 resolved · 16 unresolved · 3 scorer-null parse errors</text>
+  <text class="label" x="36" y="225">Reliability layer</text>
+  <rect class="accent" x="175" y="204" width="283.33" height="34" rx="5"/>
+  <rect class="muted" x="458.33" y="204" width="266.67" height="34"/>
+  <rect class="warning" x="725.00" y="204" width="50.00" height="34" rx="5"/>
+  <text class="value" x="175" y="260">17 resolved · 16 unresolved · 3 scorer-null parse errors</text>
+  <rect class="accent" x="36" y="292" width="14" height="14" rx="2"/><text class="value" x="57" y="304">Resolved</text>
+  <rect class="muted" x="162" y="292" width="14" height="14" rx="2"/><text class="value" x="183" y="304">Scored unresolved</text>
+  <rect class="warning" x="350" y="292" width="14" height="14" rx="2"/><text class="value" x="371" y="304">Scorer-null parse error</text>
+</svg>

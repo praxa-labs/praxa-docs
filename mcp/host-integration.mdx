@@ -1,0 +1,60 @@
+---
+title: "Integrate an MCP host"
+sidebarTitle: "Host integration"
+description: "Register Praxa MCP contracts in an agent host while preserving wire names, annotations, JSON Schema, OAuth scopes, and runtime authority."
+---
+
+~~~mermaid
+sequenceDiagram
+  participant Agent as Agent host
+  participant Contracts as @praxa/mcp-contracts
+  participant Gateway as Integration Gateway
+  Agent->>Contracts: Load 12 tool definitions
+  Contracts-->>Agent: Aura-compatible names, schemas, annotations, scopes
+  Agent->>Agent: Adapt raw JSON Schema to host API
+  Agent->>Gateway: Execute selected route with delegated OAuth token
+  Gateway-->>Agent: Governed result or typed error
+~~~
+
+## Inspect the published contracts
+
+~~~typescript
+import {
+  MCP_PROTOCOL_VERSION,
+  MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
+  PRAXA_MCP_TOOLS,
+} from "@praxa/mcp-contracts";
+
+console.log({
+  protocol: MCP_PROTOCOL_VERSION,
+  server: MCP_SERVER_NAME,
+  serverVersion: MCP_SERVER_VERSION,
+  tools: PRAXA_MCP_TOOLS.map((tool) => ({
+    name: tool.name,
+    scope: tool.requiredScope,
+    annotations: tool.annotations,
+  })),
+});
+~~~
+
+## Register with your host
+
+Host SDKs use different registration APIs and JSON Schema adapters. The
+following is intentionally framework-neutral:
+
+~~~typescript
+for (const tool of PRAXA_MCP_TOOLS) {
+  host.register({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: adaptDraft202012SchemaForHost(tool.inputSchema),
+    annotations: tool.annotations,
+    execute: async (input) =>
+      callGatewayRoute(tool.method, tool.path, input, delegatedToken),
+  });
+}
+~~~
+
+Do not rename the <code>aura_*</code> tool identifiers. They are stable wire
+values even when the host displays Praxa branding.

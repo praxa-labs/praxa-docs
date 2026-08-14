@@ -32,6 +32,44 @@ repository contains reviewed, redacted methods and publication artifacts.
   cost, or provider-effect benchmark has been published.
 </Warning>
 
+## Results at a glance
+
+<Frame caption="Terminal-Bench pilot outcomes across 36 trials per arm">
+  <img
+    src="/images/benchmarks/terminal-bench-outcomes.svg"
+    alt="Stacked bars showing 17 passed, 16 unresolved, and 3 parse-error trials in both the baseline and reliability-oriented arms."
+  />
+</Frame>
+
+Both arms produced the same aggregate outcomes:
+
+| Arm | Passed | Unresolved | Parse error | Trial accuracy |
+|---|---:|---:|---:|---:|
+| Baseline | 17 | 16 | 3 | 47.2% |
+| Reliability-oriented | 17 | 16 | 3 | 47.2% |
+
+<Frame caption="Measured pilot resource use; values are descriptive, not production forecasts">
+  <img
+    src="/images/benchmarks/terminal-bench-resources.svg"
+    alt="Grouped bars showing higher input tokens, output tokens, and execution steps for the reliability-oriented pilot arm."
+  />
+</Frame>
+
+| Arm | Input tokens | Output tokens | Steps | Verification rounds | Rollbacks |
+|---|---:|---:|---:|---:|---:|
+| Baseline | 1,624,737 | 34,122 | 384 | 0 | 0 |
+| Reliability-oriented | 2,233,805 | 51,431 | 457 | 42 | 13 |
+
+<Frame caption="Repository-local coverage reported by the preprint artifact">
+  <img
+    src="/images/benchmarks/repository-coverage.svg"
+    alt="Four horizontal bars showing 68.09 percent statement, 62.31 percent branch, 75.09 percent function, and 70.84 percent line coverage."
+  />
+</Frame>
+
+The machine-readable values and claim boundaries are available in
+[the local evidence summary](/benchmarks/data/terminal-bench-summary.json).
+
 ## Evidence available today
 
 The preprint [_From Proposal to Verified Effect: Praxa, an Evidence-Bound
@@ -137,5 +175,16 @@ throughput as deployment-specific measurements, not SDK constants.
   >
     Learn how client configuration can affect latency, retries, streaming, and
     mission fan-out without treating guidance as a measured production result.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card title="Methodology" icon="microscope" href="/benchmarks/methodology">
+    See the sample, controls, exclusions, threats to validity, and comparison
+    requirements.
+  </Card>
+  <Card title="Data and reproduction" icon="table" href="/benchmarks/data-and-reproduction">
+    Inspect the versioned artifacts and reproduce the published charts without
+    turning the pilot into a broader product claim.
   </Card>
 </CardGroup>

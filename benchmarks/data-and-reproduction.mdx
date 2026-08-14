@@ -1,0 +1,62 @@
+---
+title: "Benchmark data and reproduction"
+sidebarTitle: "Data and reproduction"
+description: "Trace the published charts to versioned evidence, regenerate them locally, and preserve the pilot's claim boundary."
+---
+
+The charts in these docs are generated from a checked, machine-readable summary
+of the public <code>preprint-v1.1.0</code> artifacts.
+
+## Trace the evidence
+
+~~~mermaid
+flowchart LR
+  Release["preprint-v1.1.0 release"] --> Raw["Versioned JSON artifacts"]
+  Raw --> Summary["Checked public summary"]
+  Summary --> SVG["Accessible SVG charts"]
+  Summary --> Tables["Adjacent data tables"]
+~~~
+
+| Artifact | Purpose |
+|---|---|
+| [Preprint release](https://github.com/praxa-labs/praxa-benchmarks/releases/tag/preprint-v1.1.0) | Versioned publication boundary |
+| [Paper data directory](https://github.com/praxa-labs/praxa-benchmarks/tree/preprint-v1.1.0/paper/data) | Public evidence inputs |
+| [Local summary](/benchmarks/data/terminal-bench-summary.json) | Values used by this docs build |
+| [Outcomes chart](/images/benchmarks/terminal-bench-outcomes.svg) | Trial-result visualization |
+| [Resource chart](/images/benchmarks/terminal-bench-resources.svg) | Token, step, verification, and rollback comparison |
+| [Coverage chart](/images/benchmarks/repository-coverage.svg) | Repository-local coverage visualization |
+
+## Regenerate the docs artifacts
+
+From the docs repository:
+
+~~~bash
+npm run docs:generate
+npm run docs:generate:check
+npm run docs:verify
+~~~
+
+The check mode fails if a generated product guide, service-status page, or
+benchmark chart differs from its checked data source.
+
+## Reproduce the pilot
+
+Follow the protocol and environment instructions in the public benchmark
+repository. Record:
+
+- exact source and package revisions;
+- model and provider configuration;
+- task and attempt inventory;
+- budgets and stop conditions;
+- environment image and cache state;
+- every exclusion and missing trial;
+- raw outcomes before aggregate calculation.
+
+Do not compare a new run to the published pilot unless the comparison
+conditions are compatible. A reproduction with a different model or environment
+is still useful, but it is a new experiment.
+
+<Warning>
+  Never put provider credentials, customer data, private traces, or secret
+  prompts in a public reproduction artifact.
+</Warning>

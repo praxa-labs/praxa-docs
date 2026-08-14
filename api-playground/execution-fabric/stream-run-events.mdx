@@ -1,0 +1,54 @@
+---
+title: "Stream reconnectable durable-run events"
+sidebarTitle: "Stream reconnectable durable-run events"
+description: "Stream reconnectable durable-run events"
+api: "GET /v1/runs/{id}/events"
+authMethod: "bearer"
+playground: "interactive"
+---
+
+{/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
+
+Stream reconnectable durable-run events
+
+<Info>
+  **Availability:** Production partner preview. **Required scope:** `runs:read`.
+</Info>
+
+Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+
+## Request fields
+
+<ParamField path="id" type="string" required>
+  id path parameter.
+</ParamField>
+
+<ParamField header="Last-Event-ID" type="integer">
+  Resume strictly after this task_run_events sequence.
+</ParamField>
+
+## Successful response
+
+**200** — SSE frames include matching numeric id and payload sequence. Comment heartbeats may appear. During uncertain-outcome reconciliation, the run remains non-terminal and keeps the stream open. A completed, failed, or cancelled run closes it.
+
+<RequestExample>
+~~~bash cURL
+curl --fail-with-body --no-buffer -X GET 'https://api.praxa.io/v1/runs/018f0000-0000-7000-8000-000000000001/events' \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Last-Event-ID: 0"
+~~~
+</RequestExample>
+
+<ResponseExample>
+~~~text 200
+id: 1
+event: run.accepted
+data: {"apiVersion":"v1","run_id":"018f0000-0000-7000-8000-000000000001","sequence":0,"at":"2026-08-13T12:00:00.000Z","type":"run.accepted","replayed":true}
+~~~
+</ResponseExample>
+
+## Verify and recover
+
+- Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
+- For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
+- Revoke the disposable key and remove test data after validation.

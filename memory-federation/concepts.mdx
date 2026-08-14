@@ -8,6 +8,16 @@ Federation normalizes the retrieval envelope, not the meaning of the underlying 
 keeps a provider ID, external record identity, source kind, provenance, timestamps, and provider
 metadata that passed the adapter's bounds.
 
+~~~mermaid
+flowchart LR
+  Hits["Provider-local hits"] --> Normalize["Normalize portable envelope"]
+  Normalize --> Rank["Ordinal reciprocal-rank fusion"]
+  Rank --> Group["Group exact kind and normalized text"]
+  Group --> Preserve["Preserve every source match"]
+  Preserve --> Output["Bounded federated result"]
+  Conflict["Contradictory content"] --> Output
+~~~
+
 ## Compatibility model
 
 | Provider ID | Source model preserved | Published adapter boundary |

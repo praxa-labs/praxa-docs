@@ -1,0 +1,85 @@
+---
+title: "Create a webhook endpoint"
+sidebarTitle: "Create a webhook endpoint"
+description: "Production partner preview. The gateway checks runs:write; the backend reauthorizes both runs:read and runs:write, so the key must carry both scopes. The signing secret is returned only once."
+api: "POST /v1/webhooks"
+authMethod: "bearer"
+playground: "interactive"
+---
+
+{/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
+
+Production partner preview. The gateway checks runs:write; the backend reauthorizes both runs:read and runs:write, so the key must carry both scopes. The signing secret is returned only once.
+
+<Info>
+  **Availability:** Partner preview. **Required scopes:** `runs:write`, `runs:read`.
+</Info>
+
+Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+
+## Request fields
+
+<ParamField body="url" type="string" required>
+  url request field.
+</ParamField>
+
+<ParamField body="event_types" type="array<run.accepted | run.started | run.progress | approval.required | approval.resolved | run.completed | run.failed | run.cancelled>" required>
+  event_types request field.
+</ParamField>
+
+<ParamField body="description" type="string">
+  description request field.
+</ParamField>
+
+## Successful response
+
+**201** — Endpoint metadata and its one-time signing secret.
+
+<ResponseField name="endpoint" type="object" required>
+  endpoint response field.
+</ResponseField>
+
+<ResponseField name="signing_secret" type="string" required>
+  Returned only when the endpoint is created.
+</ResponseField>
+
+<RequestExample>
+~~~bash cURL
+curl --fail-with-body -X POST 'https://api.praxa.io/v1/webhooks' \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data '{
+  "url": "https://events.example.com/webhooks/praxa",
+  "event_types": [
+    "run.completed",
+    "run.failed"
+  ],
+  "description": "Production task outcomes"
+}'
+~~~
+</RequestExample>
+
+<ResponseExample>
+~~~json 201
+{
+  "endpoint": {
+    "apiVersion": "v1",
+    "id": "018f0000-0000-7000-8000-000000000001",
+    "url": "https://example.com/praxa",
+    "event_types": [
+      "run.accepted"
+    ],
+    "status": "active",
+    "createdAt": "2026-08-13T12:00:00.000Z",
+    "updatedAt": "2026-08-13T12:00:00.000Z"
+  },
+  "signing_secret": "example-secret-not-for-production"
+}
+~~~
+</ResponseExample>
+
+## Verify and recover
+
+- Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
+- For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
+- Revoke the disposable key and remove test data after validation.

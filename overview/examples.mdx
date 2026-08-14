@@ -1,0 +1,70 @@
+---
+title: "Runnable examples"
+sidebarTitle: "Examples"
+description: "Clone, run, and test the reference Praxa HTTP, memory-federation, and MCP examples used by this documentation."
+---
+
+The public docs repository includes a dependency-pinned examples workspace.
+Its tests use local fakes, so you can verify request construction and package
+behavior before creating a credential.
+
+## Run the examples
+
+~~~bash
+git clone https://github.com/praxa-labs/praxa-docs.git
+cd praxa-docs
+npm ci
+npm run examples:test
+~~~
+
+The suite verifies:
+
+- stable Execution Fabric idempotency and terminal polling;
+- exact <code>@praxa/sdk/memory</code> import and partial-source behavior;
+- exact <code>@praxa/mcp-contracts</code> protocol, version, annotation, and
+  12-tool surface; and
+- exact <code>@praxa/cli</code> release constants plus write-free memory
+  planning.
+
+## Example inventory
+
+<CardGroup cols={2}>
+  <Card title="Durable task client" icon="play" href="https://github.com/praxa-labs/praxa-docs/tree/main/examples/execution-fabric">
+    Submit and poll a v1 task with stable idempotency and injectable transport
+    tests.
+  </Card>
+  <Card title="Custom memory source" icon="database" href="https://github.com/praxa-labs/praxa-docs/tree/main/examples/memory-federation">
+    Verify provenance-rich recall and explicit partial degradation.
+  </Card>
+  <Card title="MCP contract smoke" icon="plug" href="https://github.com/praxa-labs/praxa-docs/tree/main/examples/mcp">
+    Inspect exact protocol versions, server identity, annotations, and wire
+    names.
+  </Card>
+  <Card title="CLI contract smoke" icon="terminal" href="https://github.com/praxa-labs/praxa-docs/tree/main/examples/cli">
+    Verify release constants and confirm memory planning remains local and
+    write-free.
+  </Card>
+  <Card title="Framework tutorials" icon="code" href="/tutorials/overview">
+    Add the same trust boundary to Next.js, Express, Workers, FastAPI, Vercel
+    AI SDK, OpenAI Agents, or LangGraph.
+  </Card>
+</CardGroup>
+
+## Run a live task
+
+After local tests pass, create a disposable personal key with
+<code>execute:write</code> and <code>runs:read</code>:
+
+~~~bash
+export PRAXA_API_KEY="praxa_sk_<redacted>"
+node examples/execution-fabric/durable-task.mjs \
+  "Summarize this incident and propose a safe next action."
+~~~
+
+The script prints the admitted run and polls to terminal. A live task can
+consume quota; revoke the disposable key after cleanup.
+
+<Note>
+  Local tests prove package and client behavior. The live command proves only
+  the tenant, scope, deployment, and task path you actually exercise.
+</Note>

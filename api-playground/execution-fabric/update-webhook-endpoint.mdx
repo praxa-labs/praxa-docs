@@ -1,0 +1,109 @@
+---
+title: "Update a webhook endpoint"
+sidebarTitle: "Update a webhook endpoint"
+description: "Production partner preview. The gateway checks runs:write; the backend reauthorizes both runs:read and runs:write, so the key must carry both scopes. The strict request must contain at least one field."
+api: "PATCH /v1/webhooks/{endpointId}"
+authMethod: "bearer"
+playground: "interactive"
+---
+
+{/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
+
+Production partner preview. The gateway checks runs:write; the backend reauthorizes both runs:read and runs:write, so the key must carry both scopes. The strict request must contain at least one field.
+
+<Info>
+  **Availability:** Partner preview. **Required scopes:** `runs:write`, `runs:read`.
+</Info>
+
+Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+
+## Request fields
+
+<ParamField path="endpointId" type="string" required>
+  endpointId path parameter.
+</ParamField>
+
+<ParamField body="url" type="string">
+  url request field.
+</ParamField>
+
+<ParamField body="event_types" type="array<run.accepted | run.started | run.progress | approval.required | approval.resolved | run.completed | run.failed | run.cancelled>">
+  event_types request field.
+</ParamField>
+
+<ParamField body="description" type="string | null">
+  description request field.
+</ParamField>
+
+<ParamField body="status" type="active | disabled">
+  status request field.
+</ParamField>
+
+## Successful response
+
+**200** — Updated endpoint metadata.
+
+<ResponseField name="apiVersion" type="v1" required>
+  apiVersion response field.
+</ResponseField>
+
+<ResponseField name="id" type="string" required>
+  id response field.
+</ResponseField>
+
+<ResponseField name="url" type="string" required>
+  url response field.
+</ResponseField>
+
+<ResponseField name="event_types" type="array<run.accepted | run.started | run.progress | approval.required | approval.resolved | run.completed | run.failed | run.cancelled>" required>
+  event_types response field.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  description response field.
+</ResponseField>
+
+<ResponseField name="status" type="active | disabled" required>
+  status response field.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  createdAt response field.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  updatedAt response field.
+</ResponseField>
+
+<RequestExample>
+~~~bash cURL
+curl --fail-with-body -X PATCH 'https://api.praxa.io/v1/webhooks/endpoint-demo-0001' \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data '{
+  "url": "https://example.com/praxa"
+}'
+~~~
+</RequestExample>
+
+<ResponseExample>
+~~~json 200
+{
+  "apiVersion": "v1",
+  "id": "018f0000-0000-7000-8000-000000000001",
+  "url": "https://example.com/praxa",
+  "event_types": [
+    "run.accepted"
+  ],
+  "status": "active",
+  "createdAt": "2026-08-13T12:00:00.000Z",
+  "updatedAt": "2026-08-13T12:00:00.000Z"
+}
+~~~
+</ResponseExample>
+
+## Verify and recover
+
+- Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
+- For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
+- Revoke the disposable key and remove test data after validation.

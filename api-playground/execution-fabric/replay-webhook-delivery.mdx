@@ -1,0 +1,106 @@
+---
+title: "Replay a webhook delivery"
+sidebarTitle: "Replay a webhook delivery"
+description: "Production partner preview. The gateway checks runs:write; the backend reauthorizes both runs:read and runs:write, so the key must carry both scopes. Send an exact empty JSON object."
+api: "POST /v1/webhook-deliveries/{deliveryId}/replay"
+authMethod: "bearer"
+playground: "interactive"
+---
+
+{/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
+
+Production partner preview. The gateway checks runs:write; the backend reauthorizes both runs:read and runs:write, so the key must carry both scopes. Send an exact empty JSON object.
+
+<Info>
+  **Availability:** Partner preview. **Required scopes:** `runs:write`, `runs:read`.
+</Info>
+
+Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+
+## Request fields
+
+<ParamField path="deliveryId" type="string" required>
+  deliveryId path parameter.
+</ParamField>
+
+## Successful response
+
+**202** — The created or idempotently reused replay delivery.
+
+<ResponseField name="apiVersion" type="v1" required>
+  apiVersion response field.
+</ResponseField>
+
+<ResponseField name="id" type="string" required>
+  id response field.
+</ResponseField>
+
+<ResponseField name="endpoint_id" type="string" required>
+  endpoint_id response field.
+</ResponseField>
+
+<ResponseField name="event_type" type="run.accepted | run.started | run.progress | approval.required | approval.resolved | run.completed | run.failed | run.cancelled" required>
+  event_type response field.
+</ResponseField>
+
+<ResponseField name="run_id" type="string">
+  run_id response field.
+</ResponseField>
+
+<ResponseField name="status" type="pending | delivering | succeeded | retrying | dead_letter" required>
+  status response field.
+</ResponseField>
+
+<ResponseField name="attempt_count" type="integer" required>
+  attempt_count response field.
+</ResponseField>
+
+<ResponseField name="response_status" type="integer">
+  response_status response field.
+</ResponseField>
+
+<ResponseField name="next_attempt_at" type="string">
+  next_attempt_at response field.
+</ResponseField>
+
+<ResponseField name="delivered_at" type="string">
+  delivered_at response field.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  createdAt response field.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  updatedAt response field.
+</ResponseField>
+
+<RequestExample>
+~~~bash cURL
+curl --fail-with-body -X POST 'https://api.praxa.io/v1/webhook-deliveries/delivery-demo-0001/replay' \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data '{}'
+~~~
+</RequestExample>
+
+<ResponseExample>
+~~~json 202
+{
+  "apiVersion": "v1",
+  "id": "018f0000-0000-7000-8000-000000000001",
+  "endpoint_id": "endpoint-demo-0001",
+  "event_type": "run.accepted",
+  "status": "pending",
+  "attempt_count": 0,
+  "createdAt": "2026-08-13T12:00:00.000Z",
+  "updatedAt": "2026-08-13T12:00:00.000Z"
+}
+~~~
+</ResponseExample>
+
+## Verify and recover
+
+- Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
+- For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
+- Revoke the disposable key and remove test data after validation.

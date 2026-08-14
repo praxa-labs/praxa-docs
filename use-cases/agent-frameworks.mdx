@@ -1,0 +1,41 @@
+---
+title: "Add Praxa to an agent framework"
+sidebarTitle: "Agent frameworks"
+description: "Use Praxa with Vercel AI SDK, OpenAI Agents, LangGraph, or another tool host without replacing your model or memory system."
+---
+
+Praxa is composable with an existing agent stack. Add only the contract you
+need: governed tools through MCP, executable helpers through the SDK, or
+read-only recall through memory federation.
+
+~~~mermaid
+flowchart TB
+  Host["Your agent framework"] --> Tools["Praxa tools"]
+  Host --> Memory["Existing memory"]
+  Tools --> Gateway["Integration Gateway"]
+  Memory --> Adapter["Praxa read-only adapter"]
+  Adapter --> Context["Provenance-rich recall"]
+  Gateway --> Evidence["Run, event, receipt"]
+~~~
+
+## Framework paths
+
+| Framework | Best starting point | Preserved authority |
+|---|---|---|
+| Vercel AI SDK | [ToolLoopAgent tutorial](/tutorials/vercel-ai-sdk) | Host model loop plus Praxa server policy |
+| OpenAI Agents | [OpenAI Agents tutorial](/tutorials/openai-agents) | Remote MCP and session memory remain separate |
+| LangGraph | [LangGraph tutorial](/tutorials/langgraph) | Long-term store adapted; checkpoints excluded |
+| Any MCP host | [MCP host integration](/mcp/host-integration) | Stable wire names, schemas, annotations, and scopes |
+| Custom memory system | [Memory SDK guide](/sdk/memory) | Caller-owned clients and namespace resolution |
+
+## Migration strategy
+
+Start with federation. Keep provider-owned memory in place, add a read-only
+adapter, test two-tenant and two-subject isolation, and compare results. Move
+data only if a later product requirement justifies migration and deletion is
+covered end to end.
+
+<Warning>
+  A model can request a tool, but it cannot grant itself scope, choose the
+  tenant, approve a consequential action, or declare an effect verified.
+</Warning>

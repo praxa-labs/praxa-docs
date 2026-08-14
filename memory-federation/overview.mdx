@@ -8,12 +8,25 @@ Memory Federation lets your application query existing memory systems through on
 source-labelled interface. It starts with federation so you can evaluate retrieval without moving
 credentials, copying a database, or changing which system is authoritative.
 
+~~~mermaid
+flowchart LR
+  Query["Tenant and subject query"] --> Federation["MemoryFederation"]
+  Federation --> Mem0["Mem0"]
+  Federation --> Graph["LangGraph"]
+  Federation --> Zep["Zep or Graphiti"]
+  Federation --> Other["Letta, OpenAI Agents, custom"]
+  Mem0 --> Merge["Rank, deduplicate, preserve provenance"]
+  Graph --> Merge
+  Zep --> Merge
+  Other --> Merge
+  Merge --> Result["ok, partial, or failed result"]
+~~~
+
 <Warning>
   **Current status:** the `@praxa/sdk/memory` adapters and CLI setup commands are published in
   `@praxa/sdk@0.3.0` and `@praxa/cli@0.3.0`. The hosted
-  `/v1/memory/*` candidate plane is deployed from Praxa AI revision
-  `8bc8705522462c41105917f4f8f97e6f4b69f1c1` and its additive migration is proven live. Every
-  route fails closed at the unauthenticated gateway boundary, but authenticated tenant, scope,
+  `/v1/memory/*` candidate plane is a deployed qualification preview. Every route fails closed
+  at the unauthenticated gateway boundary, but authenticated tenant, scope,
   idempotency, and isolation canaries remain pending.
   The Developer Platform has no provider credential vault or connect, sync, import, mirror, or
   cutover control.

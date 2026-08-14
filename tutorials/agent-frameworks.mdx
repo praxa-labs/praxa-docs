@@ -1,0 +1,47 @@
+---
+title: "Choose an agent-framework integration"
+sidebarTitle: "Agent frameworks"
+description: "Select the Praxa tool, mission, or memory boundary for Vercel AI SDK, OpenAI Agents, LangGraph, MCP hosts, and custom frameworks."
+---
+
+You do not need to replace your existing model loop or memory store. Choose the
+smallest Praxa boundary that adds the missing behavior.
+
+## Choose by responsibility
+
+| Your framework needs | Add | Tutorial |
+|---|---|---|
+| Governed callable operations | Executable SDK tool definitions or remote MCP | [Vercel AI SDK](/tutorials/vercel-ai-sdk) |
+| Remote MCP plus existing session recall | Separate execution and memory lanes | [OpenAI Agents](/tutorials/openai-agents) |
+| Existing cross-thread long-term memory | Read-only BaseStore adapter | [LangGraph](/tutorials/langgraph) |
+| A generic MCP contract | Stable names, schemas, annotations, and scopes | [MCP tools](/tutorials/mcp-tools) |
+| A custom store | <code>MemorySource</code> implementation | [Memory federation](/tutorials/memory-federation) |
+| Budgeted durable orchestration | <code>PraxaClient</code> mission lifecycle | [Mission lifecycle](/tutorials/mission-lifecycle) |
+
+~~~mermaid
+flowchart TD
+  Need{"What is missing?"}
+  Need -->|"governed tools"| MCP["MCP or SDK tools"]
+  Need -->|"durable mission"| Client["PraxaClient"]
+  Need -->|"existing memory recall"| Memory["Memory federation"]
+  MCP --> Verify["Scope plus run or receipt verification"]
+  Client --> Verify
+  Memory --> Recall["Source status plus provenance verification"]
+~~~
+
+## Shared implementation rules
+
+1. Keep model-provider, Praxa, and memory-provider credentials separate.
+2. Resolve tenant and subject from authenticated application context.
+3. Preserve tool names and MCP annotations exactly.
+4. Require approval for consequential operations in the host and at Praxa.
+5. Persist one idempotency key per logical mutation.
+6. Inspect returned run, event, receipt, or source status independently of the
+   model's final text.
+
+## Shared acceptance matrix
+
+Test correct scope, wrong scope, revoked credential, cross-tenant identifier,
+exact retry, changed-body conflict, provider outage, and cleanup. A mocked host
+test proves adaptation; a live authenticated canary proves the deployed
+boundary.

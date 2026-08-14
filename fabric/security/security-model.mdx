@@ -46,8 +46,8 @@ Existing custom-agent deployment keys remain a separate credential family.
 
 ## Webhook boundary
 
-Partner-preview webhook management rechecks tenant and actor in service-role-only
-database functions. Endpoint destinations must be public HTTPS and pass
+Partner-preview webhook management rechecks tenant and actor at the server-owned
+point of effect. Endpoint destinations must be public HTTPS and pass
 SSRF-resistant validation. Signing secrets are generated once, encrypted with
 AES-256-GCM at rest, and returned only by create. Gateway authorization headers
 are removed before private dispatch.

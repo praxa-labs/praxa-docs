@@ -1,0 +1,263 @@
+{
+  "schemaVersion": "praxa-public-capability-catalog-v1",
+  "source": {
+    "productCapabilityAuthority": "praxa-labs/Praxa-AI docs/CAPABILITIES.md",
+    "productCapabilityRevision": "1111badf26037b02379ac490a4cd8f1b09d71517",
+    "packageAuthority": "praxa-labs/praxa v0.3.0",
+    "reviewedAt": "2026-08-14"
+  },
+  "statusDefinitions": {
+    "live": "Available on at least one listed production product surface.",
+    "beta": "Available to an opt-in, cohort, or sandbox with documented limits.",
+    "partner-preview": "Deployed for qualified personal-workspace partners; not a general-availability claim.",
+    "deployment-specific": "Available only through an Integration Gateway operated for your deployment.",
+    "qualification-preview": "Source and deployment exist, but authenticated production qualification is still incomplete."
+  },
+  "developerServices": [
+    {
+      "id": "execution-fabric",
+      "name": "Execution Fabric",
+      "status": "partner-preview",
+      "surface": "REST API and API Playground",
+      "auth": "Personal workspace API key",
+      "summary": "Submit, inspect, stream, and cancel durable tasks through the v1 API.",
+      "overview": "/fabric",
+      "quickstart": "/tutorials/durable-tasks",
+      "reference": "/fabric/api/execute",
+      "playground": "/api-playground/overview"
+    },
+    {
+      "id": "integration-gateway",
+      "name": "Integration Gateway missions",
+      "status": "deployment-specific",
+      "surface": "REST API through the SDK, CLI, or MCP host",
+      "auth": "Short-lived delegated OAuth token",
+      "summary": "Create governed missions with budgets, signals, resumable events, and cancellation.",
+      "overview": "/concepts/missions",
+      "quickstart": "/tutorials/mission-lifecycle",
+      "reference": "/api-reference/overview"
+    },
+    {
+      "id": "typescript-sdk",
+      "name": "TypeScript SDK",
+      "status": "live",
+      "surface": "@praxa/sdk 0.3.0",
+      "auth": "Short-lived delegated OAuth token for Gateway calls",
+      "summary": "Use typed mission, event, capability, trace, skill, and memory contracts from Node.js.",
+      "overview": "/sdk/overview",
+      "quickstart": "/quickstart",
+      "reference": "/sdk/praxaclient"
+    },
+    {
+      "id": "cli",
+      "name": "Praxa CLI",
+      "status": "live",
+      "surface": "@praxa/cli 0.3.0",
+      "auth": "OAuth token for Gateway commands; none for version and local planning",
+      "summary": "Inspect versions, diagnose a Gateway, operate missions, and plan memory sources from a terminal or CI job.",
+      "overview": "/cli/overview",
+      "quickstart": "/cli/recipes",
+      "reference": "/cli/commands"
+    },
+    {
+      "id": "mcp-contracts",
+      "name": "MCP contracts",
+      "status": "live",
+      "surface": "@praxa/mcp-contracts 0.3.0",
+      "auth": "None for contract inspection; delegated OAuth for runtime calls",
+      "summary": "Register 12 stable Aura-compatible wire tools in an MCP-compatible host.",
+      "overview": "/mcp/overview",
+      "quickstart": "/tutorials/mcp-tools",
+      "reference": "/mcp/tools"
+    },
+    {
+      "id": "memory-federation",
+      "name": "Memory federation",
+      "status": "live",
+      "surface": "@praxa/sdk/memory 0.3.0",
+      "auth": "Caller-owned provider clients in your backend",
+      "summary": "Query Mem0, LangGraph, Zep, Graphiti, Letta, OpenAI Agents, and custom sources without migrating first.",
+      "overview": "/memory-federation/overview",
+      "quickstart": "/tutorials/memory-federation",
+      "reference": "/memory-federation/sdk"
+    },
+    {
+      "id": "hosted-memory-candidates",
+      "name": "Hosted memory candidates",
+      "status": "qualification-preview",
+      "surface": "REST API and API Playground",
+      "auth": "Personal workspace API key with memory:read or memory:write",
+      "summary": "Stage portable, subject-scoped candidates for lexical query, export, and content-erasing deletion.",
+      "overview": "/memory-federation/api",
+      "quickstart": "/tutorials/hosted-memory-candidates",
+      "reference": "/memory-federation/api",
+      "playground": "/api-playground/overview"
+    },
+    {
+      "id": "signed-webhooks",
+      "name": "Signed webhooks",
+      "status": "partner-preview",
+      "surface": "Execution Fabric webhook delivery",
+      "auth": "Scoped personal workspace authority plus endpoint signing secret",
+      "summary": "Receive run lifecycle notifications, verify the raw body, and deduplicate retries.",
+      "overview": "/fabric/api/webhooks",
+      "quickstart": "/tutorials/webhooks",
+      "reference": "/fabric/api/webhooks"
+    },
+    {
+      "id": "events-and-observability",
+      "name": "Events, usage, and observability",
+      "status": "partner-preview",
+      "surface": "SSE, run readback, usage API, and webhook receipts",
+      "auth": "Personal workspace API key or deployment-issued OAuth token, depending on surface",
+      "summary": "Reconnect to event streams, inspect terminal state, and reconcile usage without treating admission as completion.",
+      "overview": "/use-cases/monitoring-and-observability",
+      "quickstart": "/tutorials/observability",
+      "reference": "/fabric/api/events"
+    },
+    {
+      "id": "api-playground",
+      "name": "API Playground",
+      "status": "live",
+      "surface": "Interactive documentation",
+      "auth": "A disposable credential that you supply for the selected public contract",
+      "summary": "Build and inspect Execution Fabric and hosted-memory requests directly from the documentation.",
+      "overview": "/api-playground/overview",
+      "quickstart": "/api-playground/overview",
+      "reference": "/api-reference/overview",
+      "playground": "/api-playground/overview"
+    }
+  ],
+  "categories": [
+    {
+      "id": "core-chat",
+      "name": "Core chat and AI pipeline",
+      "guide": "/product-guides/chat-and-models"
+    },
+    {
+      "id": "agent-runtimes",
+      "name": "Agent runtimes and surfaces",
+      "guide": "/product-guides/runtimes-and-surfaces"
+    },
+    {
+      "id": "memory-personalization",
+      "name": "Memory and personalization",
+      "guide": "/product-guides/memory-and-personalization"
+    },
+    {
+      "id": "research-media",
+      "name": "Research, documents, and media",
+      "guide": "/product-guides/research-documents-and-media"
+    },
+    {
+      "id": "browser-computer",
+      "name": "Browser and computer automation",
+      "guide": "/product-guides/browser-and-computer"
+    },
+    {
+      "id": "commerce-actions",
+      "name": "Commerce and real-world actions",
+      "guide": "/product-guides/commerce-and-actions"
+    },
+    {
+      "id": "communication",
+      "name": "Communication and inboxes",
+      "guide": "/product-guides/communication-and-inboxes"
+    },
+    {
+      "id": "automations",
+      "name": "Automations and proactive agent",
+      "guide": "/product-guides/automations-and-plans"
+    },
+    {
+      "id": "custom-agents",
+      "name": "Custom agents and multi-agent",
+      "guide": "/product-guides/custom-and-multi-agent"
+    },
+    {
+      "id": "teams-organizations",
+      "name": "Teams, organizations, and social",
+      "guide": "/product-guides/teams-organizations-and-social"
+    },
+    {
+      "id": "device-context",
+      "name": "Device and context",
+      "guide": "/product-guides/device-and-context"
+    }
+  ],
+  "productCapabilities": [
+    {"id":"multi-model-chat","name":"Multi-model chat","category":"core-chat","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Use one conversation surface across supported frontier models with explicit model selection and thinking controls."},
+    {"id":"automatic-model-routing","name":"Automatic model routing and cost lanes","category":"core-chat","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Route each turn to an appropriate model lane based on the task, latency, and capability needs."},
+    {"id":"extended-thinking","name":"Extended thinking and Adaptive Context","category":"core-chat","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Use visible extended reasoning and bounded contextual preparation for harder requests."},
+    {"id":"attachments-vision","name":"Attachments and vision","category":"core-chat","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Attach images, documents, and files so Praxa can reason over their contents."},
+    {"id":"generative-ui","name":"Generative UI and tool cards","category":"core-chat","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Render tool results as task-specific cards instead of exposing raw provider payloads."},
+    {"id":"adaptive-chat-canvas","name":"Adaptive chat canvas","category":"core-chat","status":"live","surfaces":["iOS","web"],"audiences":["Individual"],"summary":"Present a contextual new-chat home using current personal information when the surface is enabled."},
+    {"id":"runtime-honesty","name":"Runtime capability honesty","category":"core-chat","status":"live","surfaces":["iOS","web","voice","on-device"],"audiences":["Individual","Business","Team"],"summary":"Tell the agent exactly which capabilities are available in the current runtime and device context."},
+    {"id":"latency-caching","name":"Latency fast lane and prompt caching","category":"core-chat","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Reduce time to a useful answer through warm prompt caches and a bounded fast lane."},
+    {"id":"semantic-tool-selection","name":"Semantic tool selection and reranking","category":"core-chat","status":"beta","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Pilot semantic ranking and health-aware selection over a large tool catalog."},
+
+    {"id":"cloud-chat","name":"Cloud chat app","category":"agent-runtimes","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team","Organization"],"summary":"Use Praxa's primary streaming agent surface with the cloud tool catalog."},
+    {"id":"plugins-catalog","name":"Apps, Skills, and Workflows catalog","category":"agent-runtimes","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Discover connected apps, reusable skills, and packaged workflows from one catalog."},
+    {"id":"realtime-voice","name":"Realtime voice mode","category":"agent-runtimes","status":"live","surfaces":["iOS"],"audiences":["Individual"],"summary":"Hold low-latency spoken conversations with the Praxa agent."},
+    {"id":"on-device-model","name":"On-device offline model","category":"agent-runtimes","status":"live","surfaces":["iOS"],"audiences":["Individual"],"summary":"Run private offline turns with Apple Foundation Models on supported devices."},
+    {"id":"imessage-agent","name":"iMessage agent","category":"agent-runtimes","status":"live","surfaces":["iMessage"],"audiences":["Individual"],"summary":"Message Praxa from the iMessage extension and receive agent replies in the conversation."},
+    {"id":"widgets-live-activities","name":"Widgets and Live Activities","category":"agent-runtimes","status":"live","surfaces":["iOS"],"audiences":["Individual"],"summary":"View current Praxa information from home-screen widgets and supported Live Activity surfaces."},
+
+    {"id":"persistent-memory","name":"Persistent agent memory","category":"memory-personalization","status":"live","surfaces":["iOS","web","voice","on-device"],"audiences":["Individual"],"summary":"Retain durable facts, preferences, and context with user-facing correction and deletion controls."},
+    {"id":"goal-task-capture","name":"Goal and task capture","category":"memory-personalization","status":"live","surfaces":["iOS","web"],"audiences":["Individual"],"summary":"Propose explicit goal or task records from cloud chat and keep the owner in control of acceptance."},
+    {"id":"adaptive-persona","name":"Adaptive persona and tone","category":"memory-personalization","status":"live","surfaces":["iOS","web","voice"],"audiences":["Individual"],"summary":"Adapt tone and framing to the person without changing factual or authority boundaries."},
+    {"id":"ahce","name":"Adaptive Human Context Engine","category":"memory-personalization","status":"live","surfaces":["iOS"],"audiences":["Individual"],"summary":"Use consented, bounded context signals to improve situational relevance; this is a Praxa product capability, not a public ingestion API."},
+    {"id":"adaptive-context-transparency","name":"Adaptive Context transparency and correction","category":"memory-personalization","status":"live","surfaces":["iOS","web"],"audiences":["Individual"],"summary":"Show learned rhythm information and let the person correct or abstain from it."},
+    {"id":"proactive-suggestions","name":"Proactive suggestions","category":"memory-personalization","status":"live","surfaces":["iOS"],"audiences":["Individual"],"summary":"Surface consent-gated suggestions that require an explicit tap before any next action."},
+    {"id":"native-onboarding","name":"Native onboarding","category":"memory-personalization","status":"live","surfaces":["iOS"],"audiences":["Individual"],"summary":"Guide a new user through sign-in and initial setup in a compressed native flow."},
+    {"id":"persona-recipes","name":"Persona recipes","category":"memory-personalization","status":"live","surfaces":["iOS","web"],"audiences":["Individual"],"summary":"Apply a prepared persona preset for a recurring role such as meal or trip planning."},
+
+    {"id":"web-search","name":"Web search and live answers","category":"research-media","status":"live","surfaces":["iOS","web","voice"],"audiences":["Individual","Business","Team"],"summary":"Answer current questions using search, news, weather, and other live sources."},
+    {"id":"deep-research","name":"Deep research","category":"research-media","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Run a multi-source research workflow with citations and explicit source handling."},
+    {"id":"web-reading","name":"Web reading and scraping","category":"research-media","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Read a URL into usable content and extract structured information."},
+    {"id":"documents-artifacts","name":"Documents and artifacts","category":"research-media","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Generate downloadable documents, spreadsheets, and other inspectable artifacts."},
+    {"id":"presentations","name":"Presentations and slideshows","category":"research-media","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Generate presentation decks and media slideshows with resolved assets."},
+    {"id":"image-video-generation","name":"Image and video generation","category":"research-media","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Create images and videos from text or image inputs through the supported provider ladder."},
+    {"id":"interactive-apps","name":"Interactive apps and games","category":"research-media","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Generate and publish small interactive web experiences from a conversation."},
+
+    {"id":"persistent-browser","name":"Persistent browser sessions","category":"browser-computer","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Keep a governed cloud browser session alive across multiple browser steps."},
+    {"id":"in-chat-browser","name":"In-chat browser","category":"browser-computer","status":"live","surfaces":["iOS"],"audiences":["Individual"],"summary":"Use a browser dock inside cloud text chat for explicit browsing and login handoffs."},
+    {"id":"credential-vault","name":"Credential vault and agent-owned accounts","category":"browser-computer","status":"live","surfaces":["iOS"],"audiences":["Individual","Business"],"summary":"Complete account sign-in flows without exposing the secret itself to the language model."},
+
+    {"id":"agentcard","name":"AgentCard purchases","category":"commerce-actions","status":"beta","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Pilot approval-gated purchases through single-use virtual card authority in the supported environment."},
+    {"id":"shopping-deals","name":"Shopping and deals","category":"commerce-actions","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Research products, compare options, and prepare carts or shopping lists."},
+    {"id":"food-meal","name":"Food ordering and meal planning","category":"commerce-actions","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Search menus, plan meals, and use approval-gated handoff for supported ordering flows."},
+    {"id":"travel-planning","name":"Travel planning","category":"commerce-actions","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Research and compare flights, stays, and itineraries while leaving booking to an explicit handoff."},
+    {"id":"smart-home","name":"Smart home control","category":"commerce-actions","status":"live","surfaces":["iOS","web","voice"],"audiences":["Individual"],"summary":"Inspect and control connected SmartThings or Home Assistant devices through supported actions."},
+
+    {"id":"agent-email","name":"Agent email","category":"communication","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Use a Praxa-owned email address for agent send-and-receive workflows where account delivery is available."},
+    {"id":"inbox-one","name":"Inbox One","category":"communication","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Triage multiple connected inboxes from one agent-assisted view."},
+    {"id":"agent-hub","name":"Agent Hub","category":"communication","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Inspect agent tasks, execution status, sales items, invoices, and related events."},
+
+    {"id":"scheduled-automations","name":"Scheduled automations","category":"automations","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Create recurring agent jobs such as digests and follow-up workflows."},
+    {"id":"monitors-watches","name":"Monitors and watches","category":"automations","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Watch web pages, prices, or conditions and notify when the condition changes."},
+    {"id":"missions-plans","name":"Missions and plans","category":"automations","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Break a longer goal into an explicit plan with visible steps and bounded execution."},
+    {"id":"plan-feasibility","name":"Plan feasibility","category":"automations","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Check whether a plan fits available time using explicit arithmetic and constraints."},
+    {"id":"daily-briefing","name":"Daily briefing and proactive greeting","category":"automations","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Assemble a day-start view from relevant calendar, task, and follow-up information."},
+    {"id":"push-notifications","name":"Push and smart notifications","category":"automations","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Deliver automation results, monitor triggers, and team activity through configured notifications."},
+
+    {"id":"custom-agent-builder","name":"Custom agent builder","category":"custom-agents","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team","Organization"],"summary":"Create named agents with dedicated instructions, identity, tools, and presentation."},
+    {"id":"specialist-agents","name":"Specialist agents","category":"custom-agents","status":"beta","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Use an eval-gated catalog of domain-specific agents in the available rollout cohort."},
+    {"id":"sub-agent-swarms","name":"Sub-agent swarms","category":"custom-agents","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Fan a task into parallel research or execution perspectives and combine the results."},
+    {"id":"agent-skills","name":"Agent skills","category":"custom-agents","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team","Organization"],"summary":"Apply reusable, shareable skill packs to agent work."},
+    {"id":"agent-identity","name":"Agent identity and domains","category":"custom-agents","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team","Organization"],"summary":"Give agents claimable handles, profiles, and supported public identity surfaces."},
+
+    {"id":"multi-user-conversations","name":"Multi-user conversations","category":"teams-organizations","status":"live","surfaces":["iOS","web"],"audiences":["Team","Organization"],"summary":"Invite multiple people and the agent into one governed conversation."},
+    {"id":"team-channels","name":"Team channels and messaging","category":"teams-organizations","status":"live","surfaces":["iOS","web"],"audiences":["Team","Organization"],"summary":"Use channel-based team communication with Praxa as a participant."},
+    {"id":"organizations-rbac","name":"Organizations and RBAC","category":"teams-organizations","status":"live","surfaces":["iOS","web"],"audiences":["Business","Team","Organization"],"summary":"Manage organization workspaces, membership, and role-based product access."},
+    {"id":"organization-usage","name":"Organization AI spend and usage","category":"teams-organizations","status":"live","surfaces":["iOS","web"],"audiences":["Business","Organization"],"summary":"View organization-level usage and AI spend on supported product surfaces."},
+    {"id":"billing-sparks","name":"Billing, subscriptions, and Sparks","category":"teams-organizations","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Organization"],"summary":"Manage product subscriptions, trials, payment surfaces, and Sparks balances."},
+    {"id":"social-community","name":"Social explore and community","category":"teams-organizations","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Team"],"summary":"Discover profiles and shared agent content through Praxa's social surfaces."},
+    {"id":"gamification","name":"Gamification and streaks","category":"teams-organizations","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Team"],"summary":"Track streaks, achievements, and leagues tied to product activity."},
+
+    {"id":"apple-health","name":"Apple Health","category":"device-context","status":"live","surfaces":["iOS"],"audiences":["Individual"],"summary":"Use authorized HealthKit activity, sleep, workout, and metric data on device."},
+    {"id":"location-maps","name":"Location, maps, and places","category":"device-context","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Use authorized location context for nearby-place search and map results."},
+    {"id":"calendar-agenda","name":"Calendar and agenda","category":"device-context","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business","Team"],"summary":"Read and manage supported calendar events and Praxa agenda items."},
+    {"id":"contacts","name":"Contacts","category":"device-context","status":"live","surfaces":["iOS","web"],"audiences":["Individual","Business"],"summary":"Resolve authorized contact names for drafting and communication workflows, with web degradation where applicable."}
+  ]
+}

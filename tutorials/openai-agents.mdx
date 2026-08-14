@@ -1,0 +1,87 @@
+---
+title: "Use Praxa with OpenAI Agents"
+sidebarTitle: "OpenAI Agents"
+description: "Connect OpenAI Agents to Praxa through remote MCP and federate an existing Agents session without restarting memory."
+---
+
+OpenAI Agents and Praxa integrate at two separate boundaries:
+
+- remote MCP exposes governed Praxa operations to the agent;
+- the read-only memory adapter recalls items from a session your backend owns.
+
+Do not merge these authorities. MCP execution does not grant memory access, and
+session recall does not grant tool execution.
+
+## 1. Connect remote MCP
+
+~~~bash
+npm install @openai/agents @praxa/sdk@0.3.0
+~~~
+
+~~~ts
+import { Agent, hostedMcpTool, run } from "@openai/agents";
+
+const agent = new Agent({
+  name: "Praxa capability reader",
+  instructions: "Use the allowed Praxa tools only for the user's request.",
+  tools: [hostedMcpTool({
+    serverLabel: "praxa",
+    serverUrl: process.env.PRAXA_BASE_URL + "/mcp",
+    authorization: process.env.PRAXA_ACCESS_TOKEN,
+    allowedTools: ["aura_search_capabilities", "aura_get_mission"],
+    requireApproval: "never",
+  })],
+});
+
+const result = await run(agent, "Which capabilities match document review?");
+console.log(result.finalOutput);
+~~~
+
+Use the exact MCP URL and short-lived token issued by your Integration Gateway
+deployment. This first example allowlists only two read-only wire tools. If you
+admit mutation tools, set <code>requireApproval: "always"</code> and implement
+the Agents SDK interruption-and-resume flow before exposing them to a model.
+
+## 2. Federate an existing session
+
+~~~ts
+import {
+  MemoryFederation,
+  createOpenAIAgentsSessionSource,
+} from "@praxa/sdk/memory";
+
+const source = createOpenAIAgentsSessionSource({
+  sessionForNamespace: ({ tenantId, subjectId }) =>
+    sessions.get(tenantId + ":" + subjectId),
+});
+
+const memory = new MemoryFederation({ sources: [source] });
+const recalled = await memory.recall({
+  query: "What context matters for this turn?",
+  namespace: { tenantId: "acme", subjectId: "user-42" },
+  limit: 8,
+});
+~~~
+
+The adapter reads official message items from the resolved session. It does not
+take provider credentials, write to the session, or move the history into Praxa.
+
+## 3. Test both boundaries
+
+| Check | MCP lane | Memory lane |
+|---|---|---|
+| Credential | Short-lived Gateway token | Backend-owned session client |
+| Authorization | Scope and policy at Praxa | Explicit tenant and subject resolver |
+| Write behavior | Defined per tool | Always read-only |
+| Success evidence | Run, event, or receipt | Aggregate and per-source recall status |
+
+Run a negative test with a wrong-scope MCP token and a separate namespace test
+with two session subjects. Require both to fail closed without cross-lane data.
+
+<Card title="OpenAI Agents sessions" icon="arrow-up-right-from-square" href="https://openai.github.io/openai-agents-js/guides/sessions/">
+  Review how the current Agents SDK loads and persists session items.
+</Card>
+
+<Card title="OpenAI Agents MCP" icon="arrow-up-right-from-square" href="https://openai.github.io/openai-agents-js/guides/mcp/">
+  Review hosted MCP tools, allowlists, and human approval in the official SDK guide.
+</Card>

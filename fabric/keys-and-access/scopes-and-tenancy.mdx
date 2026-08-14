@@ -8,6 +8,17 @@ description: "Understand the exact API-key scopes and the current personal-tenan
 > to admitted partner-preview tenants. Organization execution and organization
 > keys are unavailable.
 
+~~~mermaid
+flowchart LR
+  Key["Bearer key"] --> Auth["Authenticate and reauthorize"]
+  Body["Request body"] --> Validate["Validate bounded input"]
+  Auth --> Tenant["Server-derived personal tenant"]
+  Tenant --> Scope["Exact scope check"]
+  Validate --> Effect["Authorized operation"]
+  Scope --> Effect
+  Body -. "cannot choose tenant" .-> Tenant
+~~~
+
 ## Tenant authority
 
 Every public request resolves tenant identity from its bearer key. Request
@@ -57,7 +68,7 @@ accepting a field is not proof the active handler permits it.
 - Unknown and foreign run resources are not projected.
 - Usage includes only immutable public-API-origin evidence for the tenant.
 - Webhook endpoints and deliveries are tenant-bound in both service code and
-  service-role-only database functions.
+  server-owned authorization functions.
 - Plaintext API keys are returned once; authoritative storage keeps a SHA-256
   hash and safe metadata.
 

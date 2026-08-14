@@ -1,0 +1,47 @@
+---
+title: "CLI recipes"
+sidebarTitle: "Recipes"
+description: "Use the Praxa CLI for clean-install verification, Gateway diagnosis, mission operation, and read-only memory planning."
+---
+
+## Verify the public package
+
+~~~bash
+npx --package=@praxa/cli@0.3.0 praxa version
+~~~
+
+The command must report CLI version <code>0.3.0</code>. It does not prove that
+a Gateway is deployed or that your token is valid.
+
+## Diagnose a Gateway
+
+~~~bash
+export PRAXA_BASE_URL="https://gateway.example.com"
+export PRAXA_ACCESS_TOKEN="<short-lived delegated token>"
+npx --package=@praxa/cli@0.3.0 praxa doctor
+~~~
+
+## Submit and inspect a mission
+
+~~~bash
+praxa mission submit \
+  --intent "Prepare a governed deployment plan" \
+  --idempotency-key "deployment-plan-2026-08-14"
+
+praxa mission get --run-id "<run-id>"
+~~~
+
+Reuse the stable key when retrying the same logical submission.
+
+## Plan memory federation locally
+
+~~~bash
+praxa memory source add mem0 \
+  --mode federated \
+  --dry-run
+
+praxa memory sync plan --dry-run
+~~~
+
+The plan stores or previews local metadata only. It does not connect to Mem0,
+import records, mirror data, or execute a cutover.

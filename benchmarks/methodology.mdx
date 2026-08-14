@@ -1,0 +1,81 @@
+---
+title: "Benchmark methodology"
+sidebarTitle: "Methodology"
+description: "Understand the Terminal-Bench pilot design, repository validation lane, threats to validity, and the evidence required for future comparisons."
+---
+
+Praxa publishes repository validation and controlled agent benchmarks as
+different evidence lanes. Neither lane substitutes for production observation.
+
+~~~mermaid
+flowchart LR
+  Source["Pinned source and packages"] --> Validation["Repository validation"]
+  Source --> Pilot["Controlled pilot"]
+  Validation --> Contracts["Contract evidence"]
+  Pilot --> Sample["Sample-specific outcomes"]
+  Contracts -. "does not imply" .-> Production["Production reliability"]
+  Sample -. "does not imply" .-> Superiority["General superiority"]
+~~~
+
+## Repository validation
+
+The published revision reported 1,027 unit tests, 89 Workerd tests, and coverage
+over 363 expected source files. This lane can support claims about the tested
+contracts at that revision. It cannot establish live-provider success, user
+experience, production latency, or general agent performance.
+
+## Terminal-Bench pilot design
+
+| Design element | Published value |
+|---|---|
+| Benchmark | Terminal-Bench Core 0.1.1 |
+| Tasks | 12 curated tasks |
+| Attempts | 3 per task per arm |
+| Trials | 36 per arm |
+| Compared arms | Baseline and reliability-oriented loops |
+| Held constant | Model, base prompt, step limit, wall-clock limit, token budget |
+| Primary reported outcome | Trial accuracy |
+
+The arms were not randomized or interleaved, and build-cache parity was not
+established. Those limitations prevent a causal interpretation of small timing
+or resource differences.
+
+## Threats to validity
+
+<AccordionGroup>
+  <Accordion title="Small and curated sample">
+    Twelve tasks cannot represent every coding, business, browser, or provider
+    workflow. Report results as pilot observations for this sample.
+  </Accordion>
+  <Accordion title="Single model and configuration">
+    The study does not establish behavior across model families, reasoning
+    settings, providers, or prompt variants.
+  </Accordion>
+  <Accordion title="Arm-order and cache effects">
+    Without randomized or interleaved order and cache parity, elapsed-time
+    comparisons may include environmental effects.
+  </Accordion>
+  <Accordion title="Aggregate metadata disagreement">
+    Pass-at-k was omitted because aggregate and raw metadata disagreed for one
+    arm. A metric with unresolved source inconsistency should not be published.
+  </Accordion>
+  <Accordion title="No independent production verifier">
+    The pilot records benchmark outcomes, not independently verified external
+    provider effects in production.
+  </Accordion>
+</AccordionGroup>
+
+## Requirements for a fair comparison
+
+Before comparing two Praxa runs—or Praxa with another harness—match:
+
+1. Task set and sampling procedure.
+2. Model, provider, reasoning settings, and prompt.
+3. Tool availability and environment image.
+4. Step, token, wall-clock, and parallelism budgets.
+5. Attempt count, exclusions, and failure handling.
+6. Cache state and arm-order strategy.
+7. Metric definitions and raw-evidence availability.
+
+If these conditions differ, describe the result as a separate experiment
+rather than a leaderboard comparison.

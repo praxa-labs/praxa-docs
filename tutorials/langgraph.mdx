@@ -1,0 +1,80 @@
+---
+title: "Federate LangGraph long-term memory"
+sidebarTitle: "LangGraph"
+description: "Connect an existing LangGraph BaseStore to Praxa's read-only memory federation while keeping checkpoints and namespaces separate."
+---
+
+LangGraph separates thread checkpoints from cross-thread long-term stores.
+Praxa adapts the long-term <code>BaseStore</code> lane only. It rejects
+checkpoints because execution state is not a portable durable-memory record.
+
+~~~mermaid
+flowchart LR
+  Thread["LangGraph thread"] --> Checkpoint["Checkpointer"]
+  Agent["Agent recall"] --> Store["Long-term BaseStore"]
+  Store --> Adapter["Praxa LangGraph adapter"]
+  Adapter --> Federation["MemoryFederation result"]
+  Checkpoint -. "excluded" .-> Adapter
+~~~
+
+## 1. Keep a tenant-subject namespace
+
+~~~ts
+import { createLangGraphMemorySource } from "@praxa/sdk/memory";
+
+const source = createLangGraphMemorySource({
+  store,
+  mapNamespace: ({ tenantId, subjectId }) => [
+    tenantId,
+    subjectId,
+    "memory",
+  ],
+  kind: "document",
+});
+~~~
+
+The mapper must be derived from authenticated application context. Do not use a
+model-authored namespace or a browser-supplied tenant ID.
+
+## 2. Recall through Praxa
+
+~~~ts
+import { MemoryFederation } from "@praxa/sdk/memory";
+
+const memory = new MemoryFederation({ sources: [source] });
+const result = await memory.recall({
+  query: "What has this user told us about response style?",
+  namespace: {
+    tenantId: "tenant-a",
+    subjectId: "user-42",
+    scope: ["support"],
+  },
+  limit: 10,
+});
+
+if (result.status === "failed") {
+  throw new Error(JSON.stringify(result.sources));
+}
+~~~
+
+Inspect <code>result.status</code> and <code>result.sources</code>. Provider
+failures are represented in the returned result, not converted into an empty
+success.
+
+## 3. Prove isolation and compatibility
+
+Seed one known memory through the normal LangGraph store API, then test:
+
+1. The intended tenant and subject retrieve it.
+2. A second subject in the same tenant does not.
+3. The same subject ID in a second tenant does not.
+4. A checkpointer record is never returned through the adapter.
+5. A store outage returns an explicit source status.
+6. Deleting the provider record removes it from later recalls.
+
+Praxa does not copy or delete the provider record. Provider lifecycle remains
+under your LangGraph store.
+
+<Card title="LangGraph persistence" icon="arrow-up-right-from-square" href="https://docs.langchain.com/oss/javascript/langgraph/persistence">
+  Review the official distinction between checkpointers and long-term stores.
+</Card>

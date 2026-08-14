@@ -20,6 +20,16 @@
     }
   },
   "api": {
+    "openapi": [
+      "fabric/api/openapi.yaml",
+      "memory-federation/openapi.yaml"
+    ],
+    "mdx": {
+      "server": "https://api.praxa.io",
+      "auth": {
+        "method": "bearer"
+      }
+    },
     "playground": {
       "display": "interactive",
       "proxy": true
@@ -43,6 +53,10 @@
             "pages": [
               "index",
               "introduction",
+              "overview/choose-your-path",
+              "overview/capabilities",
+              "overview/service-status",
+              "overview/examples",
               "quickstart",
               "authentication"
             ]
@@ -64,7 +78,28 @@
               "use-cases/multi-step-workflows",
               "use-cases/mcp-integration",
               "use-cases/memory-federation",
-              "use-cases/monitoring-and-observability"
+              "use-cases/monitoring-and-observability",
+              "use-cases/governed-agent-backend",
+              "use-cases/event-driven-automation",
+              "use-cases/agent-frameworks",
+              "use-cases/product-capabilities"
+            ]
+          },
+          {
+            "group": "Product guides",
+            "root": "product-guides/overview",
+            "pages": [
+              "product-guides/chat-and-models",
+              "product-guides/runtimes-and-surfaces",
+              "product-guides/memory-and-personalization",
+              "product-guides/research-documents-and-media",
+              "product-guides/browser-and-computer",
+              "product-guides/commerce-and-actions",
+              "product-guides/communication-and-inboxes",
+              "product-guides/automations-and-plans",
+              "product-guides/custom-and-multi-agent",
+              "product-guides/teams-organizations-and-social",
+              "product-guides/device-and-context"
             ]
           },
           {
@@ -79,6 +114,15 @@
               "tutorials/webhooks",
               "tutorials/observability",
               "tutorials/framework-backends",
+              "tutorials/nextjs",
+              "tutorials/express",
+              "tutorials/cloudflare-workers",
+              "tutorials/fastapi",
+              "tutorials/vercel-ai-sdk",
+              "tutorials/openai-agents",
+              "tutorials/langgraph",
+              "tutorials/agent-frameworks",
+              "tutorials/resilient-events",
               "tutorials/test-your-integration"
             ]
           },
@@ -91,6 +135,34 @@
               "memory-federation/sdk",
               "memory-federation/cli",
               "memory-federation/api"
+            ]
+          },
+          {
+            "group": "Operations",
+            "root": "operations/overview",
+            "pages": [
+              "operations/security-and-tenancy",
+              "operations/observability",
+              "operations/production-checklist"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "root": "troubleshooting/overview",
+            "pages": [
+              "troubleshooting/authentication-and-scopes",
+              "troubleshooting/idempotency-and-retries",
+              "troubleshooting/events-and-webhooks",
+              "troubleshooting/memory"
+            ]
+          },
+          {
+            "group": "Releases",
+            "pages": [
+              "releases/compatibility",
+              "releases/migration-guide",
+              "releases/deprecation-policy",
+              "releases/changelog"
             ]
           }
         ]
@@ -210,7 +282,10 @@
               "sdk/framework-integrations",
               "sdk/praxaclient",
               "sdk/mission-events",
-              "sdk/error-handling"
+              "sdk/error-handling",
+              "sdk/memory",
+              "sdk/testing",
+              "sdk/compatibility"
             ]
           }
         ]
@@ -222,7 +297,10 @@
             "group": "Praxa CLI",
             "root": "cli/overview",
             "pages": [
-              "cli/commands"
+              "cli/commands",
+              "cli/recipes",
+              "cli/ci-cd",
+              "cli/troubleshooting"
             ]
           }
         ]
@@ -234,7 +312,10 @@
             "group": "MCP contracts",
             "root": "mcp/overview",
             "pages": [
-              "mcp/tools"
+              "mcp/tools",
+              "mcp/host-integration",
+              "mcp/security-and-testing",
+              "mcp/compatibility"
             ]
           }
         ]
@@ -246,7 +327,9 @@
             "group": "Benchmarks & research",
             "root": "benchmarks/overview",
             "pages": [
-              "benchmarks/performance"
+              "benchmarks/performance",
+              "benchmarks/methodology",
+              "benchmarks/data-and-reproduction"
             ]
           }
         ]
@@ -307,18 +390,34 @@
             ]
           },
           {
-            "group": "Execution Fabric",
-            "openapi": {
-              "source": "/fabric/api/openapi.yaml",
-              "directory": "api-playground/execution-fabric"
-            }
+            "group": "Tasks, runs & usage",
+            "pages": [
+              "api-playground/execution-fabric/execute-durable-task",
+              "api-playground/execution-fabric/get-run",
+              "api-playground/execution-fabric/stream-run-events",
+              "api-playground/execution-fabric/cancel-run",
+              "api-playground/execution-fabric/get-usage"
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              "api-playground/execution-fabric/list-webhook-endpoints",
+              "api-playground/execution-fabric/create-webhook-endpoint",
+              "api-playground/execution-fabric/update-webhook-endpoint",
+              "api-playground/execution-fabric/delete-webhook-endpoint",
+              "api-playground/execution-fabric/list-webhook-deliveries",
+              "api-playground/execution-fabric/replay-webhook-delivery"
+            ]
           },
           {
             "group": "Memory candidates",
-            "openapi": {
-              "source": "/memory-federation/openapi.yaml",
-              "directory": "api-playground/memory"
-            }
+            "pages": [
+              "api-playground/memory/create-memory-candidate",
+              "api-playground/memory/query-memory-candidates",
+              "api-playground/memory/export-memory-candidates",
+              "api-playground/memory/delete-memory-candidate"
+            ]
           }
         ]
       }

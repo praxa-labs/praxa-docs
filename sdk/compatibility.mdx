@@ -1,0 +1,37 @@
+---
+title: "SDK compatibility"
+sidebarTitle: "Compatibility"
+description: "Pin the Praxa SDK package, OpenAPI fingerprint, Node.js runtime, ESM mode, and Gateway wire contract."
+---
+
+The current documented SDK line is <code>@praxa/sdk@0.3.0</code>.
+
+## Requirements
+
+- Node.js 20 or newer
+- ESM or a build system that can consume ESM packages
+- HTTPS Gateway origin for mission calls
+- Short-lived delegated OAuth token with the exact operation scopes
+
+## Startup assertion
+
+~~~typescript
+import {
+  PRAXA_CONTRACT_VERSION,
+  PRAXA_OPENAPI_VERSION,
+  PRAXA_OPENAPI_SHA256,
+} from "@praxa/sdk";
+
+if (PRAXA_CONTRACT_VERSION !== "aura-integration-gateway-v8.1") {
+  throw new Error("Unsupported Praxa Gateway contract");
+}
+
+console.log({
+  openapi: PRAXA_OPENAPI_VERSION,
+  sha256: PRAXA_OPENAPI_SHA256,
+});
+~~~
+
+Praxa-named exports do not rename the stable Aura-compatible wire contract.
+See the shared [Version compatibility](/releases/compatibility) and
+[Migration guide](/releases/migration-guide) before changing a pinned package.

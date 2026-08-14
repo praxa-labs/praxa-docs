@@ -1,0 +1,34 @@
+---
+title: "MCP security and testing"
+sidebarTitle: "Security and testing"
+description: "Test Praxa MCP schemas, annotations, scopes, idempotency, OAuth handling, and host behavior before enabling agent calls."
+---
+
+## Contract tests
+
+Assert:
+
+- Exactly 12 published tool definitions
+- Stable <code>aura_*</code> names
+- JSON Schema draft 2020-12 metadata
+- Required annotations on every tool
+- Read-only and destructive hints match the operation
+- Required OAuth scope matches the Gateway route
+- Idempotency mode is preserved
+- <code>MCP_SERVER_VERSION</code> is not used as the protocol revision
+
+## Runtime tests
+
+1. Register every contract with the host's schema adapter.
+2. Call one safe read with the correct scope.
+3. Call the same read with a wrong-scope token.
+4. Send a mutating tool with a stable idempotency key.
+5. Replay the same logical mutation with the same key.
+6. Change the payload under that key and expect a conflict.
+7. Confirm destructive annotations reach the host UI.
+8. Confirm the host does not log the delegated token.
+
+<Warning>
+  The contracts package contains no execution engine. A successful import or
+  host registration does not prove that an Integration Gateway is deployed.
+</Warning>

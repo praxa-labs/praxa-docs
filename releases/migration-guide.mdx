@@ -1,0 +1,43 @@
+---
+title: "Migration guide"
+sidebarTitle: "Migration guide"
+description: "Upgrade Praxa packages and integrations without changing wire identifiers, credentials, idempotency semantics, or memory authority."
+---
+
+## Package upgrade
+
+~~~bash
+npm install @praxa/sdk@0.3.0 @praxa/mcp-contracts@0.3.0
+npm install --global @praxa/cli@0.3.0
+~~~
+
+After installation, run:
+
+~~~bash
+praxa version
+~~~
+
+Then assert the SDK and MCP constants documented in
+[Version compatibility](/releases/compatibility).
+
+## Aura-to-Praxa naming
+
+Praxa-branded exports and binaries coexist with established Aura-compatible
+wire identifiers. Migrate display names and source imports independently from
+wire values. Do not rename:
+
+- The <code>x-aura-contract-version</code> header
+- <code>aura_*</code> MCP tool names
+- <code>MCP_SERVER_NAME = "aura-agent-os"</code>
+- Any deployment contract value explicitly documented as stable
+
+## Memory migration
+
+Federation comes before storage migration:
+
+1. Connect the existing provider read-only.
+2. Resolve tenant and subject namespace explicitly.
+3. Compare recall results and provenance.
+4. Exercise partial and all-source failure.
+5. Introduce hosted candidates only when their lexical, personal-tenant, and deletion boundaries fit the application.
+6. Keep provider-owned source deletion separate from hosted candidate deletion.

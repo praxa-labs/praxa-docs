@@ -6,13 +6,23 @@ description: "Configure signed task-event webhooks and consume their strict v1 p
 
 > **Status:** Production partner preview for admitted personal tenants. Bearer
 > management, forward task-event projection, and HMAC-signed outbound delivery
-> are active. Production migration history records the forward-projection
-> migration `20260801092339 platform_task_webhook_projection` and authority
-> migration `20260801092356 platform_webhook_api_authority`.
+> are active.
 
 Praxa projects each new durable task-ledger event into a strict v1 webhook
 event, fans it out to matching active endpoints, and signs every delivery.
 Delivery is at least once and may arrive out of order.
+
+~~~mermaid
+sequenceDiagram
+  participant P as Praxa
+  participant E as Your HTTPS endpoint
+  participant I as Durable inbox
+  P->>E: signed raw-body delivery
+  E->>E: verify timestamp and HMAC
+  E->>I: insert immutable event ID
+  I-->>E: accepted or duplicate
+  E-->>P: 2xx after durable acceptance
+~~~
 
 The signed-in developer portal manages endpoints through
 `/api/platform/webhooks`. The TypeScript SDK defines the bearer management
@@ -225,22 +235,14 @@ newer event.
 
 Do not use arrival order, attempt count, or HTTP request identity as run order.
 
-## Production boundary and rollout evidence
+## Production boundary
 
 Automatic task-event projection is forward-only. The production migration
 installs an `AFTER INSERT` trigger, so it projects task-ledger events inserted
 after the migration is applied. It does not backfill historical events.
 
-Production migration history records:
-
-- `20260801092339 platform_task_webhook_projection` for forward task-event
-  projection;
-- `20260801092356 platform_webhook_api_authority` for service-role-only bearer
-  management authority.
-
-The compatible Worker fleet is deployed at exact ref
-`7e347f497e8f56395abc541569c018977287da8f`. A production canary created a
-tenant endpoint, received a delivery, and verified the HMAC against the exact
-raw body. Retry, dead-letter, eligible replay, digest-only approval fetch, and
-`run_outcome_unknown` remain separate operational canaries; do not infer those
-results from the successful signed delivery.
+A production canary created a tenant endpoint, received a delivery, and
+verified the HMAC against the exact raw body. Retry, dead-letter, eligible
+replay, digest-only approval fetch, and `run_outcome_unknown` remain separate
+operational canaries; do not infer those results from the successful signed
+delivery.

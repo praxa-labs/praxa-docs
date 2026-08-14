@@ -1,0 +1,43 @@
+---
+title: "Core chat and AI pipeline"
+sidebarTitle: "Core chat and AI pipeline"
+description: "Understand the model, reasoning, attachment, and rendered-result capabilities available in Praxa chat."
+---
+
+{/* Generated from data/public-capabilities.json. Run npm run docs:generate after changing the catalog. */}
+
+
+Understand the model, reasoning, attachment, and rendered-result capabilities available in Praxa chat.
+
+<Note>
+These are Praxa application capabilities. A listed chat capability does not create a public API unless the Capability Atlas links to a developer service.
+</Note>
+
+## Provided capabilities
+
+| Capability | Status | Surfaces | Who it helps |
+|---|---|---|---|
+| **Multi-model chat**<br />Use one conversation surface across supported frontier models with explicit model selection and thinking controls. | Live | iOS, web | Individual, Business |
+| **Automatic model routing and cost lanes**<br />Route each turn to an appropriate model lane based on the task, latency, and capability needs. | Live | iOS, web | Individual, Business |
+| **Extended thinking and Adaptive Context**<br />Use visible extended reasoning and bounded contextual preparation for harder requests. | Live | iOS, web | Individual, Business |
+| **Attachments and vision**<br />Attach images, documents, and files so Praxa can reason over their contents. | Live | iOS, web | Individual, Business, Team |
+| **Generative UI and tool cards**<br />Render tool results as task-specific cards instead of exposing raw provider payloads. | Live | iOS, web | Individual, Business, Team |
+| **Adaptive chat canvas**<br />Present a contextual new-chat home using current personal information when the surface is enabled. | Live | iOS, web | Individual |
+| **Runtime capability honesty**<br />Tell the agent exactly which capabilities are available in the current runtime and device context. | Live | iOS, web, voice, on-device | Individual, Business, Team |
+| **Latency fast lane and prompt caching**<br />Reduce time to a useful answer through warm prompt caches and a bounded fast lane. | Live | iOS, web | Individual, Business |
+| **Semantic tool selection and reranking**<br />Pilot semantic ranking and health-aware selection over a large tool catalog. | Beta | iOS, web | Individual, Business |
+
+## Example outcomes
+
+1. **Compare two model lanes.** Switch models for the same bounded question and compare the visible response and thinking controls.
+2. **Analyze an attachment.** Attach a supported document or image and ask Praxa to identify the evidence it used.
+3. **Inspect a tool result.** Ask for current information and confirm the result appears as a purpose-built card rather than raw JSON.
+4. **Check runtime honesty.** Ask which capabilities are available in the current runtime and confirm unsupported actions are not presented as available.
+
+## Verify the surface
+
+1. Confirm the capability status and listed surface in the [Capability Atlas](/overview/capabilities).
+2. Sign in to the intended Praxa product surface and select the correct personal or organization workspace.
+3. Exercise the example with the smallest safe scope and inspect the visible result or approval card.
+4. Test one unavailable, denied, or disconnected state so the surface fails honestly.
+5. Use a developer tutorial only when this guide links to a supported public developer contract.

@@ -1,0 +1,28 @@
+---
+title: "Event and webhook failures"
+sidebarTitle: "Events and webhooks"
+description: "Recover from SSE disconnects, stale cursors, duplicate webhook deliveries, invalid signatures, and reconciliation gaps."
+---
+
+~~~mermaid
+sequenceDiagram
+  participant Consumer
+  participant Praxa
+  participant Store
+  Consumer->>Praxa: Connect with last processed event cursor
+  Praxa-->>Consumer: Event
+  Consumer->>Store: Persist effect and cursor atomically
+  Note over Consumer,Praxa: Connection drops
+  Consumer->>Praxa: Reconnect from persisted cursor
+  Praxa-->>Consumer: Replay or next event
+  Consumer->>Store: Deduplicate event ID
+~~~
+
+| Symptom | Check |
+|---|---|
+| Events repeat after reconnect | Deduplicate by event ID and persist the cursor only after processing succeeds. |
+| Events are missing | Confirm the saved cursor, retention window, run ID, and tenant. |
+| Webhook signature fails | Verify the exact raw request body before JSON parsing. |
+| Webhook repeats | Store the delivery identifier and make the handler idempotent. |
+| Delivery is valid but unknown | Quarantine it and reconcile tenant, run, and environment before processing. |
+| Stream ends before terminal state | Read the terminal run resource; an ended connection is not a terminal run. |

@@ -1,0 +1,26 @@
+---
+title: "Authentication and scope failures"
+sidebarTitle: "Authentication and scopes"
+description: "Diagnose Praxa authentication, credential-type, workspace, tenant, and least-privilege scope failures."
+---
+
+import CredentialBoundaries from "/snippets/CredentialBoundaries.mdx";
+
+<CredentialBoundaries />
+
+| Symptom | Likely cause | Next check |
+|---|---|---|
+| Authentication challenge | Missing, malformed, expired, or revoked credential | Confirm the credential type and issuer without logging the value. |
+| Insufficient scope | The credential is valid but lacks the operation scope | Compare the route to its documented scope. |
+| Organization memory key refused | Hosted memory scopes are personal-workspace only | Select personal intentionally or remove the memory scope. |
+| SDK rejects the base URL | URL is not HTTPS or contains embedded credentials | Supply a clean HTTPS Gateway origin. |
+| Package import works but runtime call fails | Package availability does not provide a Gateway or token | Obtain the deployment-specific origin and delegated OAuth token. |
+| Provider memory query fails | Provider client or namespace mapping is invalid | Test the provider client independently in the backend. |
+
+## Do not “fix” this by
+
+- Reusing an Execution Fabric key as an Integration Gateway token.
+- Sending a provider credential to Praxa.
+- Broadening every key to every available scope.
+- Silently changing the selected organization to personal.
+- Retrying a denied mutation with a new idempotency key.

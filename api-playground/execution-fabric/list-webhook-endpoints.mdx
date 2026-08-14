@@ -1,0 +1,68 @@
+---
+title: "List webhook endpoints"
+sidebarTitle: "List webhook endpoints"
+description: "Production partner preview. The gateway and backend both require runs:read. Signing secrets are never returned by this operation."
+api: "GET /v1/webhooks"
+authMethod: "bearer"
+playground: "interactive"
+---
+
+{/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
+
+Production partner preview. The gateway and backend both require runs:read. Signing secrets are never returned by this operation.
+
+<Info>
+  **Availability:** Partner preview. **Required scope:** `runs:read`.
+</Info>
+
+Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+
+## Request fields
+
+This operation has no path, query, header, or JSON-body fields beyond bearer authentication.
+
+## Successful response
+
+**200** — Tenant-owned webhook endpoint metadata.
+
+<ResponseField name="apiVersion" type="v1" required>
+  apiVersion response field.
+</ResponseField>
+
+<ResponseField name="data" type="array<object>" required>
+  data response field.
+</ResponseField>
+
+<RequestExample>
+~~~bash cURL
+curl --fail-with-body -X GET 'https://api.praxa.io/v1/webhooks' \
+  -H "Authorization: Bearer $PRAXA_API_KEY"
+~~~
+</RequestExample>
+
+<ResponseExample>
+~~~json 200
+{
+  "apiVersion": "v1",
+  "data": [
+    {
+      "apiVersion": "v1",
+      "id": "018f0000-0000-7000-8000-000000000001",
+      "url": "https://example.com/praxa",
+      "event_types": [
+        "run.accepted"
+      ],
+      "status": "active",
+      "createdAt": "2026-08-13T12:00:00.000Z",
+      "updatedAt": "2026-08-13T12:00:00.000Z"
+    }
+  ]
+}
+~~~
+</ResponseExample>
+
+## Verify and recover
+
+- Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
+- For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
+- Revoke the disposable key and remove test data after validation.

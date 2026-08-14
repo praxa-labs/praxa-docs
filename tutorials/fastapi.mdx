@@ -1,0 +1,111 @@
+---
+title: "Build a Praxa backend with FastAPI"
+sidebarTitle: "FastAPI"
+description: "Create a typed FastAPI boundary for Praxa tasks and test authentication, validation, replay, and upstream failures with pytest."
+---
+
+FastAPI dependencies are a good place to resolve the authenticated application
+user before Praxa is called. Pydantic then bounds the request shape.
+
+## 1. Install dependencies
+
+~~~bash
+python -m pip install fastapi uvicorn httpx pytest
+export PRAXA_API_KEY="praxa_sk_<redacted>"
+~~~
+
+## 2. Implement the route
+
+~~~python app/main.py
+import hashlib
+import os
+import httpx
+from fastapi import Depends, FastAPI, HTTPException, Response
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+
+class TaskInput(BaseModel):
+    task: str = Field(min_length=1, max_length=16_000)
+    request_id: str = Field(alias="requestId", min_length=16, max_length=128)
+
+@app.post("/api/tasks")
+async def create_task(
+    body: TaskInput,
+    response: Response,
+    user=Depends(require_user),
+):
+    digest = hashlib.sha256(
+        f"{user.id}\0{body.request_id}".encode()
+    ).hexdigest()
+    key = f"fastapi:{digest}"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        upstream = await client.post(
+            "https://api.praxa.io/v1/execute",
+            headers={
+                "Authorization": f"Bearer {os.environ['PRAXA_API_KEY']}",
+                "Idempotency-Key": key,
+            },
+            json={
+                "apiVersion": "v1",
+                "requestId": key,
+                "mode": "task",
+                "task": {"input": body.task},
+                "idempotencyKey": key,
+            },
+        )
+
+    if upstream.status_code >= 400:
+        raise HTTPException(
+            upstream.status_code,
+            "Praxa request failed",
+            headers={"Cache-Control": "no-store"},
+        )
+    response.headers["Cache-Control"] = "no-store"
+    return upstream.json()
+~~~
+
+The application user comes from <code>require_user</code>, not the body. Do
+not include the upstream response text in a production exception unless you
+have explicitly redacted it.
+
+## 3. Test with dependency overrides
+
+~~~python tests/test_tasks.py
+from fastapi.testclient import TestClient
+from app.main import app, require_user
+
+class User:
+    id = "test-user"
+
+app.dependency_overrides[require_user] = lambda: User()
+client = TestClient(app)
+
+def test_rejects_invalid_task():
+    response = client.post(
+        "/api/tasks",
+        json={"task": "", "requestId": "request-00000001"},
+    )
+    assert response.status_code == 422
+~~~
+
+Intercept HTTPX for valid-route tests and assert the outgoing URL, bounded
+body, server-owned authorization header, and deterministic idempotency key.
+Add a separate dependency override that raises <code>401</code> and prove
+there is no upstream call.
+
+## 4. Run the live acceptance check
+
+~~~bash
+uvicorn app.main:app --reload
+pytest -q
+~~~
+
+Against staging, submit one disposable task twice with the same
+<code>requestId</code>. Require the same logical run, then poll that run to a
+terminal state. Revoke the test key after cleanup.
+
+<Card title="FastAPI testing" icon="arrow-up-right-from-square" href="https://fastapi.tiangolo.com/tutorial/testing/">
+  Use the official TestClient and pytest guidance for the application boundary.
+</Card>
