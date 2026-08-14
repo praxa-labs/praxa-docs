@@ -1,0 +1,31 @@
+---
+title: "Version compatibility"
+sidebarTitle: "Compatibility"
+description: "Match Praxa package versions, Gateway contracts, MCP protocol revisions, Node.js requirements, and public wire identifiers."
+---
+
+## Current public package line
+
+| Package | Current documented version | Runtime requirement | Contract note |
+|---|---:|---|---|
+| <code>@praxa/sdk</code> | <code>0.3.0</code> | Node.js 20 or newer | Main Gateway client plus the separate <code>@praxa/sdk/memory</code> entrypoint |
+| <code>@praxa/cli</code> | <code>0.3.0</code> | Node.js 20 or newer | Provides both <code>praxa</code> and legacy <code>aura</code> binaries |
+| <code>@praxa/mcp-contracts</code> | <code>0.3.0</code> | ESM-capable JavaScript runtime | MCP server version <code>0.3.0</code>; primary protocol <code>2025-11-25</code> |
+
+## Wire compatibility
+
+- Praxa-named SDK and MCP exports preserve established Aura-compatible wire values.
+- Do not rewrite <code>x-aura-contract-version</code>, <code>aura_*</code> MCP
+  tool names, or <code>MCP_SERVER_NAME = "aura-agent-os"</code> as display-branding cleanup.
+- <code>MCP_SERVER_VERSION</code> is the package/server version. It is not the
+  MCP protocol revision.
+- The SDK's OpenAPI fingerprint can be asserted at startup when your
+  deployment pins an exact contract.
+
+## Upgrade check
+
+1. Install the new package in a clean project.
+2. Compare exported version and fingerprint constants.
+3. Review route, scope, idempotency, and response metadata.
+4. Compile your application and run contract tests.
+5. Run authenticated positive and negative canaries against the intended Gateway.

@@ -1,0 +1,30 @@
+---
+title: "Memory troubleshooting"
+sidebarTitle: "Memory"
+description: "Diagnose federation source failures, namespace errors, partial results, hosted candidate access, and deletion boundaries."
+---
+
+~~~mermaid
+flowchart TD
+  Recall["Federated recall"] --> Sources["Query bounded sources"]
+  Sources --> Success{"Any source succeeded?"}
+  Success -->|Yes, some failed| Partial["Return partial plus per-source status"]
+  Success -->|No| Failed["Return failed plus per-source errors"]
+  Success -->|All| Ok["Return ok"]
+  Partial --> Caller["Caller checks aggregate and source statuses"]
+  Failed --> Caller
+  Ok --> Caller
+~~~
+
+| Symptom | Likely boundary |
+|---|---|
+| Partial result | At least one source succeeded and at least one timed out, failed, or was unavailable. |
+| Failed result without an exception | No source succeeded; inspect every source status. |
+| Wrong records appear | Namespace or subject resolution is too broad. |
+| Abort does not stop transport work | The injected transport does not support abort; declare that capability honestly. |
+| Hosted query returns no semantic matches | The initial hosted slice is lexical and does not imply vector search. |
+| Delete does not remove provider data | Hosted deletion erases the candidate payload, not the caller-owned source record. |
+| Organization memory key is rejected | Hosted memory scopes are personal-workspace only. |
+
+Never route a hosted candidate directly into Praxa personal memory, AHCE, or a
+prompt unless a separately documented owner-review promotion contract exists.

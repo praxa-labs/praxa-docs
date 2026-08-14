@@ -1,0 +1,46 @@
+---
+title: "Memory and personalization"
+sidebarTitle: "Memory and personalization"
+description: "Learn how Praxa remembers, adapts, explains learned context, and keeps correction or consent with the owner."
+---
+
+{/* Generated from data/public-capabilities.json. Run npm run docs:generate after changing the catalog. */}
+
+
+Learn how Praxa remembers, adapts, explains learned context, and keeps correction or consent with the owner.
+
+<Note>
+Persistent memory and AHCE are Praxa product capabilities. Use @praxa/sdk/memory for read-only provider federation; AHCE is not a public ingestion endpoint.
+</Note>
+
+## Provided capabilities
+
+| Capability | Status | Surfaces | Who it helps |
+|---|---|---|---|
+| **Persistent agent memory**<br />Retain durable facts, preferences, and context with user-facing correction and deletion controls. | Live | iOS, web, voice, on-device | Individual |
+| **Goal and task capture**<br />Propose explicit goal or task records from cloud chat and keep the owner in control of acceptance. | Live | iOS, web | Individual |
+| **Adaptive persona and tone**<br />Adapt tone and framing to the person without changing factual or authority boundaries. | Live | iOS, web, voice | Individual |
+| **Adaptive Human Context Engine**<br />Use consented, bounded context signals to improve situational relevance; this is a Praxa product capability, not a public ingestion API. | Live | iOS | Individual |
+| **Adaptive Context transparency and correction**<br />Show learned rhythm information and let the person correct or abstain from it. | Live | iOS, web | Individual |
+| **Proactive suggestions**<br />Surface consent-gated suggestions that require an explicit tap before any next action. | Live | iOS | Individual |
+| **Native onboarding**<br />Guide a new user through sign-in and initial setup in a compressed native flow. | Live | iOS | Individual |
+| **Persona recipes**<br />Apply a prepared persona preset for a recurring role such as meal or trip planning. | Live | iOS, web | Individual |
+
+## Example outcomes
+
+1. **Correct a durable memory.** Open Memory settings, change or delete an owner-visible memory, and verify future recall respects the correction.
+2. **Capture a goal.** State a concrete goal in cloud text chat and review the proposed goal record before accepting it.
+3. **Review adaptive context.** Open Adaptive Context, inspect the learned rhythm, and submit a correction or abstention.
+4. **Federate an existing store.** Use the memory federation tutorial to query an existing provider without migrating it.
+
+## Verify the surface
+
+1. Confirm the capability status and listed surface in the [Capability Atlas](/overview/capabilities).
+2. Sign in to the intended Praxa product surface and select the correct personal or organization workspace.
+3. Exercise the example with the smallest safe scope and inspect the visible result or approval card.
+4. Test one unavailable, denied, or disconnected state so the surface fails honestly.
+5. Use a developer tutorial only when this guide links to a supported public developer contract.
+
+<Card title="Integrate existing memory" icon="database" href="/memory-federation/overview">
+  Use read-only federation when your backend already owns a supported memory provider. This does not write into AHCE or Praxa personal memory.
+</Card>

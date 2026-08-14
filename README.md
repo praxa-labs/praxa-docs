@@ -29,21 +29,30 @@ guide](https://docs.praxa.io/benchmarks/overview) before interpreting a result.
 
 ## Local development
 
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint), then start a
-local preview from this directory:
+Install the checked documentation dependencies, regenerate source-backed pages,
+and run the same static quality gate used for pull requests:
 
 ```bash
-npm install --global mint
-mint dev
+npm ci
+npm run docs:generate
+npm run docs:quality
+npm run docs:dev
 ```
 
 Open `http://localhost:3000` to review the site. Navigation and theme settings
-live in `docs.json`; documentation pages use MDX.
+live in `docs.json`; documentation pages use MDX. The local command pins the
+Mint CLI version so a global installation cannot silently change validation.
+
+The quality gate verifies generated capability, benchmark, and API Playground
+pages; executable examples; navigation and internal links; both OpenAPI
+documents; Mermaid and accessible visual coverage; and Mintlify broken links.
 
 ## Publishing changes
 
 The Mintlify GitHub app deploys changes after they reach the default branch.
-Review links, MDX components, and navigation locally before publishing.
+The repository quality workflow must pass before merge. After merge, verify a
+representative Overview, tutorial, benchmark, and API Playground page on the
+custom domain; a merged source commit is not the same proof as live CDN output.
 
 ## License
 

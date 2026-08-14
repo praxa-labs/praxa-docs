@@ -11,15 +11,11 @@ info:
     invalid_request, and /v1/chat is not routed. Request-level
     agent/tool/policy/delivery overrides remain unavailable. Usage readback is
     active. Digest-bound public approval remains pending production activation.
-    The cancellation-reconciliation migration and compatible Workers are live,
-    and separate production canaries have proved the pre-dispatch and
-    provider-in-flight final-state branches.
+    Cancellation reconciliation is deployed, and production canaries cover
+    both pre-dispatch and provider-in-flight final-state branches.
     Bearer webhook management and HMAC-signed delivery are active for admitted
-    personal tenants. Production migration history records 20260801092306
-    task_cancellation_reconciliation, 20260801092339
-    platform_task_webhook_projection, and 20260801092356
-    platform_webhook_api_authority. Signed-in platform management surfaces are
-    documented separately in Markdown.
+    personal tenants. Signed-in platform management surfaces are documented
+    separately in the guides.
 servers:
   - url: https://api.praxa.io
     description: Production partner-preview origin.

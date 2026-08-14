@@ -1,0 +1,133 @@
+---
+title: "Build a Praxa backend with Express"
+sidebarTitle: "Express"
+description: "Create an authenticated Express 5 route for Praxa tasks with validation, deterministic retries, and integration tests."
+---
+
+This pattern keeps Praxa behind your existing Express authentication,
+validation, rate-limit, and audit middleware.
+
+~~~mermaid
+sequenceDiagram
+  participant C as Client
+  participant E as Express route
+  participant P as Praxa
+  C->>E: POST /api/tasks plus app session
+  E->>E: authenticate, validate, derive key
+  E->>P: POST /v1/execute
+  P-->>E: 202 RunResource or problem
+  E-->>C: safe no-store response
+~~~
+
+## 1. Install and configure
+
+~~~bash
+npm install express@5
+export PRAXA_API_KEY="praxa_sk_<redacted>"
+~~~
+
+Enable JSON parsing with a bounded body limit before the route:
+
+~~~ts
+import express from "express";
+
+const praxaApiKey = process.env.PRAXA_API_KEY;
+if (!praxaApiKey) throw new Error("PRAXA_API_KEY is required");
+
+const app = express();
+app.use(express.json({ limit: "32kb" }));
+~~~
+
+## 2. Add the route
+
+~~~ts
+import { createHash } from "node:crypto";
+
+app.post("/api/tasks", requireSession, async (request, response) => {
+  const task = request.body?.task;
+  const requestId = request.body?.requestId;
+
+  if (
+    typeof task !== "string" ||
+    task.length < 1 ||
+    task.length > 16_000 ||
+    typeof requestId !== "string" ||
+    requestId.length < 16 ||
+    requestId.length > 128
+  ) {
+    return response.status(400).json({ error: "Invalid request" });
+  }
+
+  const key =
+    "express:" +
+    createHash("sha256")
+      .update(request.user.id + "\0" + requestId)
+      .digest("hex");
+
+  const upstream = await fetch("https://api.praxa.io/v1/execute", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer " + praxaApiKey,
+      "content-type": "application/json",
+      "idempotency-key": key,
+    },
+    body: JSON.stringify({
+      apiVersion: "v1",
+      requestId: key,
+      mode: "task",
+      task: { input: task },
+      idempotencyKey: key,
+    }),
+  });
+
+  response.set(
+    "content-type",
+    upstream.headers.get("content-type") ?? "application/json",
+  );
+  response.set("cache-control", "no-store");
+  return response.status(upstream.status).send(await upstream.text());
+});
+~~~
+
+Express 5 forwards rejected promises from async handlers to error middleware.
+Your final error handler should return a customer-safe problem and never echo
+headers, tokens, or upstream bodies that may contain sensitive context.
+
+## 3. Add replay-safe client behavior
+
+Generate the application request ID when the user starts the action. Store it
+with the pending UI state and reuse it after transport failures:
+
+~~~ts
+const pending = {
+  requestId: crypto.randomUUID(),
+  task: "Summarize the incident and propose a safe next action.",
+};
+
+await fetch("/api/tasks", {
+  method: "POST",
+  credentials: "include",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify(pending),
+});
+~~~
+
+## 4. Test end to end
+
+Use your normal HTTP test client and an intercepted upstream:
+
+| Test | Expected result |
+|---|---|
+| Signed-out request | <code>401</code>; zero upstream calls |
+| Oversized task | <code>400</code>; zero upstream calls |
+| Valid request | One Praxa request with a server key |
+| Exact retry | Same idempotency key and logical run |
+| Changed body under the same key | Praxa <code>409</code> |
+| Revoked server key | Safe auth failure; no token reflection |
+
+In staging, submit one disposable task, poll the returned run, and record the
+terminal state separately from the admission response.
+
+<Card title="Express 5 migration guide" icon="arrow-up-right-from-square" href="https://expressjs.com/en/guide/migrating-5/">
+  Confirm the current async error and routing behavior in the official guide.
+</Card>

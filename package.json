@@ -1,0 +1,24 @@
+{
+  "name": "praxa-docs",
+  "version": "0.0.0-private",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "docs:generate": "node scripts/generate-capability-docs.mjs && node scripts/generate-benchmark-charts.mjs && node scripts/generate-api-playground.mjs",
+    "docs:generate:check": "node scripts/generate-capability-docs.mjs --check && node scripts/generate-benchmark-charts.mjs --check && node scripts/generate-api-playground.mjs --check",
+    "docs:check": "node scripts/check-docs.mjs",
+    "docs:dev": "npx --yes mint@4.2.802 dev",
+    "docs:quality": "npm run docs:verify && npx --yes mint@4.2.802 broken-links && npx --yes mint@4.2.802 validate",
+    "examples:test": "node --test examples/**/*.test.mjs",
+    "docs:verify": "npm run docs:generate:check && npm run docs:check && npm run examples:test"
+  },
+  "devDependencies": {
+    "@praxa/cli": "0.3.0",
+    "@praxa/mcp-contracts": "0.3.0",
+    "@praxa/sdk": "0.3.0",
+    "yaml": "2.9.0"
+  }
+}

@@ -1,0 +1,26 @@
+---
+title: "Deprecation policy"
+sidebarTitle: "Deprecation policy"
+description: "Understand how Praxa documents package, endpoint, wire-contract, capability, and product-surface retirement."
+---
+
+Praxa treats display branding, package exports, wire identifiers, endpoints,
+and product capabilities as separate compatibility surfaces.
+
+## Policy
+
+- Public package or endpoint removals require a documented replacement or explicit retirement path.
+- Stable wire identifiers are not renamed only to match current display branding.
+- Deprecated OpenAPI operations should carry machine-readable deprecation metadata.
+- A removed product capability remains documented with its removal boundary rather than disappearing from historical release notes.
+- Building, dark, and parked work is not presented as a deprecated public capability because it was never a normal public path.
+
+## What a migration notice must include
+
+1. Affected package, route, command, tool, or product surface
+2. First deprecated version
+3. Replacement
+4. Behavioral difference
+5. Credential or scope changes
+6. Data migration or cleanup requirement
+7. Last supported version or date, when one is committed

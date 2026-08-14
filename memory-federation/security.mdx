@@ -4,6 +4,16 @@ sidebarTitle: "Security"
 description: "Understand credential ownership, tenant isolation, scope, retention, and deletion before adopting memory federation."
 ---
 
+~~~mermaid
+flowchart LR
+  App["Your backend"] -->|"provider-owned client"| Provider["Memory provider"]
+  App -->|"tenant and subject namespace"| Adapter["Read-only adapter"]
+  Adapter --> Result["Source-labelled recall"]
+  Key["Personal Praxa key"] --> Hosted["Hosted candidate plane"]
+  Hosted --> Candidate["Isolated candidate records"]
+  Provider -. "no automatic copy or delete" .-> Candidate
+~~~
+
 ## Credential ownership
 
 Federated adapters accept clients or transports that your server already owns. They do not accept

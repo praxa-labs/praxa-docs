@@ -9,6 +9,19 @@ description: "Reconnectable SSE for durable task runs."
 > Cancellation-reconciliation code is deployed, but final-status behavior
 > remains pending a separate live canary.
 
+~~~mermaid
+sequenceDiagram
+  participant C as Your consumer
+  participant P as Praxa event stream
+  C->>P: GET events
+  P-->>C: id 41 plus progress event
+  P-->>C: id 42 plus progress event
+  C--xP: connection closes
+  C->>P: GET events with Last-Event-ID 42
+  P-->>C: id 43 plus next event
+  P-->>C: terminal event
+~~~
+
 ```http
 GET /v1/runs/:id/events
 Authorization: Bearer praxa_sk_<64 lowercase hex characters>

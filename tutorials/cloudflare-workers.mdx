@@ -1,0 +1,118 @@
+---
+title: "Build a Praxa edge backend with Cloudflare Workers"
+sidebarTitle: "Cloudflare Workers"
+description: "Proxy Praxa through an authenticated Worker, store the API key as a secret, and test the edge boundary locally and live."
+---
+
+Cloudflare Workers can provide a small server-side boundary close to your
+users. Store the Praxa key as an encrypted Worker secret, never as a plaintext
+configuration variable.
+
+## 1. Declare and add the secret
+
+~~~jsonc wrangler.jsonc
+{
+  "name": "praxa-task-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01"
+}
+~~~
+
+~~~bash
+npx wrangler secret put PRAXA_API_KEY
+~~~
+
+For local development, use one ignored <code>.dev.vars</code> or
+<code>.env</code> file. Do not define the key under <code>vars</code>.
+
+## 2. Implement the Worker
+
+~~~ts src/index.ts
+import { authenticateApplicationRequest } from "./auth";
+
+type Env = { PRAXA_API_KEY: string };
+
+async function deterministicKey(principalId: string, requestId: string) {
+  const bytes = new TextEncoder().encode(principalId + "\0" + requestId);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const hex = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return "worker:" + hex;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname !== "/api/tasks" || request.method !== "POST") {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const principal = await authenticateApplicationRequest(request, env);
+    if (!principal) return new Response("Unauthorized", { status: 401 });
+
+    const body = await request.json<{ task?: unknown; requestId?: unknown }>();
+    if (
+      typeof body.task !== "string" ||
+      body.task.length < 1 ||
+      body.task.length > 16_000 ||
+      typeof body.requestId !== "string" ||
+      body.requestId.length < 16 ||
+      body.requestId.length > 128
+    ) {
+      return new Response("Invalid request", { status: 400 });
+    }
+
+    const key = await deterministicKey(principal.id, body.requestId);
+    const upstream = await fetch("https://api.praxa.io/v1/execute", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + env.PRAXA_API_KEY,
+        "content-type": "application/json",
+        "idempotency-key": key,
+      },
+      body: JSON.stringify({
+        apiVersion: "v1",
+        requestId: key,
+        mode: "task",
+        task: { input: body.task },
+        idempotencyKey: key,
+      }),
+    });
+
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "content-type": upstream.headers.get("content-type") ?? "application/json",
+        "cache-control": "no-store",
+      },
+    });
+  },
+};
+~~~
+
+Use Web Crypto in <code>deterministicKey</code> to hash an authenticated
+principal plus the stable application request ID. Do not trust an owner or
+workspace field in the body.
+
+## 3. Test locally
+
+Use a fetch interceptor or Miniflare to assert:
+
+1. Authentication runs before parsing or forwarding consequential work.
+2. Unknown methods and routes fail closed.
+3. Oversized input never reaches Praxa.
+4. Exact retries preserve the upstream idempotency key.
+5. The key never appears in the response, logs, or thrown errors.
+6. Every response carrying a run or problem is <code>no-store</code>.
+
+## 4. Verify after deployment
+
+Run two live canaries: an unauthenticated request that must fail before Praxa,
+and an authenticated disposable task that must return a run owned by the
+configured personal tenant. Follow the run to terminal before declaring the
+workflow complete.
+
+<Card title="Cloudflare Workers secrets" icon="arrow-up-right-from-square" href="https://developers.cloudflare.com/workers/configuration/secrets/">
+  Review the official secret-binding and local-development guidance.
+</Card>

@@ -4,6 +4,18 @@ sidebarTitle: "Performance"
 description: "Performance characteristics of the Praxa SDK: mission latency, SSE streaming overhead, automatic retry backoff, and concurrent mission fan-out patterns."
 ---
 
+~~~mermaid
+flowchart LR
+  Token["Token acquisition"] --> Request["Mission request"]
+  Request --> Retry["Bounded retry"]
+  Request --> SSE["SSE stream"]
+  Request --> Fanout["Mission fan-out"]
+  Budget["Resource budget"] --> Request
+  Retry --> Outcome["Observed run outcome"]
+  SSE --> Outcome
+  Fanout --> Outcome
+~~~
+
 Understanding the performance profile of the Praxa SDK helps you design your application's mission submission patterns and error handling strategy. The `PraxaClient` is a thin, stateless HTTP and SSE client — it adds no local queuing, no background threads, and no persistent connection pool of its own. Every performance characteristic described here flows directly from how your application configures the client, how quickly your `accessToken` function resolves, and the network path between your runtime and the Integration Gateway.
 
 <Warning>

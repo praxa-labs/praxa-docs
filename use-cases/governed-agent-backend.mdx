@@ -1,0 +1,51 @@
+---
+title: "Build a governed agent backend"
+sidebarTitle: "Governed agent backend"
+description: "Combine mission budgets, explicit scopes, approval, events, and independent completion checks behind your application."
+---
+
+Use this pattern when your application needs more than a one-shot task: a
+budgeted mission, tool calls, approval, resumable events, and a durable audit
+trail.
+
+~~~mermaid
+sequenceDiagram
+  participant U as Application user
+  participant B as Your backend
+  participant G as Integration Gateway
+  participant E as Execution plane
+  U->>B: Request governed work
+  B->>G: Create mission plus budget and idempotency key
+  G-->>B: runId
+  G->>E: Policy-admitted execution
+  E-->>G: Events, approval, terminal outcome
+  B->>G: Resume events from last ID
+  B-->>U: Verified status and receipt
+~~~
+
+## Example applications
+
+- A support copilot that drafts a reply but requires approval before sending.
+- A finance workflow that caps tool calls and elapsed time.
+- A coding assistant that streams progress and preserves a resumable audit.
+- An operations agent that refuses new work while a prior effect is unresolved.
+
+## Use these contracts
+
+| Need | Praxa surface |
+|---|---|
+| Create and inspect a mission | <code>@praxa/sdk</code> and Integration Gateway |
+| Operate from automation | <code>@praxa/cli</code> |
+| Expose operations to an agent host | <code>@praxa/mcp-contracts</code> |
+| Resume progress | Mission SSE events |
+| Verify deployment coverage | <code>getReferenceCoverage()</code> |
+
+## Verification
+
+Test an accepted mission, wrong-scope token, revoked token, exact idempotent
+replay, body conflict, interrupted SSE connection, approval refusal, budget
+exhaustion, and terminal readback. Keep each proof distinct.
+
+<Card title="Mission lifecycle tutorial" icon="route" href="/tutorials/mission-lifecycle">
+  Build the complete create, observe, resume, and verify flow.
+</Card>

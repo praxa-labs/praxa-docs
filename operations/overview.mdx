@@ -1,0 +1,38 @@
+---
+title: "Operate Praxa in production"
+sidebarTitle: "Operations overview"
+description: "Prepare authentication, tenancy, observability, recovery, versioning, and cleanup before a Praxa integration handles real work."
+---
+
+import ProductionVerification from "/snippets/ProductionVerification.mdx";
+
+A production Praxa integration is a lifecycle, not a successful first request.
+Plan the credential, tenant, retry, evidence, and cleanup paths before enabling
+real workloads.
+
+~~~mermaid
+flowchart LR
+  Contract["Pin the contract"] --> Credential["Issue least-privilege credential"]
+  Credential --> Canary["Run positive and negative canaries"]
+  Canary --> Observe["Observe events, usage, and receipts"]
+  Observe --> Recover["Exercise retry, reconnect, and cancellation"]
+  Recover --> Clean["Delete test data and rotate secrets"]
+  Clean --> Release["Enable the intended cohort"]
+~~~
+
+<CardGroup cols={2}>
+  <Card title="Security and tenancy" icon="shield-halved" href="/operations/security-and-tenancy">
+    Separate credentials, scopes, personal tenants, organization roles, and provider authority.
+  </Card>
+  <Card title="Observability" icon="chart-line" href="/operations/observability">
+    Reconcile admission, lifecycle events, terminal readback, webhooks, and usage.
+  </Card>
+  <Card title="Production checklist" icon="list-check" href="/operations/production-checklist">
+    Run the minimum positive, negative, isolation, recovery, and cleanup cases.
+  </Card>
+  <Card title="Troubleshooting" icon="screwdriver-wrench" href="/troubleshooting/overview">
+    Diagnose authentication, idempotency, events, webhooks, and memory failures.
+  </Card>
+</CardGroup>
+
+<ProductionVerification />

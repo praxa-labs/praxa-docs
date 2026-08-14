@@ -1,0 +1,64 @@
+---
+title: "Choose your Praxa path"
+sidebarTitle: "Choose your path"
+description: "Select the Praxa API, package, memory, product, or operational guide that matches the outcome you need."
+---
+
+import CredentialBoundaries from "/snippets/CredentialBoundaries.mdx";
+
+Start with your desired outcome. The public contracts are intentionally
+separate so a credential, scope, or product capability never silently expands
+into another authority.
+
+~~~mermaid
+flowchart TD
+  Goal["What are you building?"] --> Task{"One durable task?"}
+  Task -->|Yes| Fabric["Execution Fabric v1"]
+  Task -->|No| Mission{"A governed mission?"}
+  Mission -->|Yes| Gateway["SDK, CLI, or MCP plus your Integration Gateway"]
+  Mission -->|No| Memory{"Use existing memory?"}
+  Memory -->|Yes| Federation["@praxa/sdk/memory"]
+  Memory -->|No| Hosted{"Stage portable candidates?"}
+  Hosted -->|Yes| Candidate["Hosted memory qualification preview"]
+  Hosted -->|No| Product{"Use a Praxa product capability?"}
+  Product -->|Yes| Guides["Praxa product guides"]
+  Product -->|No| Reference["Capability Atlas and API Reference"]
+~~~
+
+<CredentialBoundaries />
+
+## Choose by outcome
+
+| Outcome | Start here | What you need |
+|---|---|---|
+| Submit and observe one durable task | [Execution Fabric quickstart](/tutorials/durable-tasks) | Personal workspace API key |
+| Operate a budgeted mission | [Mission lifecycle tutorial](/tutorials/mission-lifecycle) | Deployment-specific Gateway URL and OAuth token |
+| Add governed tools to an agent host | [MCP host integration](/mcp/host-integration) | MCP contracts package and a runtime Gateway |
+| Preserve your existing memory system | [Memory federation tutorial](/tutorials/memory-federation) | Caller-owned provider client |
+| Stage portable subject records | [Hosted candidate tutorial](/tutorials/hosted-memory-candidates) | Personal key with a memory scope; preview limits apply |
+| Receive lifecycle changes | [Webhooks](/tutorials/webhooks) or [resilient SSE](/tutorials/resilient-events) | Scoped credential and durable cursor or delivery store |
+| Learn what Praxa itself provides | [Product guides](/product-guides/overview) | A supported Praxa product surface |
+| Prepare a production rollout | [Operations guide](/operations/overview) | Contract, credential, isolation, recovery, and cleanup plan |
+
+## Choose by environment
+
+<CardGroup cols={2}>
+  <Card title="Node.js or TypeScript" icon="node-js" href="/sdk/overview">
+    Use the typed SDK for Gateway missions or native fetch for Execution Fabric.
+  </Card>
+  <Card title="Next.js" icon="n" href="/tutorials/nextjs">
+    Keep credentials in a Route Handler and expose only a narrow server facade.
+  </Card>
+  <Card title="Express" icon="server" href="/tutorials/express">
+    Add an explicit backend endpoint around the Praxa contract.
+  </Card>
+  <Card title="Cloudflare Workers" icon="cloud" href="/tutorials/cloudflare-workers">
+    Call Praxa from a Worker with secrets held in the environment binding.
+  </Card>
+  <Card title="Python and FastAPI" icon="python" href="/tutorials/fastapi">
+    Submit and verify durable tasks from an async Python backend.
+  </Card>
+  <Card title="Agent frameworks" icon="diagram-project" href="/tutorials/agent-frameworks">
+    Integrate Vercel AI SDK, OpenAI Agents, LangGraph, or an MCP host without resetting memory.
+  </Card>
+</CardGroup>

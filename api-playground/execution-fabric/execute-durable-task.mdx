@@ -1,0 +1,144 @@
+---
+title: "Admit a minimal durable task"
+sidebarTitle: "Admit a minimal durable task"
+description: "Accepts mode task only. Agent, context, tools, policy, delivery, mode turn, and every other unknown member are rejected before task creation with a 400 invalid_request response. /v1/chat is not a routed endpoint."
+api: "POST /v1/execute"
+authMethod: "bearer"
+playground: "interactive"
+---
+
+{/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
+
+Accepts mode task only. Agent, context, tools, policy, delivery, mode turn, and every other unknown member are rejected before task creation with a 400 invalid_request response. /v1/chat is not a routed endpoint.
+
+<Info>
+  **Availability:** Production partner preview. **Required scope:** `execute:write`.
+</Info>
+
+Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+
+## Request fields
+
+<ParamField header="Idempotency-Key" type="string">
+  Must equal the body idempotencyKey when both are present. The effective key is header, body, then requestId.
+</ParamField>
+
+<ParamField header="X-AI-Platform-Version" type="v1">
+  X-AI-Platform-Version header parameter.
+</ParamField>
+
+<ParamField body="apiVersion" type="v1" required>
+  apiVersion request field.
+</ParamField>
+
+<ParamField body="requestId" type="string" required>
+  requestId request field.
+</ParamField>
+
+<ParamField body="mode" type="task" required>
+  mode request field.
+</ParamField>
+
+<ParamField body="task.input" type="string" required>
+  task.input request field.
+</ParamField>
+
+<ParamField body="idempotencyKey" type="string">
+  idempotencyKey request field.
+</ParamField>
+
+## Successful response
+
+**202** — Durable task admitted or exact idempotent replay returned.
+
+<ResponseField name="apiVersion" type="v1" required>
+  apiVersion response field.
+</ResponseField>
+
+<ResponseField name="run_id" type="string" required>
+  run_id response field.
+</ResponseField>
+
+<ResponseField name="requestId" type="string" required>
+  requestId response field.
+</ResponseField>
+
+<ResponseField name="mode" type="task" required>
+  mode response field.
+</ResponseField>
+
+<ResponseField name="status" type="queued | running | awaiting_approval | completed | failed | cancelled" required>
+  Public lifecycle status. Internal cancelling and reconcile_required states project as running; reconciliation is not terminal.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  createdAt response field.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  updatedAt response field.
+</ResponseField>
+
+<ResponseField name="completedAt" type="string">
+  completedAt response field.
+</ResponseField>
+
+<ResponseField name="pendingApproval" type="object">
+  Present only when Praxa can derive the exact recorded browser action and bind it to the stored action digest. The summary contains the exact recorded instruction or steps followed by the target host.
+</ResponseField>
+
+<ResponseField name="result" type="object">
+  Present only for schema-valid, digest-matched verified text.
+</ResponseField>
+
+<ResponseField name="failure" type="object">
+  failure response field.
+</ResponseField>
+
+<ResponseField name="links" type="object" required>
+  links response field.
+</ResponseField>
+
+<RequestExample>
+~~~bash cURL
+curl --fail-with-body -X POST 'https://api.praxa.io/v1/execute' \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Idempotency-Key: playground-execute-durable-task-0001" \
+  -H "X-AI-Platform-Version: v1" \
+  -H "Content-Type: application/json" \
+  --data '{
+  "apiVersion": "v1",
+  "requestId": "tutorial-task-2026-08-13",
+  "mode": "task",
+  "task": {
+    "input": "Summarize the incident and propose the next safe action."
+  },
+  "idempotencyKey": "tutorial-task-2026-08-13"
+}'
+~~~
+</RequestExample>
+
+<ResponseExample>
+~~~json 202
+{
+  "apiVersion": "v1",
+  "run_id": "018f0000-0000-7000-8000-000000000001",
+  "requestId": "request-id-demo-0001",
+  "mode": "task",
+  "status": "queued",
+  "createdAt": "2026-08-13T12:00:00.000Z",
+  "updatedAt": "2026-08-13T12:00:00.000Z",
+  "links": {
+    "self": "/v1/runs/018f0000-0000-7000-8000-000000000001",
+    "events": "/v1/runs/018f0000-0000-7000-8000-000000000001/events"
+  }
+}
+~~~
+</ResponseExample>
+
+## Verify and recover
+
+- Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
+- Reuse the idempotency key only for an exact retry of the same logical mutation.
+- For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
+- Revoke the disposable key and remove test data after validation.

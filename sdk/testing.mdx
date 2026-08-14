@@ -1,0 +1,66 @@
+---
+title: "Test an SDK integration"
+sidebarTitle: "Testing"
+description: "Test Praxa SDK contract metadata, request construction, errors, event resumption, and authenticated runtime behavior."
+---
+
+import ProductionVerification from "/snippets/ProductionVerification.mdx";
+
+The SDK accepts a custom <code>fetch</code> implementation. Use it to test
+request construction without network access, then run a separate authenticated
+canary against the Gateway you intend to operate.
+
+~~~typescript
+import {
+  PraxaClient,
+  PRAXA_CONTRACT_VERSION,
+  PRAXA_OPENAPI_SHA256,
+} from "@praxa/sdk";
+import { strict as assert } from "node:assert";
+
+const requests: Request[] = [];
+
+const client = new PraxaClient({
+  baseUrl: "https://gateway.example.test",
+  accessToken: () => "test-token",
+  fetch: async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+
+    return new Response(
+      JSON.stringify({
+        type: "https://praxa.example/problems/not-implemented",
+        title: "Test fixture",
+        status: 501,
+      }),
+      {
+        status: 501,
+        headers: { "content-type": "application/problem+json" },
+      },
+    );
+  },
+});
+
+assert.equal(PRAXA_CONTRACT_VERSION, "aura-integration-gateway-v8.1");
+assert.equal(
+  PRAXA_OPENAPI_SHA256,
+  "a9835faa4654246f83c452ae968a569c85be28f93017882e710ca35c10dbbecc",
+);
+
+await client.getReferenceCoverage().catch(() => undefined);
+assert.equal(requests.length, 1);
+assert.equal(requests[0].headers.get("authorization"), "Bearer test-token");
+~~~
+
+## Test layers
+
+| Layer | What to assert |
+|---|---|
+| Package | Clean install, ESM import, version constants, subpath exports |
+| Client | URL normalization, headers, body, abort signal, error parsing |
+| Events | Event ordering, duplicate IDs, resume cursor, terminal readback |
+| Authentication | Missing, expired, revoked, and wrong-scope tokens |
+| Isolation | Another tenant or subject cannot be accessed |
+| Runtime | Positive mission lifecycle against the intended Gateway |
+
+<ProductionVerification />

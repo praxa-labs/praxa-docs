@@ -1,0 +1,209 @@
+---
+title: "Create or replay a portable memory candidate"
+sidebarTitle: "Create or replay a portable memory candidate"
+description: "Requires a personal workspace key with memory:write and a stable Idempotency-Key. Identity and tenant are derived from the key. The candidate remains isolated from first-party Praxa memory planes."
+api: "POST /v1/memory/records"
+authMethod: "bearer"
+playground: "interactive"
+---
+
+{/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
+
+Requires a personal workspace key with memory:write and a stable Idempotency-Key. Identity and tenant are derived from the key. The candidate remains isolated from first-party Praxa memory planes.
+
+<Info>
+  **Availability:** Qualification preview. **Required scope:** `memory:write`.
+</Info>
+
+Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+
+## Request fields
+
+<ParamField header="Idempotency-Key" type="string" required>
+  Stable key for one logical mutation. Reuse only with the exact same request; changed input under the same key returns a conflict.
+</ParamField>
+
+<ParamField body="apiVersion" type="v1" required>
+  apiVersion request field.
+</ParamField>
+
+<ParamField body="providerId" type="mem0 | zep | graphiti | langgraph | letta | openai_agents | custom" required>
+  providerId request field.
+</ParamField>
+
+<ParamField body="sourceId" type="string" required>
+  sourceId request field.
+</ParamField>
+
+<ParamField body="externalRecordId" type="string" required>
+  externalRecordId request field.
+</ParamField>
+
+<ParamField body="revision" type="string" required>
+  revision request field.
+</ParamField>
+
+<ParamField body="kind" type="message | fact | summary | episode | pinned_context | document | entity | edge" required>
+  kind request field.
+</ParamField>
+
+<ParamField body="subject" type="string" required>
+  subject request field.
+</ParamField>
+
+<ParamField body="visibility" type="subject" required>
+  visibility request field.
+</ParamField>
+
+<ParamField body="content" type="string" required>
+  content request field.
+</ParamField>
+
+<ParamField body="agentId" type="string">
+  agentId request field.
+</ParamField>
+
+<ParamField body="threadId" type="string">
+  threadId request field.
+</ParamField>
+
+<ParamField body="workspaceId" type="string">
+  workspaceId request field.
+</ParamField>
+
+<ParamField body="purpose" type="string">
+  purpose request field.
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  metadata request field.
+</ParamField>
+
+<ParamField body="provenance.origin" type="explicit | observed | inferred | imported" required>
+  provenance.origin request field.
+</ParamField>
+
+<ParamField body="provenance.confidence" type="number" required>
+  provenance.confidence request field.
+</ParamField>
+
+<ParamField body="provenance.capturedAt" type="string" required>
+  provenance.capturedAt request field.
+</ParamField>
+
+<ParamField body="provenance.sourceUrl" type="string">
+  provenance.sourceUrl request field.
+</ParamField>
+
+<ParamField body="provenance.evidenceIds" type="array<string>">
+  provenance.evidenceIds request field.
+</ParamField>
+
+<ParamField body="provenance.metadata" type="object">
+  provenance.metadata request field.
+</ParamField>
+
+<ParamField body="occurredAt" type="string" required>
+  occurredAt request field.
+</ParamField>
+
+<ParamField body="observedAt" type="string" required>
+  observedAt request field.
+</ParamField>
+
+<ParamField body="expiresAt" type="string">
+  expiresAt request field.
+</ParamField>
+
+<ParamField body="originChain" type="array<string>">
+  originChain request field.
+</ParamField>
+
+## Successful response
+
+**201** — A new candidate was created.
+
+<ResponseField name="apiVersion" type="v1" required>
+  apiVersion response field.
+</ResponseField>
+
+<ResponseField name="replayed" type="boolean" required>
+  replayed response field.
+</ResponseField>
+
+<ResponseField name="candidate" type="object" required>
+  candidate response field.
+</ResponseField>
+
+<RequestExample>
+~~~bash cURL
+curl --fail-with-body -X POST 'https://api.praxa.io/v1/memory/records' \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Idempotency-Key: playground-create-memory-candidate-0001" \
+  -H "Content-Type: application/json" \
+  --data '{
+  "apiVersion": "v1",
+  "providerId": "custom",
+  "sourceId": "customer-profile",
+  "externalRecordId": "preference-42",
+  "revision": "revision-1",
+  "kind": "fact",
+  "subject": "customer-42",
+  "visibility": "subject",
+  "content": "Prefers concise weekly summaries.",
+  "metadata": {
+    "category": "communication-preference"
+  },
+  "provenance": {
+    "origin": "explicit",
+    "confidence": 1,
+    "capturedAt": "2026-08-13T12:00:00.000Z",
+    "evidenceIds": [],
+    "metadata": {}
+  },
+  "occurredAt": "2026-08-13T12:00:00.000Z",
+  "observedAt": "2026-08-13T12:00:00.000Z",
+  "originChain": []
+}'
+~~~
+</RequestExample>
+
+<ResponseExample>
+~~~json 201
+{
+  "apiVersion": "v1",
+  "replayed": true,
+  "candidate": {
+    "id": "018f0000-0000-7000-8000-000000000001",
+    "state": "candidate",
+    "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "createdAt": "2026-08-13T12:00:00.000Z",
+    "record": {
+      "apiVersion": "v1",
+      "providerId": "mem0",
+      "sourceId": "source-id-demo-0001",
+      "externalRecordId": "external-record-id-demo-0001",
+      "revision": "revision-demo-0001",
+      "kind": "message",
+      "subject": "customer-42",
+      "visibility": "subject",
+      "content": "content-demo-0001",
+      "provenance": {
+        "origin": "explicit",
+        "confidence": 0,
+        "capturedAt": "2026-08-13T12:00:00.000Z"
+      },
+      "occurredAt": "2026-08-13T12:00:00.000Z",
+      "observedAt": "2026-08-13T12:00:00.000Z"
+    }
+  }
+}
+~~~
+</ResponseExample>
+
+## Verify and recover
+
+- Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
+- Reuse the idempotency key only for an exact retry of the same logical mutation.
+- For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
+- Revoke the disposable key and remove test data after validation.

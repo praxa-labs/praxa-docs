@@ -1,0 +1,11 @@
+## Production verification
+
+Verify each layer independently:
+
+1. **Package:** install the exact public version in a clean project.
+2. **Contract:** validate the request, response, scope, and version metadata.
+3. **Authentication:** test valid, missing, expired, revoked, and wrong-scope credentials.
+4. **Isolation:** prove the caller cannot read or mutate another subject or tenant.
+5. **Idempotency:** replay the same logical mutation and then send a digest mismatch.
+6. **Lifecycle:** observe the terminal state rather than stopping at admission.
+7. **Cleanup:** delete test data and confirm the documented retention boundary.

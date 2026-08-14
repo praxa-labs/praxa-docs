@@ -1,0 +1,36 @@
+---
+title: "Troubleshooting Praxa integrations"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose authentication, idempotency, event, webhook, memory, and version failures by observable symptom."
+---
+
+Start with the symptom and the exact surface. Do not retry every error with a
+new key or move a credential to another API.
+
+<CardGroup cols={2}>
+  <Card title="Authentication and scopes" icon="key" href="/troubleshooting/authentication-and-scopes">
+    Diagnose authentication, workspace, tenant, and scope failures.
+  </Card>
+  <Card title="Idempotency and retries" icon="rotate" href="/troubleshooting/idempotency-and-retries">
+    Distinguish exact replay, payload conflict, safe retry, and unconfirmed mutation.
+  </Card>
+  <Card title="Events and webhooks" icon="satellite-dish" href="/troubleshooting/events-and-webhooks">
+    Recover from SSE disconnects, duplicate deliveries, and signature failures.
+  </Card>
+  <Card title="Memory" icon="database" href="/troubleshooting/memory">
+    Diagnose provider outages, namespace errors, partial results, and hosted-candidate boundaries.
+  </Card>
+</CardGroup>
+
+## First five observations
+
+1. Surface and base URL
+2. HTTP status or returned result status
+3. Contract and package version
+4. Credential type and requested scope, never the credential value
+5. Run, event, delivery, source, or record identifier
+
+<Warning>
+  Do not paste access tokens, API keys, provider credentials, raw webhook
+  secrets, customer content, or cross-tenant identifiers into support logs.
+</Warning>

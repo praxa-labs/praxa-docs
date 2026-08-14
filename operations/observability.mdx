@@ -1,0 +1,49 @@
+---
+title: "Production observability"
+sidebarTitle: "Observability"
+description: "Correlate Praxa requests, runs, events, webhooks, usage, and terminal readback without mistaking admission for completion."
+---
+
+import ProofBoundary from "/snippets/ProofBoundary.mdx";
+
+<ProofBoundary />
+
+~~~mermaid
+sequenceDiagram
+  participant App as Your backend
+  participant Praxa as Praxa contract
+  participant Events as SSE or webhook
+  participant Store as Your evidence store
+  App->>Praxa: Mutating request plus idempotency key
+  Praxa-->>App: Accepted resource and run identifier
+  App->>Store: Persist request, key, and run identifier
+  Events-->>App: Ordered lifecycle event
+  App->>Store: Deduplicate and advance cursor
+  App->>Praxa: Read terminal projection
+  Praxa-->>App: Terminal state or current nonterminal state
+  App->>Store: Reconcile outcome and usage
+~~~
+
+## Correlation fields
+
+Store the fields supported by your chosen contract:
+
+- Logical request or idempotency key
+- Run or mission identifier
+- Event ID or SSE cursor
+- Webhook delivery identifier
+- Tenant and subject discriminator
+- Contract and package version
+- Admission timestamp
+- Terminal timestamp
+- Final state and error code
+- Usage projection
+
+## Alerts that matter
+
+- A run remains nonterminal beyond its declared budget.
+- An SSE consumer repeatedly reconnects without advancing its cursor.
+- A webhook delivery is valid but cannot be reconciled to a known run.
+- The same logical mutation appears under different idempotency keys.
+- Usage changes without a corresponding admitted workload.
+- A retry returns an unconfirmed response and terminal readback is unavailable.

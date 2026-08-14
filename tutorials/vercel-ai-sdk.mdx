@@ -1,0 +1,77 @@
+---
+title: "Add Praxa tools to Vercel AI SDK"
+sidebarTitle: "Vercel AI SDK"
+description: "Adapt Praxa's governed tool definitions to a Vercel AI SDK ToolLoopAgent and preserve approval, scope, and completion checks."
+---
+
+Praxa provides executable tool definitions through <code>@praxa/sdk</code>.
+Vercel AI SDK provides the model loop. Your backend remains responsible for
+the reviewed model, token authority, and final user experience.
+
+## 1. Install the packages
+
+~~~bash
+npm install ai @praxa/sdk@0.3.0
+~~~
+
+## 2. Adapt the tools
+
+~~~ts
+import { jsonSchema, tool, ToolLoopAgent } from "ai";
+import { createPraxaAgentTools, PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const tools = Object.fromEntries(
+  createPraxaAgentTools(client).map((definition) => [
+    definition.name,
+    tool({
+      description: definition.description,
+      inputSchema: jsonSchema(definition.inputSchema),
+      execute: definition.execute,
+      needsApproval: !definition.readOnly,
+    }),
+  ]),
+);
+
+const agent = new ToolLoopAgent({
+  model: reviewedModel,
+  instructions: "Use Praxa tools only for the user's explicit request.",
+  tools,
+});
+~~~
+
+Do not remove the server-side Praxa checks because the host has an approval
+option. Framework approval is defense in depth; Praxa still evaluates scope,
+tenant, purpose, policy, revocation, and idempotency at execution time.
+
+## 3. Run and inspect
+
+~~~ts
+const result = await agent.generate({
+  prompt: "Prepare the weekly review with a bounded mission.",
+});
+
+console.log(result.text);
+~~~
+
+Treat the model response as presentation. For an operation that returns a
+Praxa run ID, read the run or consume events before claiming the mission
+completed.
+
+## 4. Test the integration
+
+1. Assert all expected tool names are registered exactly once.
+2. Assert each input schema is passed through <code>jsonSchema()</code>.
+3. Assert mutation tools require approval in your host.
+4. Test a token without the required scope and require a fail-closed result.
+5. Replay a timed-out mutation with its original idempotency key.
+6. Verify a returned run independently of the model's final prose.
+7. Confirm tokens and tool payloads are absent from browser bundles and logs.
+
+<Card title="ToolLoopAgent reference" icon="arrow-up-right-from-square" href="https://ai-sdk.dev/docs/reference/ai-sdk-core/tool-loop-agent">
+  Review the current agent-loop contract in the official Vercel AI SDK docs.
+</Card>

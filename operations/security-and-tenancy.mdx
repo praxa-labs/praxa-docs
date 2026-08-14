@@ -1,0 +1,47 @@
+---
+title: "Security and tenancy"
+sidebarTitle: "Security and tenancy"
+description: "Keep Praxa credentials, scopes, workspaces, subjects, provider clients, and effect authority in their documented boundaries."
+---
+
+import CredentialBoundaries from "/snippets/CredentialBoundaries.mdx";
+
+<CredentialBoundaries />
+
+~~~mermaid
+flowchart TD
+  User["Authenticated owner"] --> Console["Developer Platform console"]
+  Console --> Key["Personal workspace API key"]
+  Key --> Fabric["Execution Fabric and hosted candidates"]
+  App["Your backend"] --> OAuth["Delegated OAuth token"]
+  OAuth --> Gateway["Your Integration Gateway"]
+  App --> Provider["Caller-owned memory provider client"]
+  Provider --> Federation["Read-only memory federation"]
+  Key -. never becomes .-> OAuth
+  Provider -. never enters .-> Fabric
+~~~
+
+## Boundary checklist
+
+| Boundary | Required behavior |
+|---|---|
+| Browser versus backend | Keep API keys, OAuth tokens, and provider credentials out of browser bundles and browser-visible JSON. |
+| Personal versus organization | Use the workspace authority returned by the server. Do not silently fall back from an unavailable organization to personal mutations. |
+| Subject | Derive or validate the subject according to the selected contract; do not broaden a query because a caller supplied another identifier. |
+| Scope | Request only the named operation scopes. A scope authorizes Praxa policy evaluation, not every provider-side effect. |
+| Provider | A connected provider client keeps its own permissions and data ownership. |
+| Approval | Bind approval to the exact action, target, run, and current authority state. |
+
+## Negative tests
+
+Run at least these tests before release:
+
+- No credential
+- Malformed credential
+- Expired or revoked credential
+- Correct credential with the wrong scope
+- Valid identifier from another tenant
+- Valid tenant with another subject
+- Organization request carrying a personal-only memory scope
+- Caller-supplied owner or tenant field
+- Redirect or proxy attempt outside the allowed upstream origin

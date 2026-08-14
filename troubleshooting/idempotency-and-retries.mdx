@@ -1,0 +1,34 @@
+---
+title: "Idempotency and retry failures"
+sidebarTitle: "Idempotency and retries"
+description: "Choose the safe retry action for exact replay, digest conflict, network interruption, rate limit, and server failure."
+---
+
+~~~mermaid
+flowchart TD
+  Failure["Request did not yield a confirmed outcome"] --> Mutation{"Was it a mutation?"}
+  Mutation -->|No| Safe["Retry with bounded backoff"]
+  Mutation -->|Yes| Key{"Do you have the original stable key?"}
+  Key -->|No| Read["Read back by known run or resource ID; do not invent a fresh key"]
+  Key -->|Yes| Same{"Is this the same logical payload?"}
+  Same -->|Yes| Replay["Retry with the same key"]
+  Same -->|No| Conflict["Use a new key only for genuinely new logical work"]
+  Replay --> Status{"Response class"}
+  Status -->|Digest conflict| Stop["Stop and reconcile the payload"]
+  Status -->|Rate limit or retryable server error| Backoff["Respect Retry-After or bounded exponential backoff"]
+  Status -->|Timeout| Read
+~~~
+
+## Stable key rule
+
+Reuse the same idempotency key for every retry of the same logical mutation.
+A fresh key represents new work and can create a duplicate.
+
+## Unconfirmed mutations
+
+If the connection drops after sending a mutation:
+
+1. Keep the original key.
+2. Read the known run or resource if an identifier was returned.
+3. Retry the same payload with the same key when the contract permits.
+4. Treat a digest mismatch as a reconciliation failure, not a signal to bypass it.

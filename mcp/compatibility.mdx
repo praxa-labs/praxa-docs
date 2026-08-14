@@ -1,0 +1,22 @@
+---
+title: "MCP compatibility"
+sidebarTitle: "Compatibility"
+description: "Keep Praxa MCP protocol revisions, server version, wire identifiers, schema draft, and host adapters compatible."
+---
+
+| Contract | Published value |
+|---|---|
+| Primary MCP protocol | <code>2025-11-25</code> |
+| Negotiated compatibility protocol | <code>2025-03-26</code> |
+| MCP server name | <code>aura-agent-os</code> |
+| MCP server/package version | <code>0.3.0</code> |
+| Tool-name prefix | <code>aura_</code> |
+| Input schema | JSON Schema draft 2020-12 |
+
+The package exports Praxa-named aliases while preserving established
+Aura-compatible wire identifiers. Treat a host SDK's registration call as an
+adapter boundary: some hosts accept raw JSON Schema while others require a
+library-specific schema wrapper.
+
+See [Version compatibility](/releases/compatibility) before upgrading the
+package or protocol implementation.

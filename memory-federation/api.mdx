@@ -5,11 +5,11 @@ description: "Review the deployed /v1/memory candidate-plane routes and their pe
 ---
 
 <Warning>
-  These routes and their additive migration are deployed from Praxa AI revision
-  `8bc8705522462c41105917f4f8f97e6f4b69f1c1`. Exact-revision deployment, route smoke tests, and
-  fail-closed unauthenticated `401` responses are proven. Authenticated positive, wrong-scope,
-  revoked-key, cross-tenant, idempotency, export, and deletion canaries remain pending; a `401`
-  proves only the shared gateway authentication boundary, not authorized record behavior.
+  These routes are a deployed qualification preview. Route smoke tests and
+  fail-closed unauthenticated `401` responses are proven. Authenticated positive,
+  wrong-scope, revoked-key, cross-tenant, idempotency, export, and deletion
+  canaries remain pending; a `401` proves only the shared gateway authentication
+  boundary, not authorized record behavior.
 </Warning>
 
 ## Candidate routes
@@ -18,8 +18,8 @@ description: "Review the deployed /v1/memory candidate-plane routes and their pe
 |---|---|---|---|
 | `POST` | `/v1/memory/records` | `memory:write` | Create or replay one bounded candidate record under the authenticated tenant. |
 | `POST` | `/v1/memory/query` | `memory:read` | Query candidates with an explicit `retrievalMode: "lexical"` in the first hosted slice. |
-| `GET` | `/v1/memory/export` | `memory:read` | Export a bounded cursor page, with JSONL only when the deployed response contract qualifies it. |
-| `DELETE` | `/v1/memory/records/{id}` | `memory:write` | Hard-erase candidate payload content and return a content-free deletion receipt. |
+| `GET` | `/v1/memory/export` | `memory:read` | Export bounded NDJSON pages and follow `X-Praxa-Next-Cursor` when present. |
+| `DELETE` | `/v1/memory/records/{recordId}` | `memory:write` | Hard-erase candidate payload content and return a content-free deletion receipt. |
 
 Existing Platform keys gain no memory scope automatically. The key principal selects the tenant;
 the request body cannot provide tenant, actor, organization, or Praxa user authority.

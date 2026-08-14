@@ -1,0 +1,70 @@
+---
+title: "Build a resilient event consumer"
+sidebarTitle: "Resilient events"
+description: "Combine resumable SSE with a durable signed-webhook inbox and verify ordering, deduplication, and terminal outcomes."
+---
+
+SSE and webhooks solve different delivery problems. Use SSE for an attached
+client that needs progress; use webhooks for a backend that must survive client
+disconnects.
+
+~~~mermaid
+sequenceDiagram
+  participant P as Praxa run
+  participant S as SSE consumer
+  participant W as Webhook inbox
+  participant A as Application state
+  P-->>S: ordered progress events
+  S->>A: update live view
+  P-->>W: signed delivery
+  W->>W: verify and deduplicate
+  W->>A: commit durable transition
+  S--xP: disconnect
+  S->>P: reconnect with Last-Event-ID
+~~~
+
+## 1. Persist the SSE cursor
+
+Save the last processed event ID after your application commits the event. On
+reconnection, send <code>Last-Event-ID</code> and require increasing event
+sequences. A heartbeat is liveness, not a state transition.
+
+## 2. Build a durable webhook inbox
+
+Verify the signature over the exact raw body before parsing JSON. Within one
+transaction or durable operation:
+
+1. insert the immutable event ID with a unique constraint;
+2. store the validated payload and delivery metadata;
+3. enqueue or apply the application transition;
+4. return 2xx only after durable acceptance.
+
+A duplicate event ID should return success without repeating the effect.
+
+## 3. Reconcile the two views
+
+SSE and webhook arrival order can differ. Use the Praxa run ID and event
+sequence as authority, not HTTP arrival time. When either lane observes a
+terminal state, read the run if your product needs an authoritative final
+projection.
+
+## 4. Test failure paths
+
+| Scenario | Expected behavior |
+|---|---|
+| SSE disconnect | Resume from the last committed event ID |
+| Duplicate webhook | One logical application transition |
+| Modified body | Signature rejection before JSON handling |
+| Expired timestamp | Rejection with no inbox insert |
+| Webhook handler crash | Non-2xx so delivery can retry |
+| EOF before terminal | Incomplete state, not success |
+| Out-of-order delivery | Process by run sequence |
+
+<CardGroup cols={2}>
+  <Card title="SSE event reference" icon="wave-square" href="/fabric/api/events">
+    Read framing, resumption, heartbeats, and terminal-event behavior.
+  </Card>
+  <Card title="Webhook tutorial" icon="webhook" href="/tutorials/webhooks">
+    Implement signing, deduplication, replay, and cleanup.
+  </Card>
+</CardGroup>

@@ -1,0 +1,32 @@
+---
+title: "Use the CLI in CI"
+sidebarTitle: "CI and automation"
+description: "Run Praxa CLI checks in CI without storing long-lived tokens or confusing package proof with Gateway proof."
+---
+
+~~~mermaid
+flowchart LR
+  Job["CI job"] --> Install["Install exact CLI version"]
+  Install --> Version["Verify package and contract versions"]
+  Version --> Token["Obtain short-lived token"]
+  Token --> Doctor["Run read-only doctor"]
+  Doctor --> Mission["Run bounded canary if authorized"]
+  Mission --> Cleanup["Cancel or clean up test work"]
+~~~
+
+## Recommended job order
+
+1. Install <code>@praxa/cli@0.3.0</code> from the public registry.
+2. Run <code>praxa version</code>.
+3. Obtain a short-lived token from your trusted CI identity flow.
+4. Run <code>praxa doctor</code>.
+5. Run a bounded mission canary only if the environment explicitly authorizes it.
+6. Inspect terminal readback and clean up test work.
+
+## Output handling
+
+- Gateway commands, version, and memory planning write JSON to standard output.
+- Pass <code>--json</code> to <code>praxa init</code> when a machine-readable result is required.
+- Help and default init output are human-readable.
+- Errors go to standard error and use a nonzero exit code.
+- Mask access tokens before archiving CI logs.

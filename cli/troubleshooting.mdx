@@ -1,0 +1,18 @@
+---
+title: "CLI troubleshooting"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose Praxa CLI package, configuration, HTTPS, token, scope, JSON output, and memory-plan failures."
+---
+
+| Symptom | Check |
+|---|---|
+| <code>npx</code> cannot choose a binary | Use <code>npx --package=@praxa/cli@0.3.0 praxa …</code>. The package exposes both Praxa and legacy Aura bins. |
+| Gateway URL missing | Supply <code>--base-url</code>, <code>PRAXA_BASE_URL</code>, or project config. |
+| URL rejected | Use HTTPS and remove embedded credentials. |
+| Authentication failure | Confirm the short-lived Gateway token and required scope. |
+| Command output is text | Help is text; init needs <code>--json</code>; check the command's output contract. |
+| Memory plan does not contact a provider | Expected behavior: memory commands are local planning only. |
+| Retry creates new work | Reuse the stable key for the same logical mutation. |
+
+See [Authentication and scopes](/troubleshooting/authentication-and-scopes) for
+cross-surface credential boundaries.

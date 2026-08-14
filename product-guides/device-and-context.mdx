@@ -1,0 +1,38 @@
+---
+title: "Device and context"
+sidebarTitle: "Device and context"
+description: "Use consented health, location, calendar, and contact context on the surfaces that support it."
+---
+
+{/* Generated from data/public-capabilities.json. Run npm run docs:generate after changing the catalog. */}
+
+
+Use consented health, location, calendar, and contact context on the surfaces that support it.
+
+<Note>
+Device permissions remain authoritative. Web surfaces may degrade when the corresponding native capability is unavailable.
+</Note>
+
+## Provided capabilities
+
+| Capability | Status | Surfaces | Who it helps |
+|---|---|---|---|
+| **Apple Health**<br />Use authorized HealthKit activity, sleep, workout, and metric data on device. | Live | iOS | Individual |
+| **Location, maps, and places**<br />Use authorized location context for nearby-place search and map results. | Live | iOS, web | Individual, Business |
+| **Calendar and agenda**<br />Read and manage supported calendar events and Praxa agenda items. | Live | iOS, web | Individual, Business, Team |
+| **Contacts**<br />Resolve authorized contact names for drafting and communication workflows, with web degradation where applicable. | Live | iOS, web | Individual, Business |
+
+## Example outcomes
+
+1. **Summarize authorized health data.** Ask for a bounded activity or sleep summary and verify the requested Health permission is active.
+2. **Find a nearby place.** Use current location to search nearby places and inspect the returned map or place details.
+3. **Manage a calendar item.** Review the exact account, time, attendees, and action before creating or changing an event.
+4. **Resolve a contact.** Draft a message to a named contact and verify the resolved recipient before sending.
+
+## Verify the surface
+
+1. Confirm the capability status and listed surface in the [Capability Atlas](/overview/capabilities).
+2. Sign in to the intended Praxa product surface and select the correct personal or organization workspace.
+3. Exercise the example with the smallest safe scope and inspect the visible result or approval card.
+4. Test one unavailable, denied, or disconnected state so the surface fails honestly.
+5. Use a developer tutorial only when this guide links to a supported public developer contract.

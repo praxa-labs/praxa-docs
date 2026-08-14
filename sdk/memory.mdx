@@ -1,0 +1,26 @@
+---
+title: "SDK memory surfaces"
+sidebarTitle: "Memory"
+description: "Choose between Gateway memory queries, read-only provider federation, and hosted memory candidates."
+---
+
+~~~mermaid
+flowchart TD
+  Need["What memory do you need?"] --> Gateway{"Deployment-owned Gateway memory?"}
+  Gateway -->|Yes| Query["PraxaClient queryMemory"]
+  Gateway -->|No| Existing{"Existing provider remains authoritative?"}
+  Existing -->|Yes| Federation["@praxa/sdk/memory"]
+  Existing -->|No| Hosted{"Portable personal candidate storage?"}
+  Hosted -->|Yes| Candidate["Hosted memory qualification preview"]
+  Hosted -->|No| Reconsider["Define ownership, subject, retention, and deletion first"]
+~~~
+
+| Surface | Authority | Writes provider data? | Start |
+|---|---|---:|---|
+| Gateway memory query | Deployment-specific Gateway | No | [PraxaClient reference](/sdk/praxaclient) |
+| SDK memory federation | Caller-owned provider clients | No | [Memory federation SDK](/memory-federation/sdk) |
+| Hosted candidates | Personal workspace candidate store | Creates or deletes candidate records only | [Hosted memory tutorial](/tutorials/hosted-memory-candidates) |
+
+AHCE and Praxa personal memory are product capabilities. Neither is an
+automatic destination for records returned by the public federation library or
+stored in the hosted candidate plane.

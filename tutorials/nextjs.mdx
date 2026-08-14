@@ -1,0 +1,146 @@
+---
+title: "Build a Praxa backend with Next.js"
+sidebarTitle: "Next.js"
+description: "Create a server-only Next.js App Router boundary for Praxa tasks, preserve idempotency, and test it without leaking credentials."
+---
+
+This tutorial adds one authenticated application route between your browser and
+Praxa. The browser never receives the Praxa API key.
+
+~~~mermaid
+flowchart LR
+  Browser["Browser UI"] -->|"same-origin request"| Route["Next.js Route Handler"]
+  Route -->|"server-only API key"| Praxa["Praxa Execution Fabric"]
+  Praxa --> Run["Tenant-owned run"]
+  Route -->|"safe projection"| Browser
+~~~
+
+## Prerequisites
+
+- Next.js App Router with TypeScript
+- Your application session helper
+- A personal Praxa key with <code>execute:write</code>
+- Node.js 20 or newer
+
+Next.js Route Handlers use the Web Request and Response APIs. Keep
+<code>PRAXA_API_KEY</code> unprefixed: variables beginning with
+<code>NEXT_PUBLIC_</code> are eligible for the browser bundle.
+
+## 1. Add the server-only client
+
+~~~ts lib/praxa.server.ts
+import "server-only";
+import { createHash } from "node:crypto";
+
+const endpoint = "https://api.praxa.io/v1/execute";
+const apiKey = process.env.PRAXA_API_KEY;
+
+if (!apiKey) throw new Error("PRAXA_API_KEY is required");
+
+export async function submitTask(input: {
+  userId: string;
+  requestId: string;
+  task: string;
+}) {
+  const idempotencyKey =
+    "next:" +
+    createHash("sha256")
+      .update(input.userId + "\0" + input.requestId)
+      .digest("hex");
+
+  return fetch(endpoint, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      authorization: "Bearer " + apiKey,
+      "content-type": "application/json",
+      "idempotency-key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      apiVersion: "v1",
+      requestId: idempotencyKey,
+      mode: "task",
+      task: { input: input.task },
+      idempotencyKey,
+    }),
+  });
+}
+~~~
+
+The hash binds the caller's stable application request ID to the authenticated
+user without exposing that user ID to Praxa.
+
+## 2. Add the Route Handler
+
+~~~ts app/api/tasks/route.ts
+import { submitTask } from "@/lib/praxa.server";
+
+export async function POST(request: Request) {
+  const session = await requireSession();
+  const body = await request.json();
+
+  if (
+    typeof body.task !== "string" ||
+    body.task.length < 1 ||
+    body.task.length > 16_000 ||
+    typeof body.requestId !== "string" ||
+    body.requestId.length < 16 ||
+    body.requestId.length > 128
+  ) {
+    return Response.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  const upstream = await submitTask({
+    userId: session.user.id,
+    requestId: body.requestId,
+    task: body.task,
+  });
+
+  const payload = await upstream.json();
+  return Response.json(payload, {
+    status: upstream.status,
+    headers: { "cache-control": "no-store" },
+  });
+}
+~~~
+
+<Warning>
+  Do not accept a Praxa tenant, workspace, owner, scope, or API key in the
+  browser request. Your session and server configuration own that authority.
+</Warning>
+
+## 3. Call it from the client
+
+~~~ts
+export async function startTask(task: string, requestId = crypto.randomUUID()) {
+  const response = await fetch("/api/tasks", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ task, requestId }),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+~~~
+
+Persist <code>requestId</code> until the request settles. Reuse it after a
+timeout; create a new value only for new logical work.
+
+## 4. Test the boundary
+
+Mock the upstream request in a Route Handler test and prove:
+
+1. No session returns <code>401</code> before the Praxa call.
+2. Invalid input returns <code>400</code> before the Praxa call.
+3. A valid request forwards one server-owned key and no browser-supplied owner.
+4. Repeating the same user and request ID emits the same idempotency key.
+5. Changing either value emits a different idempotency key.
+6. The response uses <code>Cache-Control: no-store</code>.
+
+Then run one disposable live task and follow its run to a terminal state. A
+<code>202</code> response proves admission, not completion.
+
+<Card title="Next.js Route Handler reference" icon="arrow-up-right-from-square" href="https://nextjs.org/docs/app/getting-started/route-handlers">
+  Review the current framework conventions in the official Next.js guide.
+</Card>

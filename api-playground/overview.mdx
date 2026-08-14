@@ -8,6 +8,15 @@ The API Playground is generated from the same checked OpenAPI documents used by
 this reference. Choose an endpoint in the sidebar, enter a disposable bearer
 key, review the generated request, and send it to `https://api.praxa.io`.
 
+~~~mermaid
+flowchart LR
+  Operation["Choose an operation"] --> Example["Generate cURL, JavaScript, or Python"]
+  Example --> Key["Add disposable scoped key"]
+  Key --> Send["Send request"]
+  Send --> Verify["Read run, event, export, or deletion receipt"]
+  Verify --> Cleanup["Delete test data and revoke key"]
+~~~
+
 <Warning>
   Use a disposable least-privilege key. Do not paste provider credentials,
   Integration Gateway OAuth tokens, webhook signing secrets, production
@@ -25,6 +34,15 @@ The deployment-specific OAuth Integration Gateway remains in
 [API Reference](/api-reference/overview). It is not included here because each
 deployment has its own HTTPS origin and token authority; executing those
 requests against `api.praxa.io` would teach the wrong contract.
+
+<CardGroup cols={2}>
+  <Card title="Admit a durable task" icon="play" href="/api-playground/execution-fabric/execute-durable-task">
+    Open the interactive request builder for `POST /v1/execute`.
+  </Card>
+  <Card title="Create a memory candidate" icon="database" href="/api-playground/memory/create-memory-candidate">
+    Open the subject-scoped candidate builder for `POST /v1/memory/records`.
+  </Card>
+</CardGroup>
 
 ## Test an Execution Fabric request
 

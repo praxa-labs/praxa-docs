@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="360" viewBox="0 0 860 360" role="img" aria-labelledby="title desc">
+  <title id="title">Repository-local test coverage</title>
+  <desc id="desc">Coverage was 68.09 percent statements, 62.31 percent branches, 75.09 percent functions, and 70.84 percent lines in the pinned author-run summary.</desc>
+  <style>
+    .title{font:700 20px ui-sans-serif,system-ui;fill:#171717}.label{font:600 14px ui-sans-serif,system-ui;fill:#262626}.value{font:500 13px ui-monospace,SFMono-Regular,monospace;fill:#525252}.axis{stroke:#d4d4d4}.muted{fill:#a3a3a3}.accent{fill:#007fff}.warning{fill:#f59e0b}.panel{fill:#fafafa;stroke:#e5e5e5}
+    @media (prefers-color-scheme:dark){.title,.label{fill:#f5f5f5}.value{fill:#d4d4d4}.axis{stroke:#404040}.panel{fill:#181818;stroke:#2a2a2a}.muted{fill:#737373}}
+  </style>
+  <rect class="panel" x="1" y="1" width="858" height="358" rx="16"/>
+  <text class="title" x="36" y="42">Repository-local coverage snapshot</text>
+  <text class="value" x="36" y="68">1,027 unit tests and 89 Workerd tests passed in the pinned author-run summary.</text>
+  <text class="label" x="36" y="118">Statements</text>
+  <line class="axis" x1="175" y1="110" x2="775" y2="110" stroke-width="18" stroke-linecap="round"/>
+  <line class="accent" x1="175" y1="110" x2="583.54" y2="110" stroke-width="18" stroke-linecap="round"/>
+  <text class="value" x="790" y="116">68.09%</text>
+  <text class="label" x="36" y="176">Branches</text>
+  <line class="axis" x1="175" y1="168" x2="775" y2="168" stroke-width="18" stroke-linecap="round"/>
+  <line class="accent" x1="175" y1="168" x2="548.86" y2="168" stroke-width="18" stroke-linecap="round"/>
+  <text class="value" x="790" y="174">62.31%</text>
+  <text class="label" x="36" y="234">Functions</text>
+  <line class="axis" x1="175" y1="226" x2="775" y2="226" stroke-width="18" stroke-linecap="round"/>
+  <line class="accent" x1="175" y1="226" x2="625.54" y2="226" stroke-width="18" stroke-linecap="round"/>
+  <text class="value" x="790" y="232">75.09%</text>
+  <text class="label" x="36" y="292">Lines</text>
+  <line class="axis" x1="175" y1="284" x2="775" y2="284" stroke-width="18" stroke-linecap="round"/>
+  <line class="accent" x1="175" y1="284" x2="600.04" y2="284" stroke-width="18" stroke-linecap="round"/>
+  <text class="value" x="790" y="290">70.84%</text>
+  <text class="value" x="36" y="334">Repository-local conformance only · independently reproduced: no · production status: hold</text>
+</svg>

@@ -1,0 +1,45 @@
+---
+title: "Build event-driven automation"
+sidebarTitle: "Event-driven automation"
+description: "Drive application workflows from Praxa SSE events and signed webhooks without duplicating effects."
+---
+
+Use SSE when a connected client needs low-latency progress. Use webhooks when
+your backend needs durable asynchronous delivery. Many products use both.
+
+~~~mermaid
+flowchart LR
+  Run["Praxa run"] --> SSE["SSE progress"]
+  Run --> Hook["Signed webhook"]
+  SSE --> UI["Live user interface"]
+  Hook --> Inbox["Durable webhook inbox"]
+  Inbox --> Dedupe["Deduplicate by event ID"]
+  Dedupe --> Workflow["Application workflow"]
+~~~
+
+## Example applications
+
+- Update a progress UI while a mission runs.
+- Start a downstream job only after a terminal event.
+- Route an approval-needed event to an internal review queue.
+- Reconcile a delivery after a network timeout without repeating the effect.
+- Populate a warehouse from immutable event IDs and ordered sequences.
+
+## Delivery rules
+
+1. Verify a webhook over the exact raw body before parsing JSON.
+2. Reject stale timestamps and invalid signatures.
+3. Persist the event before returning 2xx.
+4. Deduplicate by immutable event ID.
+5. Process run events by sequence rather than arrival order.
+6. Resume SSE with the last event ID.
+7. Treat EOF before terminal as incomplete.
+
+<CardGroup cols={2}>
+  <Card title="Signed webhook tutorial" icon="webhook" href="/tutorials/webhooks">
+    Implement verification, persistence, replay, and cleanup.
+  </Card>
+  <Card title="Event troubleshooting" icon="stethoscope" href="/troubleshooting/events-and-webhooks">
+    Diagnose signatures, ordering, duplicate delivery, and stream gaps.
+  </Card>
+</CardGroup>
