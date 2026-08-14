@@ -1,0 +1,52 @@
+---
+title: "Praxa tutorials"
+sidebarTitle: "Tutorials overview"
+description: "Build and test Praxa integrations end to end with Node.js, Next.js, Express, Cloudflare Workers, Python, MCP hosts, and existing memory providers."
+---
+
+These tutorials start with a runnable contract, keep credentials on trusted
+servers, and end with an observable verification. Choose the tutorial for your
+product surface and deployment model.
+
+## Choose a tutorial
+
+| Tutorial | What you build | Frameworks and runtimes | Credential |
+|---|---|---|---|
+| [Run a durable task](/tutorials/durable-tasks) | Submit, poll, stream, and optionally cancel a v1 run | cURL, Node.js, Next.js, Cloudflare Workers, Python | Personal Execution Fabric API key |
+| [Run a mission lifecycle](/tutorials/mission-lifecycle) | Create a budgeted mission and consume resumable events | Node.js, Next.js server code, Express | Short-lived Integration Gateway OAuth token |
+| [Federate existing memory](/tutorials/memory-federation) | Recall from provider-owned stores with provenance and partial degradation | Mem0, LangGraph, Zep, Graphiti, Letta, OpenAI Agents, custom | Provider client owned by your backend |
+| [Test hosted memory candidates](/tutorials/hosted-memory-candidates) | Create, lexically query, export, and erase isolated portable candidates | cURL, JavaScript, Python | Personal memory-scoped API key |
+| [Add MCP tools](/tutorials/mcp-tools) | Register or remotely connect the 12 governed tool contracts | Vercel AI SDK, OpenAI, LangChain, MCP hosts | Short-lived Integration Gateway OAuth token |
+| [Receive signed webhooks](/tutorials/webhooks) | Verify, deduplicate, and acknowledge raw webhook deliveries | Next.js, Express, Cloudflare Workers | One-time webhook signing secret |
+| [Add observability](/tutorials/observability) | Combine run polling, SSE, usage, webhook delivery status, traces, and coverage | Node.js, dashboards, backend workers | API key or OAuth token, depending on plane |
+| [Integrate a backend framework](/tutorials/framework-backends) | Keep Praxa credentials off the browser while exposing an application-specific endpoint | Next.js, Express, Hono/Workers, FastAPI | Server-only credential |
+| [Test your integration](/tutorials/test-your-integration) | Run the required success, isolation, idempotency, outage, and deletion matrix | Vitest, Node test runner, pytest | Disposable least-privilege credentials |
+
+## Before you begin
+
+<Steps>
+  <Step title="Choose one API plane">
+    Use `api.praxa.io/v1` for the deployed personal-tenant Execution Fabric and
+    memory-candidate previews. Use `@praxa/sdk` only with the Integration
+    Gateway origin and OAuth flow provided by your deployment.
+  </Step>
+  <Step title="Create a least-privilege credential">
+    Select only the scopes required by the tutorial. Never put a Praxa API key,
+    OAuth token, webhook secret, or provider credential in browser JavaScript.
+  </Step>
+  <Step title="Use stable idempotency keys">
+    Generate one key for each logical mutation, persist it before the first
+    request, and reuse it only for retries of that same request body.
+  </Step>
+  <Step title="Verify the observable outcome">
+    Admission is not completion. Read the run, consume its terminal event,
+    inspect a receipt, or query the created candidate before calling the
+    integration successful.
+  </Step>
+</Steps>
+
+<Card title="Open the API Playground" icon="flask" href="/api-playground/overview">
+  Explore the concrete `api.praxa.io` contracts with generated cURL,
+  JavaScript, and Python examples. Use a disposable key and preserve the
+  documented release boundary for each endpoint.
+</Card>

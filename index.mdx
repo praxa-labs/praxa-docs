@@ -1,87 +1,130 @@
 ---
-title: "Praxa: Governed AI Agent Missions Without Credentials"
-sidebarTitle: "Home"
-description: "Praxa lets you submit and observe AI agent missions without holding provider credentials. Get started with the TypeScript SDK or CLI."
+title: "Praxa developer documentation"
+sidebarTitle: "Overview"
+description: "Choose the Praxa API, SDK, CLI, MCP, or memory surface that fits your application, then build and test it end to end."
 ---
 
-Praxa is an agentic mission platform that lets your application submit and observe governed AI agent missions through the Praxa Integration Gateway — without ever holding provider API keys in your mission-integration code. You define a goal and a resource budget; Praxa handles execution, consent, and scope enforcement entirely server-side. This credential boundary applies to Gateway mission integrations through the TypeScript SDK, CLI, and MCP contracts. The optional [memory-federation SDK](/memory-federation/sdk) is credential-blind itself, but runs against provider clients that your backend creates and owns.
+Praxa gives developers separate, explicit contracts for durable task execution,
+governed agent missions, MCP tools, observability, webhooks, and read-only
+federation across existing memory systems. Start with the outcome you need;
+each surface has its own credential, authority, and release boundary.
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Install the SDK, set two environment variables, and run your first mission in under 5 minutes.
+  <Card title="Explore every use case" icon="compass" href="/use-cases/overview">
+    Compare the available execution, mission, MCP, memory, webhook,
+    observability, and research surfaces with concrete examples.
   </Card>
-  <Card title="API Reference" icon="code" href="/api-reference/overview">
-    Explore the full versioned Praxa Integration Gateway REST API, including mission lifecycle endpoints and event streaming.
+  <Card title="Follow an end-to-end tutorial" icon="graduation-cap" href="/tutorials/overview">
+    Integrate Praxa with Node.js, Next.js, Express, Cloudflare Workers, Python,
+    MCP hosts, or an existing memory provider—and test the result.
   </Card>
-  <Card title="TypeScript SDK" icon="npm" href="/sdk/overview">
-    A typed HTTP and server-sent-event client for submitting and observing missions from Node.js applications.
+  <Card title="Try the API Playground" icon="flask" href="/api-playground/overview">
+    Generate and send scoped cURL, JavaScript, or Python requests for the
+    concrete `api.praxa.io` contracts.
   </Card>
-  <Card title="MCP Contracts" icon="plug" href="/mcp/overview">
-    MCP 2025-11-25 tool and JSON-RPC contracts, with negotiated 2025-03-26 compatibility, for integrating Praxa missions into model-context-protocol workflows.
+  <Card title="Read the Execution Fabric guide" icon="diagram-project" href="/fabric">
+    Submit durable tasks, observe runs, read usage, and receive signed
+    webhooks through the personal-tenant partner preview.
   </Card>
 </CardGroup>
 
-## Get started in four steps
+## Choose an integration surface
 
-<Steps>
-  <Step title="Get your gateway URL and token">
-    Obtain your Praxa Integration Gateway HTTPS origin and a short-lived delegated OAuth access token from your Praxa deployment administrator. You'll export both as environment variables before running any code.
-  </Step>
-  <Step title="Install the SDK">
-    Add `@praxa/sdk` to your Node.js 20+ project with your package manager of choice:
+| If you need to… | Start with | Credential and authority |
+|---|---|---|
+| Submit, observe, or cancel a durable task | [Execution Fabric](/fabric) | Personal workspace API key for `https://api.praxa.io` |
+| Create a budgeted mission with signals and resumable events | [TypeScript SDK](/sdk/overview) | Short-lived OAuth token and your deployment-specific Integration Gateway origin |
+| Add governed operations to an MCP-compatible agent | [MCP Contracts](/mcp/overview) | The public contracts package; runtime calls still use a Gateway token |
+| Operate missions from a terminal or CI job | [CLI](/cli/overview) | The same deployment-specific Gateway origin and OAuth token |
+| Query Mem0, LangGraph, Zep, Graphiti, Letta, or OpenAI Agents memory | [Memory Federation](/memory-federation/overview) | Provider clients and credentials owned by your backend |
+| Stage portable records for lexical query, export, and erasure | [Hosted memory candidate tutorial](/tutorials/hosted-memory-candidates) | Personal workspace key with `memory:read` or `memory:write`; qualification preview |
+| Reproduce published performance evidence | [Benchmarks & Research](/benchmarks/overview) | No production credential for public artifacts |
 
-    ```sh
-    npm install @praxa/sdk
-    ```
-  </Step>
-  <Step title="Create your first mission">
-    Instantiate a `PraxaClient` with your gateway URL and token provider, then call `createMission` with a goal specification and a resource budget. The SDK returns a `runId` and initial status immediately.
+<Warning>
+  Do not move credentials between surfaces. In particular, an Execution Fabric
+  API key is not an Integration Gateway OAuth token, and a memory-provider
+  credential belongs only in the backend process that creates that provider
+  client.
+</Warning>
 
-    ```ts
-    import { PraxaClient } from "@praxa/sdk";
+## Run your first durable task
 
-    const praxa = new PraxaClient({
-      baseUrl: process.env.PRAXA_BASE_URL!,
-      accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
-    });
+Create a personal workspace key with `execute:write`, then send one stable
+idempotency key for the logical task:
 
-    const mission = await praxa.createMission(
-      {
-        goalSpec: { task: "Prepare the weekly review" },
-        resourceBudget: {
-          maximumSteps: 12,
-          maximumToolCalls: 8,
-          maximumElapsedMs: 120_000,
-          maximumParallelism: 2,
-        },
-      },
-      crypto.randomUUID(),
-    );
+```bash
+curl --fail-with-body https://api.praxa.io/v1/execute \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: weekly-review-2026-08-13" \
+  -d '{
+    "apiVersion": "v1",
+    "requestId": "weekly-review-2026-08-13",
+    "mode": "task",
+    "task": { "input": "Summarize this week and propose the next safe action." },
+    "idempotencyKey": "weekly-review-2026-08-13"
+  }'
+```
 
-    console.log({ runId: mission.runId, status: mission.status });
-    ```
-  </Step>
-  <Step title="Stream mission events">
-    Use `missionEvents` to consume the bounded, resumable server-sent-event stream for your mission:
+A `202` response proves that the task was admitted or exactly replayed. Follow
+the returned run resource or event stream to verify completion; admission alone
+does not prove a downstream effect.
 
-    ```ts
-    for await (const event of praxa.missionEvents(mission.runId)) {
-      console.log(event.id, event.event, event.data);
-    }
-    ```
-  </Step>
-</Steps>
+## Run a governed mission
 
-## Explore further
+If your organization operates an Integration Gateway deployment, install the
+public SDK and use the origin and short-lived OAuth token issued by that
+deployment:
+
+```bash
+npm install @praxa/sdk@0.3.0
+```
+
+```ts
+import { PraxaClient } from "@praxa/sdk";
+
+const praxa = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const mission = await praxa.createMission(
+  {
+    goalSpec: { task: "Prepare the weekly review" },
+    resourceBudget: {
+      maximumSteps: 12,
+      maximumToolCalls: 8,
+      maximumElapsedMs: 120_000,
+      maximumParallelism: 2,
+    },
+  },
+  "weekly-review-2026-08-13",
+);
+
+for await (const event of praxa.missionEvents(mission.runId)) {
+  console.log(event.id, event.event, event.data);
+}
+```
+
+## Build from a tested example
 
 <CardGroup cols={3}>
-  <Card title="Mission Concepts" icon="lightbulb" href="/concepts/missions">
-    Understand the mission model: goal specs, resource budgets, idempotency keys, and the event stream lifecycle.
+  <Card title="Durable tasks" icon="play" href="/tutorials/durable-tasks">
+    Submit, poll, stream, cancel, and verify a v1 task.
   </Card>
-  <Card title="Task Automation" icon="gears" href="/use-cases/task-automation">
-    See how Praxa fits into automated task pipelines and recurring workflows without embedding credentials.
+  <Card title="Memory federation" icon="database" href="/tutorials/memory-federation">
+    Combine read-only memory sources and test provenance and partial outages.
   </Card>
-  <Card title="CLI Reference" icon="terminal" href="/cli/overview">
-    Use `@praxa/cli` to create, inspect, and cancel missions from the command line or CI pipelines.
+  <Card title="MCP tools" icon="plug" href="/tutorials/mcp-tools">
+    Register all 12 stable wire contracts in an MCP or agent host.
+  </Card>
+  <Card title="Signed webhooks" icon="webhook" href="/tutorials/webhooks">
+    Verify raw-body signatures, deduplicate deliveries, and test replay.
+  </Card>
+  <Card title="Framework backends" icon="server" href="/tutorials/framework-backends">
+    Keep credentials server-side in Next.js, Express, Workers, or FastAPI.
+  </Card>
+  <Card title="Integration test matrix" icon="list-check" href="/tutorials/test-your-integration">
+    Prove success, isolation, idempotency, degradation, and cleanup behavior.
   </Card>
 </CardGroup>

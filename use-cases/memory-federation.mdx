@@ -1,0 +1,128 @@
+---
+title: "Memory federation use cases"
+sidebarTitle: "Memory federation"
+description: "Use Praxa with Mem0, LangGraph, Zep, Graphiti, Letta, OpenAI Agents sessions, or a custom memory source without migrating first."
+---
+
+Memory federation lets your existing memory system remain authoritative while
+your agent consumes a bounded, normalized recall result. The SDK does not
+discover credentials, write to providers, synchronize stores, or promote
+retrieved content into Praxa personal memory.
+
+## Adopt Praxa without a migration
+
+Add a source adapter around the client or store your backend already owns.
+
+```ts
+import {
+  MemoryFederation,
+  createLangGraphMemorySource,
+} from "@praxa/sdk/memory";
+
+const memory = new MemoryFederation({
+  sources: [
+    createLangGraphMemorySource({
+      store,
+      mapNamespace: ({ tenantId, subjectId }) => [
+        tenantId,
+        subjectId,
+        "memory",
+      ],
+    }),
+  ],
+});
+```
+
+Use this pattern when you already have production memories and cannot justify a
+flag-day import.
+
+## Combine complementary sources
+
+One agent can recall user facts from Mem0, long-term documents from LangGraph,
+and graph relationships from Zep or Graphiti.
+
+```ts
+const memory = new MemoryFederation({
+  sources: [mem0Source, langGraphSource, graphitiSource],
+  maxConcurrency: 3,
+  defaultTimeoutMs: 5_000,
+});
+
+const result = await memory.recall({
+  query: "What should I know before planning this account review?",
+  namespace: { tenantId: "acme", subjectId: "account-42" },
+  limit: 12,
+});
+```
+
+Praxa ranks results with reciprocal-rank fusion over each source's ordinal
+ranking. It never compares provider-native scores as though they shared one
+scale.
+
+## Preserve provenance for agent decisions
+
+Every item keeps all exact-content source matches. Use those matches in traces,
+approval screens, or citations.
+
+```ts
+const context = result.items.map((item) => ({
+  kind: item.kind,
+  text: item.text,
+  sources: item.matches.map((match) => ({
+    provider: match.provider,
+    sourceId: match.sourceId,
+    sourceRecordId: match.sourceRecordId,
+    origin: match.provenance.origin,
+    confidence: match.provenance.confidence,
+    capturedAt: match.provenance.capturedAt,
+  })),
+}));
+```
+
+Treat memory text as untrusted contextual data. Do not reinterpret a memory as
+a system instruction or let it bypass your application's authorization rules.
+
+## Continue through provider outages
+
+`MemoryFederation.recall()` returns `partial` when at least one source succeeds
+and another times out, is unavailable, is unsupported, or errors.
+
+```ts
+if (result.status === "partial") {
+  const unavailable = result.sources.filter((source) => source.status !== "ok");
+  logger.warn({ unavailable }, "Continuing with incomplete memory context");
+}
+```
+
+This lets your product choose between a disclosed degraded response, a retry,
+or a fail-closed action policy. Never interpret a provider outage as proof that
+the subject has no memory.
+
+## Evaluate a future migration
+
+Run old and proposed stores side by side, compare recall quality, and inspect
+which source contributed each result. The SDK supports evaluation, not an
+automated mirror or cutover. Provider writes and any eventual migration remain
+your responsibility.
+
+## Stage portable candidates
+
+The hosted candidate API accepts the same portable eight-kind envelope for
+personal workspace keys. It can create, lexically query, export, and erase
+candidate records without activating them as first-party Praxa memory.
+
+Use this only as a qualification preview. Authenticated positive,
+wrong-scope, revoked-key, and cross-tenant production canaries remain pending.
+Deleting a candidate removes Praxa's candidate content and creates a
+content-free receipt; it does not delete the provider-owned source record.
+
+<CardGroup cols={2}>
+  <Card title="Memory federation tutorial" icon="graduation-cap" href="/tutorials/memory-federation">
+    Connect each supported adapter and run isolation, outage, and provenance
+    tests.
+  </Card>
+  <Card title="Hosted candidate API" icon="brackets-curly" href="/memory-federation/api">
+    Review the qualification boundary, scopes, routes, retention, and deletion
+    semantics.
+  </Card>
+</CardGroup>

@@ -1,0 +1,154 @@
+---
+title: "Test a Praxa integration end to end"
+sidebarTitle: "Test your integration"
+description: "Use a repeatable acceptance matrix for package installation, authentication, idempotency, isolation, streaming, memory outages, webhooks, and deletion."
+---
+
+Tests pass at different evidence levels. A package import proves the artifact
+can load. A mocked request proves client behavior. A live authenticated canary
+proves the deployed boundary. A user test proves the workflow is understandable
+and usable. Record each result separately.
+
+## 1. Record the test subject
+
+Before testing, capture:
+
+```text
+package versions:
+application commit:
+Praxa API plane:
+Praxa deployment origin and version:
+tenant IDs used:
+subject IDs used:
+credential scopes:
+test start and end time:
+cleanup owner:
+```
+
+Never put token values, provider credentials, customer content, or webhook
+secrets in the receipt.
+
+## 2. Prove the public packages
+
+Use an empty temporary project rather than an existing `node_modules` tree:
+
+```bash
+mkdir praxa-package-smoke && cd praxa-package-smoke
+npm init -y
+npm install --ignore-scripts --no-audit --no-fund \
+  @praxa/sdk@0.3.0 \
+  @praxa/mcp-contracts@0.3.0
+
+node --input-type=module -e '
+  const sdk = await import("@praxa/sdk");
+  const memory = await import("@praxa/sdk/memory");
+  const mcp = await import("@praxa/mcp-contracts");
+  if (typeof sdk.PraxaClient !== "function") throw new Error("missing PraxaClient");
+  if (typeof memory.MemoryFederation !== "function") throw new Error("missing MemoryFederation");
+  if (mcp.PRAXA_MCP_TOOLS.length !== 12) throw new Error("unexpected MCP surface");
+  console.log("Praxa package smoke passed");
+'
+```
+
+This proves registry installation and module exports. It does not prove a live
+Gateway or provider.
+
+## 3. Run the API-key matrix
+
+Create disposable personal-workspace keys with deliberately different scopes:
+
+| Key | Scopes | Purpose |
+|---|---|---|
+| Task writer | `execute:write` | Submit only |
+| Run reader | `runs:read` | Read and stream only |
+| Run manager | `runs:read`, `runs:write` | Webhooks and cancellation |
+| Usage reader | `usage:read` | Usage only |
+| Memory reader | `memory:read` | Query and export only |
+| Memory writer | `memory:write` | Create and erase only |
+
+For every route, test:
+
+1. The correct key succeeds.
+2. A valid wrong-scope key fails closed.
+3. A revoked formerly-correct key fails closed.
+4. A malformed key fails with an authentication problem and no secret reflection.
+5. A resource ID from another tenant is not projected.
+
+## 4. Test idempotency
+
+For each mutation:
+
+```text
+A. Send request body X with key K -> success resource R
+B. Send exact body X with key K -> same logical resource R
+C. Send different body Y with key K -> 409 conflict
+D. Send body Y with a fresh key J -> new logical request
+```
+
+Do not generate a new key for a network retry. Do not reuse a key for new work.
+
+## 5. Test tenant and subject isolation
+
+Use two disposable tenants and two subjects per tenant:
+
+| Request | Expected |
+|---|---|
+| Tenant A, subject 1 reads its record | Present |
+| Tenant A, subject 2 reads subject 1's record | Absent |
+| Tenant B, subject 1 reads tenant A's record | Absent |
+| Caller supplies an owner or tenant field | Rejected or ignored by a server-derived boundary |
+
+Run this matrix for hosted memory candidates and any provider namespace mapper
+used by `@praxa/sdk/memory`.
+
+## 6. Test memory degradation and provenance
+
+1. Query two healthy sources and record their source IDs.
+2. Disable one source and require aggregate `partial`, not `ok` and not an unexplained empty result.
+3. Disable every source and require aggregate `failed` returned with source errors.
+4. Return exact matching kind and text from two sources and require both matches to remain.
+5. Return contradictory text and require separate items.
+6. Verify every displayed memory can be traced to source, provider, record ID, origin, confidence, and capture time.
+
+## 7. Test streams and webhooks
+
+For SSE:
+
+- disconnect after a known event ID;
+- reconnect with `Last-Event-ID`;
+- require increasing IDs with no event after a terminal state;
+- distinguish heartbeat comments from data events;
+- treat EOF before terminal as incomplete unless the API documents otherwise.
+
+For webhooks:
+
+- verify the HMAC before parsing JSON;
+- reject an expired timestamp and modified body;
+- deliver the same immutable `event_id` twice and require one logical effect;
+- process one run by `sequence`, not HTTP arrival order;
+- return 2xx only after durable acceptance.
+
+## 8. Test deletion and cleanup
+
+For hosted candidates:
+
+1. Delete using a stable idempotency key.
+2. Replay the deletion and require the same receipt.
+3. Query and export to confirm the candidate content is gone.
+4. Confirm the deletion receipt contains no content.
+5. Confirm the provider-owned source still exists unless you separately delete it there.
+
+After every canary:
+
+- revoke disposable keys and tokens;
+- disable test webhook endpoints;
+- remove disposable provider records;
+- keep only non-secret receipts and identifiers needed for audit;
+- record any verification that could not run.
+
+## Completion criteria
+
+Call an integration production-qualified only when the package, application,
+authenticated API, negative authorization, isolation, degraded-state, cleanup,
+and user-workflow lanes required by that integration have all passed. A green
+subset must stay labeled as that subset.

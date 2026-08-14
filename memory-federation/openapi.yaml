@@ -1,0 +1,493 @@
+openapi: 3.1.0
+info:
+  title: Praxa memory candidate API
+  version: 1.0.0-qualification-preview
+  summary: Personal-tenant staging for portable memory candidates.
+  description: >-
+    This deployed qualification-preview plane creates, lexically queries,
+    exports, and hard-erases isolated candidate records. Candidates do not
+    become Praxa personal memory, Vectorize content, Cognitive Events, AHCE
+    observations, task context, or world-model facts. Authenticated positive,
+    wrong-scope, revoked-key, and cross-tenant production canaries remain
+    pending. Use disposable data until qualification completes.
+servers:
+  - url: https://api.praxa.io
+    description: Deployed Praxa API origin.
+security:
+  - PlatformKey: []
+tags:
+  - name: Memory candidates
+  - name: Memory query
+  - name: Memory export and erasure
+paths:
+  /v1/memory/records:
+    post:
+      operationId: createMemoryCandidate
+      summary: Create or replay a portable memory candidate
+      description: >-
+        Requires a personal workspace key with memory:write and a stable
+        Idempotency-Key. Identity and tenant are derived from the key. The
+        candidate remains isolated from first-party Praxa memory planes.
+      tags: [Memory candidates]
+      x-activation-status: qualification-preview
+      x-required-scopes: [memory:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryRecordEnvelope'
+            example:
+              apiVersion: v1
+              providerId: custom
+              sourceId: customer-profile
+              externalRecordId: preference-42
+              revision: revision-1
+              kind: fact
+              subject: customer-42
+              visibility: subject
+              content: Prefers concise weekly summaries.
+              metadata:
+                category: communication-preference
+              provenance:
+                origin: explicit
+                confidence: 1
+                capturedAt: '2026-08-13T12:00:00.000Z'
+                evidenceIds: []
+                metadata: {}
+              occurredAt: '2026-08-13T12:00:00.000Z'
+              observedAt: '2026-08-13T12:00:00.000Z'
+              originChain: []
+      responses:
+        '201':
+          description: A new candidate was created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMemoryRecordResponse'
+        '200':
+          description: The exact idempotent candidate was replayed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMemoryRecordResponse'
+        default:
+          $ref: '#/components/responses/ProblemResponse'
+
+  /v1/memory/query:
+    post:
+      operationId: queryMemoryCandidates
+      summary: Lexically query one subject's candidates
+      description: >-
+        Requires a personal workspace key with memory:read. This endpoint is
+        lexical only; it does not perform vector, semantic, or graph search.
+      tags: [Memory query]
+      x-activation-status: qualification-preview
+      x-required-scopes: [memory:read]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryQueryRequest'
+            example:
+              apiVersion: v1
+              subject: customer-42
+              query: weekly summaries
+              providerIds: [custom]
+              kinds: [fact]
+              limit: 20
+      responses:
+        '200':
+          description: Bounded lexical matches for the requested subject.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryQueryResponse'
+        default:
+          $ref: '#/components/responses/ProblemResponse'
+
+  /v1/memory/export:
+    get:
+      operationId: exportMemoryCandidates
+      summary: Export one subject's candidate and deletion history
+      description: >-
+        Requires a personal workspace key with memory:read. Returns NDJSON.
+        Continue with X-Praxa-Next-Cursor when the response includes it.
+      tags: [Memory export and erasure]
+      x-activation-status: qualification-preview
+      x-required-scopes: [memory:read]
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+      responses:
+        '200':
+          description: Newline-delimited candidate and content-free deletion events.
+          headers:
+            X-Praxa-Next-Cursor:
+              schema:
+                type: string
+                minLength: 1
+                maxLength: 512
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: One MemoryExportLine JSON object per line.
+        default:
+          $ref: '#/components/responses/ProblemResponse'
+
+  /v1/memory/records/{recordId}:
+    delete:
+      operationId: deleteMemoryCandidate
+      summary: Hard-erase a candidate and return a content-free receipt
+      description: >-
+        Requires a personal workspace key with memory:write and a stable
+        Idempotency-Key. This erases the Praxa candidate, not the provider-owned
+        source record.
+      tags: [Memory export and erasure]
+      x-activation-status: qualification-preview
+      x-required-scopes: [memory:write]
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Candidate content erased or exact deletion replayed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteMemoryRecordResponse'
+        default:
+          $ref: '#/components/responses/ProblemResponse'
+
+components:
+  securitySchemes:
+    PlatformKey:
+      type: http
+      scheme: bearer
+      bearerFormat: praxa_sk_<64 lowercase hex characters>
+      description: >-
+        A personal workspace API key. Memory endpoints require memory:read or
+        memory:write as declared per operation. Organization memory scopes are
+        refused before key creation.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
+      description: >-
+        Stable key for one logical mutation. Reuse only with the exact same
+        request; changed input under the same key returns a conflict.
+  responses:
+    ProblemResponse:
+      description: Fail-closed problem response.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Identifier:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$'
+    Timestamp:
+      type: string
+      format: date-time
+    Digest:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    ProviderId:
+      type: string
+      enum: [mem0, zep, graphiti, langgraph, letta, openai_agents, custom]
+    RecordKind:
+      type: string
+      enum: [message, fact, summary, episode, pinned_context, document, entity, edge]
+    RecordOrigin:
+      type: string
+      enum: [explicit, observed, inferred, imported]
+    MetadataValue:
+      oneOf:
+        - type: string
+          maxLength: 512
+        - type: number
+        - type: boolean
+        - type: 'null'
+    Metadata:
+      type: object
+      maxProperties: 32
+      propertyNames:
+        minLength: 1
+        maxLength: 64
+      additionalProperties:
+        $ref: '#/components/schemas/MetadataValue'
+    IdentifierList:
+      type: array
+      maxItems: 16
+      uniqueItems: true
+      items:
+        $ref: '#/components/schemas/Identifier'
+    Provenance:
+      type: object
+      additionalProperties: false
+      properties:
+        origin:
+          $ref: '#/components/schemas/RecordOrigin'
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        capturedAt:
+          $ref: '#/components/schemas/Timestamp'
+        sourceUrl:
+          type: string
+          format: uri
+          pattern: '^https://'
+          maxLength: 2048
+        evidenceIds:
+          $ref: '#/components/schemas/IdentifierList'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+      required: [origin, confidence, capturedAt]
+    MemoryRecordEnvelope:
+      type: object
+      additionalProperties: false
+      description: >-
+        observedAt must not precede occurredAt. When present, expiresAt must
+        follow observedAt.
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        providerId:
+          $ref: '#/components/schemas/ProviderId'
+        sourceId:
+          $ref: '#/components/schemas/Identifier'
+        externalRecordId:
+          $ref: '#/components/schemas/Identifier'
+        revision:
+          $ref: '#/components/schemas/Identifier'
+        kind:
+          $ref: '#/components/schemas/RecordKind'
+        subject:
+          $ref: '#/components/schemas/Identifier'
+        visibility:
+          type: string
+          const: subject
+        content:
+          type: string
+          minLength: 1
+          maxLength: 16000
+        agentId:
+          $ref: '#/components/schemas/Identifier'
+        threadId:
+          $ref: '#/components/schemas/Identifier'
+        workspaceId:
+          $ref: '#/components/schemas/Identifier'
+        purpose:
+          $ref: '#/components/schemas/Identifier'
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+        occurredAt:
+          $ref: '#/components/schemas/Timestamp'
+        observedAt:
+          $ref: '#/components/schemas/Timestamp'
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+        originChain:
+          $ref: '#/components/schemas/IdentifierList'
+      required:
+        - apiVersion
+        - providerId
+        - sourceId
+        - externalRecordId
+        - revision
+        - kind
+        - subject
+        - visibility
+        - content
+        - provenance
+        - occurredAt
+        - observedAt
+    MemoryCandidate:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          const: candidate
+        contentDigest:
+          $ref: '#/components/schemas/Digest'
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+        record:
+          $ref: '#/components/schemas/MemoryRecordEnvelope'
+      required: [id, state, contentDigest, createdAt, record]
+    CreateMemoryRecordResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        replayed:
+          type: boolean
+        candidate:
+          $ref: '#/components/schemas/MemoryCandidate'
+      required: [apiVersion, replayed, candidate]
+    MemoryQueryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        subject:
+          $ref: '#/components/schemas/Identifier'
+        query:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        providerIds:
+          type: array
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/ProviderId'
+        kinds:
+          type: array
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/RecordKind'
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      required: [apiVersion, subject, query]
+    MemoryQueryItem:
+      type: object
+      additionalProperties: false
+      properties:
+        lexicalRank:
+          type: number
+          minimum: 0
+        candidate:
+          $ref: '#/components/schemas/MemoryCandidate'
+      required: [lexicalRank, candidate]
+    MemoryQueryResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        retrievalMode:
+          type: string
+          const: lexical
+        data:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/MemoryQueryItem'
+      required: [apiVersion, retrievalMode, data]
+    DeletionReceipt:
+      type: object
+      additionalProperties: false
+      properties:
+        receiptId:
+          type: string
+          format: uuid
+        recordId:
+          type: string
+          format: uuid
+        providerId:
+          $ref: '#/components/schemas/ProviderId'
+        sourceId:
+          $ref: '#/components/schemas/Identifier'
+        externalRecordId:
+          $ref: '#/components/schemas/Identifier'
+        revision:
+          $ref: '#/components/schemas/Identifier'
+        sourceFingerprint:
+          $ref: '#/components/schemas/Digest'
+        deletedAt:
+          $ref: '#/components/schemas/Timestamp'
+        receiptDigest:
+          $ref: '#/components/schemas/Digest'
+      required:
+        - receiptId
+        - recordId
+        - providerId
+        - sourceId
+        - externalRecordId
+        - revision
+        - sourceFingerprint
+        - deletedAt
+        - receiptDigest
+    DeleteMemoryRecordResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        erased:
+          type: boolean
+          const: true
+        replayed:
+          type: boolean
+        receipt:
+          $ref: '#/components/schemas/DeletionReceipt'
+      required: [apiVersion, erased, replayed, receipt]
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          type: string
+        detail:
+          type: string
+        retryable:
+          type: boolean
+      required: [type, title, status, code, detail, retryable]

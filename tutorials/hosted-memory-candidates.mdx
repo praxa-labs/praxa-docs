@@ -1,0 +1,142 @@
+---
+title: "Test hosted memory candidates"
+sidebarTitle: "Hosted memory candidates"
+description: "Create, lexically query, export, and erase a portable Praxa memory candidate while preserving the personal-tenant and source-provider boundaries."
+---
+
+The hosted memory candidate plane is deployed at `api.praxa.io`, but it remains
+a qualification preview. Its unauthenticated gateway boundary is proven. A
+complete authenticated positive, wrong-scope, revoked-key, and two-tenant by
+two-subject canary matrix is still pending.
+
+<Warning>
+  Candidate records do not become Praxa personal memory, Vectorize content,
+  Cognitive Events, AHCE observations, task context, or world-model facts. Use
+  disposable test data until your authenticated qualification passes.
+</Warning>
+
+## Prerequisites
+
+- A personal workspace key with `memory:write` for create and delete.
+- A personal workspace key with `memory:read` for query and export.
+- A subject identifier owned by your application.
+- A provider/source record you can safely represent as a portable candidate.
+
+Organization workspaces cannot mint hosted memory scopes. Identity and tenant
+come from the authenticated key; neither is accepted from the request body.
+
+## 1. Create one candidate
+
+Save this body as `candidate.json`:
+
+```json candidate.json
+{
+  "apiVersion": "v1",
+  "providerId": "custom",
+  "sourceId": "customer-profile",
+  "externalRecordId": "preference-42",
+  "revision": "revision-1",
+  "kind": "fact",
+  "subject": "customer-42",
+  "visibility": "subject",
+  "content": "Prefers concise weekly summaries.",
+  "metadata": {
+    "category": "communication-preference"
+  },
+  "provenance": {
+    "origin": "explicit",
+    "confidence": 1,
+    "capturedAt": "2026-08-13T12:00:00.000Z",
+    "evidenceIds": [],
+    "metadata": {}
+  },
+  "occurredAt": "2026-08-13T12:00:00.000Z",
+  "observedAt": "2026-08-13T12:00:00.000Z",
+  "originChain": []
+}
+```
+
+```bash
+curl --fail-with-body https://api.praxa.io/v1/memory/records \
+  -H "Authorization: Bearer $PRAXA_MEMORY_WRITE_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: tutorial-memory-create-0001" \
+  --data-binary @candidate.json
+```
+
+The first successful request returns `201` with `replayed: false`. Persist
+`candidate.id`. Replaying the exact body under the same key returns the same
+candidate with `replayed: true`. A different body under that key returns `409`.
+
+## 2. Query the subject
+
+```bash
+curl --fail-with-body https://api.praxa.io/v1/memory/query \
+  -H "Authorization: Bearer $PRAXA_MEMORY_READ_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "apiVersion": "v1",
+    "subject": "customer-42",
+    "query": "weekly summaries",
+    "providerIds": ["custom"],
+    "kinds": ["fact"],
+    "limit": 20
+  }'
+```
+
+The response always identifies `retrievalMode: "lexical"`. Do not describe
+this hosted endpoint as semantic or graph retrieval.
+
+## 3. Export candidate and deletion history
+
+```bash
+curl --fail-with-body --get https://api.praxa.io/v1/memory/export \
+  -H "Authorization: Bearer $PRAXA_MEMORY_READ_KEY" \
+  -H "Accept: application/x-ndjson" \
+  --data-urlencode "subject=customer-42" \
+  --data-urlencode "limit=50"
+```
+
+The response is newline-delimited JSON. If `X-Praxa-Next-Cursor` is present,
+send it as `cursor` on the next request. Each line is either a candidate event
+or a content-free deletion receipt event.
+
+## 4. Erase the candidate
+
+```bash
+curl --fail-with-body \
+  -X DELETE "https://api.praxa.io/v1/memory/records/$CANDIDATE_ID" \
+  -H "Authorization: Bearer $PRAXA_MEMORY_WRITE_KEY" \
+  -H "Idempotency-Key: tutorial-memory-delete-0001"
+```
+
+Deletion hard-erases the candidate content and returns an immutable receipt.
+The receipt retains identifiers, digests, and timestamps, not the content. It
+does not delete the original record from `customer-profile` or any other
+provider-owned source.
+
+## 5. Run the qualification matrix
+
+| Check | Expected result |
+|---|---|
+| Exact create retry | Same candidate, `replayed: true` |
+| Changed body under create key | `409 conflict` |
+| Subject A query | Candidate appears |
+| Subject B query in tenant A | Candidate does not appear |
+| Subject A query in tenant B | Candidate does not appear |
+| Read with write-only key | Fails closed |
+| Create with read-only key | Fails closed |
+| Request after key revocation | Fails closed |
+| Delete retry | Same deletion receipt, `replayed: true` |
+| Query after delete | Candidate content absent |
+| Export after delete | Content-free deletion event present |
+| Source-provider read after delete | Original provider record unchanged |
+
+Run the matrix with two disposable tenants and two subjects per tenant before
+using real customer data. Passing package tests or an unauthenticated `401`
+probe does not substitute for this authenticated boundary test.
+
+<Card title="Open the memory API playground" icon="flask" href="/api-playground/overview">
+  Inspect the generated request schema and examples. Use only disposable
+  least-privilege keys while the plane remains a qualification preview.
+</Card>

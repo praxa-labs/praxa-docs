@@ -19,14 +19,29 @@
       "href": "https://github.com/praxa-labs/praxa"
     }
   },
+  "api": {
+    "playground": {
+      "display": "interactive",
+      "proxy": true
+    },
+    "examples": {
+      "languages": [
+        "curl",
+        "javascript",
+        "python"
+      ],
+      "defaults": "required"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Documentation",
+        "tab": "Overview",
         "groups": [
           {
-            "group": "Get Started",
+            "group": "Get started",
             "pages": [
+              "index",
               "introduction",
               "quickstart",
               "authentication"
@@ -42,7 +57,33 @@
             ]
           },
           {
-            "group": "Memory Federation",
+            "group": "Use cases",
+            "root": "use-cases/overview",
+            "pages": [
+              "use-cases/task-automation",
+              "use-cases/multi-step-workflows",
+              "use-cases/mcp-integration",
+              "use-cases/memory-federation",
+              "use-cases/monitoring-and-observability"
+            ]
+          },
+          {
+            "group": "Tutorials",
+            "root": "tutorials/overview",
+            "pages": [
+              "tutorials/durable-tasks",
+              "tutorials/mission-lifecycle",
+              "tutorials/memory-federation",
+              "tutorials/hosted-memory-candidates",
+              "tutorials/mcp-tools",
+              "tutorials/webhooks",
+              "tutorials/observability",
+              "tutorials/framework-backends",
+              "tutorials/test-your-integration"
+            ]
+          },
+          {
+            "group": "Memory federation",
             "root": "memory-federation/overview",
             "pages": [
               "memory-federation/concepts",
@@ -50,92 +91,6 @@
               "memory-federation/sdk",
               "memory-federation/cli",
               "memory-federation/api"
-            ]
-          },
-          {
-            "group": "Use Cases",
-            "pages": [
-              "use-cases/task-automation",
-              "use-cases/multi-step-workflows",
-              "use-cases/mcp-integration",
-              "use-cases/monitoring-and-observability"
-            ]
-          },
-          {
-            "group": "SDK",
-            "root": "sdk/overview",
-            "pages": [
-              "sdk/framework-integrations",
-              "sdk/praxaclient",
-              "sdk/mission-events",
-              "sdk/error-handling"
-            ]
-          },
-          {
-            "group": "CLI",
-            "root": "cli/overview",
-            "pages": [
-              "cli/commands"
-            ]
-          },
-          {
-            "group": "MCP Contracts",
-            "root": "mcp/overview",
-            "pages": [
-              "mcp/tools"
-            ]
-          },
-          {
-            "group": "Benchmarks & Research",
-            "root": "benchmarks/overview",
-            "pages": [
-              "benchmarks/performance"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "API Reference",
-        "groups": [
-          {
-            "group": "Overview",
-            "root": "api-reference/overview",
-            "pages": [
-              "api-reference/authentication",
-              "api-reference/errors"
-            ]
-          },
-          {
-            "group": "Missions",
-            "pages": [
-              "api-reference/intents/submit",
-              "api-reference/missions/create",
-              "api-reference/missions/get",
-              "api-reference/missions/events",
-              "api-reference/missions/signal",
-              "api-reference/missions/cancel"
-            ]
-          },
-          {
-            "group": "Capabilities & Memory",
-            "pages": [
-              "api-reference/capabilities/search",
-              "api-reference/memory/query"
-            ]
-          },
-          {
-            "group": "Skills & Traces",
-            "pages": [
-              "api-reference/skills/get",
-              "api-reference/traces/get"
-            ]
-          },
-          {
-            "group": "Context & World Model",
-            "pages": [
-              "api-reference/context/goals",
-              "api-reference/world-model/certificates",
-              "api-reference/coverage"
             ]
           }
         ]
@@ -242,6 +197,128 @@
               "fabric/status-and-roadmap",
               "fabric/glossary"
             ]
+          }
+        ]
+      },
+      {
+        "tab": "SDK",
+        "groups": [
+          {
+            "group": "TypeScript SDK",
+            "root": "sdk/overview",
+            "pages": [
+              "sdk/framework-integrations",
+              "sdk/praxaclient",
+              "sdk/mission-events",
+              "sdk/error-handling"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI",
+        "groups": [
+          {
+            "group": "Praxa CLI",
+            "root": "cli/overview",
+            "pages": [
+              "cli/commands"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "MCP Contracts",
+        "groups": [
+          {
+            "group": "MCP contracts",
+            "root": "mcp/overview",
+            "pages": [
+              "mcp/tools"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Benchmarks & Research",
+        "groups": [
+          {
+            "group": "Benchmarks & research",
+            "root": "benchmarks/overview",
+            "pages": [
+              "benchmarks/performance"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "root": "api-reference/overview",
+            "pages": [
+              "api-reference/authentication",
+              "api-reference/errors"
+            ]
+          },
+          {
+            "group": "Missions",
+            "pages": [
+              "api-reference/intents/submit",
+              "api-reference/missions/create",
+              "api-reference/missions/get",
+              "api-reference/missions/events",
+              "api-reference/missions/signal",
+              "api-reference/missions/cancel"
+            ]
+          },
+          {
+            "group": "Capabilities & memory",
+            "pages": [
+              "api-reference/capabilities/search",
+              "api-reference/memory/query"
+            ]
+          },
+          {
+            "group": "Skills & traces",
+            "pages": [
+              "api-reference/skills/get",
+              "api-reference/traces/get"
+            ]
+          },
+          {
+            "group": "Context & world model",
+            "pages": [
+              "api-reference/context/goals",
+              "api-reference/world-model/certificates",
+              "api-reference/coverage"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Playground",
+        "groups": [
+          {
+            "group": "Start here",
+            "pages": [
+              "api-playground/overview"
+            ]
+          },
+          {
+            "group": "Execution Fabric",
+            "openapi": {
+              "source": "/fabric/api/openapi.yaml",
+              "directory": "api-playground/execution-fabric"
+            }
+          },
+          {
+            "group": "Memory candidates",
+            "openapi": {
+              "source": "/memory-federation/openapi.yaml",
+              "directory": "api-playground/memory"
+            }
           }
         ]
       }
