@@ -1,0 +1,204 @@
+---
+title: "Configure and authenticate @praxa/sdk"
+sidebarTitle: "Configuration & auth"
+description: "Configure PraxaClient securely with a deployment-specific Gateway, renewable OAuth tokens, retries, timeouts, and redacted telemetry."
+---
+
+`PraxaClient` is a trusted-server client for the Integration Gateway. Its
+credential is a short-lived delegated OAuth token, not a personal Execution
+Fabric API key and not a provider credential.
+
+## Credential decision table
+
+| You are calling | Credential | Where it belongs |
+|---|---|---|
+| `PraxaClient` against `/v8` | Delegated Gateway OAuth token | Trusted backend only |
+| `api.praxa.io/v1` Execution Fabric | Personal Fabric API key | Trusted backend only |
+| `@praxa/sdk/memory` provider adapter | Caller-owned provider client | Trusted backend only |
+| Your browser or mobile BFF | Your application session | Browser or secure device storage according to your auth design |
+
+Do not substitute one credential for another. A token that authenticates one
+plane does not grant authority in another.
+
+## Configure an exact Gateway origin
+
+The `baseUrl` must be an HTTPS origin with no path, query, fragment, username,
+or password.
+
+~~~ts
+const client = new PraxaClient({
+  baseUrl: "https://gateway.example",
+  accessToken: acquireDelegatedToken,
+});
+~~~
+
+Use the Gateway origin supplied by your Praxa deployment. The public package
+does not discover or provision that origin.
+
+## Supply renewable tokens
+
+The SDK invokes your provider before every request. Cache the token only until
+shortly before expiry and serialize refreshes so one expiry does not trigger a
+refresh stampede.
+
+~~~ts
+type CachedToken = { value: string; expiresAt: number };
+
+let cached: CachedToken | undefined;
+let refreshInFlight: Promise<CachedToken> | undefined;
+
+async function acquireDelegatedToken(): Promise<string> {
+  const refreshBeforeMs = 30_000;
+  if (cached && cached.expiresAt - Date.now() > refreshBeforeMs) {
+    return cached.value;
+  }
+
+  refreshInFlight ??= exchangeApplicationSessionForPraxaToken()
+    .then((token) => (cached = token))
+    .finally(() => {
+      refreshInFlight = undefined;
+    });
+
+  return (await refreshInFlight).value;
+}
+~~~
+
+`exchangeApplicationSessionForPraxaToken()` is deployment-specific. It should
+validate the application principal, requested tenant, audience, scopes,
+consent, and expiry at the issuing authority. Do not accept those authority
+fields directly from an untrusted browser body.
+
+## Bound each operation
+
+Pass an `AbortSignal` to stop work when the caller disconnects or your local
+deadline expires:
+
+~~~ts
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 30_000);
+
+try {
+  const mission = await client.getMission(runId, controller.signal);
+  return mission;
+} finally {
+  clearTimeout(timeout);
+}
+~~~
+
+Aborting the HTTP request does not prove the server operation did not happen.
+For mutations, read back by run ID or replay the same body with the same
+idempotency key.
+
+## Configure retries deliberately
+
+~~~ts
+const client = new PraxaClient({
+  baseUrl,
+  accessToken: acquireDelegatedToken,
+  maximumAttempts: 3,
+  retryBaseDelayMs: 200,
+});
+~~~
+
+The SDK retries safe reads and replay-safe keyed requests. It does not replay
+unkeyed mutations. Keep local request deadlines larger than the complete retry
+budget, and measure attempts rather than counting a retry as a second logical
+operation.
+
+## Add redacted request telemetry
+
+Inject a wrapper around `fetch` to record method, host, route family, status,
+latency, and request correlation. Never log authorization headers, request
+bodies, memory text, provider payloads, or webhook secrets.
+
+~~~ts
+const observedFetch: typeof fetch = async (input, init) => {
+  const started = performance.now();
+  const url = new URL(input instanceof Request ? input.url : String(input));
+
+  try {
+    const response = await fetch(input, init);
+    recordPraxaRequest({
+      method: init?.method ?? (input instanceof Request ? input.method : "GET"),
+      host: url.host,
+      route: redactRouteIdentifiers(url.pathname),
+      status: response.status,
+      durationMs: performance.now() - started,
+    });
+    return response;
+  } catch (error) {
+    recordPraxaRequest({
+      method: init?.method ?? "GET",
+      host: url.host,
+      route: redactRouteIdentifiers(url.pathname),
+      status: "network_error",
+      durationMs: performance.now() - started,
+    });
+    throw error;
+  }
+};
+~~~
+
+## Pin the package contract in CI
+
+~~~ts
+import {
+  PRAXA_CONTRACT_VERSION,
+  PRAXA_OPENAPI_SHA256,
+  PRAXA_OPENAPI_VERSION,
+} from "@praxa/sdk";
+
+if (PRAXA_OPENAPI_VERSION !== "8.1.0") {
+  throw new Error(`Unsupported Praxa OpenAPI ${PRAXA_OPENAPI_VERSION}`);
+}
+
+if (
+  PRAXA_OPENAPI_SHA256 !==
+  "a9835faa4654246f83c452ae968a569c85be28f93017882e710ca35c10dbbecc"
+) {
+  throw new Error("Praxa contract fingerprint changed; review before deploy");
+}
+
+console.info("Praxa contract", PRAXA_CONTRACT_VERSION);
+~~~
+
+Review the changelog and your exact method usage before updating the expected
+fingerprint. Aura-compatible wire values remain stable public contract values;
+do not rewrite them in proxies or tool registries.
+
+## Browser and mobile boundary
+
+~~~mermaid
+sequenceDiagram
+  participant UI as Browser or mobile app
+  participant BFF as Your authenticated backend
+  participant OAuth as Your token authority
+  participant Praxa as Praxa Gateway
+  UI->>BFF: App request + app session
+  BFF->>BFF: Validate user, tenant, input, quota
+  BFF->>OAuth: Request delegated Praxa token
+  OAuth-->>BFF: Short-lived token
+  BFF->>Praxa: SDK request
+  Praxa-->>BFF: Customer-safe projection
+  BFF-->>UI: Bounded response
+~~~
+
+The application frontend should receive only the projection it needs. Keep
+Gateway errors, identifiers, and traces redacted according to your product's
+data policy.
+
+## Production checklist
+
+- Rotate and revoke tokens at the issuing authority.
+- Request only the scopes required by the code path.
+- Derive tenant and subject from the authenticated application principal.
+- Persist the idempotency key with the request body before the first mutation.
+- Bound connect, operation, and overall request time.
+- Redact authorization, bodies, memory, traces, and provider data from logs.
+- Alert on repeated `401`, `403`, `409`, `429`, and retry exhaustion separately.
+- Prove cross-tenant denial and revoked-token behavior with disposable fixtures.
+
+<Card title="Troubleshoot SDK integrations" icon="wrench" href="/sdk/troubleshooting">
+  Diagnose origin validation, OAuth, scopes, retries, SSE reconnects, package
+  imports, and contract mismatches.
+</Card>

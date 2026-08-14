@@ -1,0 +1,126 @@
+---
+title: "Interpret Praxa benchmark results"
+sidebarTitle: "Interpret results"
+description: "Read task outcomes, resource use, uncertainty, missing trials, and evidence classes without turning a pilot into a production or superiority claim."
+---
+
+The first question is not “which bar is taller?” It is “what population,
+system, and decision can this measurement represent?”
+
+## Read outcomes before percentages
+
+The pilot reports 36 trials per arm:
+
+| Arm | Passed | Unresolved | Parse error | Accuracy |
+|---|---:|---:|---:|---:|
+| Baseline | 17 | 16 | 3 | 47.2% |
+| Reliability layer | 17 | 16 | 3 | 47.2% |
+
+The aggregate difference is zero percentage points. Do not describe this as an
+accuracy improvement, regression, or tie across all possible tasks. It is an
+equal aggregate count in this sample.
+
+## Keep failure classes visible
+
+Collapsing unresolved and parse errors into one “failed” bucket hides useful
+engineering information:
+
+- **passed**: the trial met the benchmark grader's success rule;
+- **unresolved**: the system did not produce a graded solution within the
+  protocol;
+- **parse error**: the trial output could not be interpreted by the evaluation
+  pipeline.
+
+A harness change can improve one failure class while worsening another without
+moving aggregate accuracy. Inspect task-level records before deciding what to
+fix.
+
+## Read resource use as a tradeoff
+
+| Resource | Baseline | Reliability layer | Relative change |
+|---|---:|---:|---:|
+| Input tokens | 1,624,737 | 2,233,805 | +37.5% |
+| Output tokens | 34,122 | 51,431 | +50.7% |
+| Steps | 384 | 457 | +19.0% |
+| Verification rounds | 0 | 42 | Added behavior |
+| Rollbacks | 0 | 13 | Added behavior |
+
+These values show that the reliability loop did more work in the pilot. They
+do not prove production cost because provider pricing, caching, deployment,
+concurrency, and task mix were not measured as a production workload.
+
+## Check experimental comparability
+
+Before comparing arms, confirm:
+
+1. Same task sample and attempt count.
+2. Same model, provider, reasoning configuration, and prompt.
+3. Same tools and environment image.
+4. Same token, step, wall-clock, and concurrency budgets.
+5. Same grader and outcome definitions.
+6. Same missing-trial and exclusion policy.
+7. Randomized or interleaved arm order when timing matters.
+8. Compatible cache and warmup state.
+
+The published pilot did not randomize or interleave arm order, and build-cache
+parity was not established. Treat elapsed-time differences as descriptive.
+
+## Ask what uncertainty is absent
+
+The publication reports a small pilot, not a powered confirmatory study. It
+does not publish an independent replication or a causal confidence interval
+for a general population of tasks. Avoid using decimal precision to imply
+certainty the design does not support.
+
+For your own study, predefine:
+
+- the task population you want to generalize to;
+- the minimum meaningful effect;
+- the number of independent tasks and attempts;
+- the paired or unpaired analysis;
+- the treatment of missing and invalid trials;
+- the stopping rule;
+- the correction for repeated comparisons.
+
+## Separate admission, completion, and effect
+
+~~~mermaid
+flowchart LR
+  Admit["Request admitted"] --> Complete["Agent run terminal"]
+  Complete --> Effect["Provider effect independently observed"]
+  Effect --> Outcome["User or business outcome"]
+~~~
+
+These are different dependent variables. A run can be admitted and fail, can
+finish without producing the intended provider effect, or can produce an
+effect that does not improve the user's outcome.
+
+## Review checklist
+
+When someone shares a result, ask:
+
+| Question | Why it matters |
+|---|---|
+| What exact source and package versions ran? | Makes the result reproducible |
+| Which model and provider settings were pinned? | Prevents model drift from becoming a harness claim |
+| How were tasks sampled? | Defines the population represented |
+| How many independent tasks and attempts ran? | Distinguishes breadth from repeated luck |
+| Which trials are missing or excluded? | Prevents denominator manipulation |
+| Who or what graded success? | Defines what “passed” means |
+| Was the provider effect independently read back? | Separates output from effect |
+| Were order and caches controlled? | Protects timing and cost comparisons |
+| Are raw redacted records available? | Enables review and reanalysis |
+| Was the analysis predeclared? | Reduces post-hoc metric selection |
+
+## Language to use
+
+**Supported:** “In this 12-task pilot, both arms passed 17 of 36 trials; the
+reliability-layer arm used more tokens and steps.”
+
+**Not supported:** “Praxa makes agents more accurate,” “Praxa is production
+proven,” or “the reliability layer is faster.”
+
+<Card title="Methodology" icon="microscope" href="/benchmarks/methodology">
+  Review the published controls, threats to validity, and comparison
+  requirements in detail.
+</Card>

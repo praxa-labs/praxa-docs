@@ -4,7 +4,21 @@ sidebarTitle: "Overview"
 description: "@praxa/sdk is the official TypeScript client for the Praxa Integration Gateway. Submit missions, stream events, and query capabilities from Node.js."
 ---
 
-`@praxa/sdk` is the official TypeScript client for the Praxa Integration Gateway. It is credential-free by design: you supply a short-lived delegated OAuth access token at runtime, and the SDK contains no embedded secrets, no provider credentials, and no execution authority. With a single `PraxaClient` instance you can submit governed AI agent missions, stream their Server-Sent Event lifecycles in real time, search capabilities, query memory, and inspect traces and skills — all against the versioned `/v8` API surface.
+`@praxa/sdk` is the official TypeScript client for the Praxa Integration Gateway. It stores no credential: you supply a short-lived delegated OAuth access token at runtime, and the package contains no embedded secret, provider credential, or execution authority. With a single `PraxaClient` instance you can submit governed AI agent missions, stream their Server-Sent Event lifecycles, search capabilities, query memory, and inspect traces and skills against the versioned `/v8` API surface.
+
+<CardGroup cols={3}>
+  <Card title="Start in 10 minutes" icon="play" href="/sdk/quickstart">
+    Install the exact package, create a client, run a mission, resume events,
+    and prove terminal readback.
+  </Card>
+  <Card title="Configure authentication" icon="key" href="/sdk/configuration-and-auth">
+    Add renewable OAuth, timeouts, retries, redacted telemetry, and contract
+    pinning.
+  </Card>
+  <Card title="Production checklist" icon="list-check" href="/sdk/production-checklist">
+    Test tenancy, replay, SSE recovery, observability, deployment, and rollback.
+  </Card>
+</CardGroup>
 
 ## Installation
 
@@ -136,3 +150,19 @@ if (PRAXA_OPENAPI_SHA256 !== EXPECTED_SHA256) {
   Create a budgeted mission, resume its event stream, send a signal, cancel it,
   and verify terminal readback in Node.js, Next.js, or Express.
 </Card>
+
+## Integration handbook
+
+| Goal | Guide |
+|---|---|
+| Learn the first end-to-end path | [SDK quickstart](/sdk/quickstart) |
+| Configure token refresh, deadlines, retries, and telemetry | [Configuration and authentication](/sdk/configuration-and-auth) |
+| Use the full client surface | [PraxaClient reference](/sdk/praxaclient) |
+| Bind governed tools to an agent loop | [Agent tools](/sdk/agent-tools) |
+| Connect a framework | [Framework integrations](/sdk/framework-integrations) |
+| Stream and resume mission events | [Mission events](/sdk/mission-events) |
+| Federate existing provider memory | [Memory](/sdk/memory) |
+| Test without live credentials | [Testing](/sdk/testing) |
+| Apply production-safe defaults | [Best practices](/sdk/best-practices) |
+| Prepare a production release | [Production checklist](/sdk/production-checklist) |
+| Diagnose a failure | [SDK troubleshooting](/sdk/troubleshooting) |

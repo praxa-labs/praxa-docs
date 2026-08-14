@@ -1,0 +1,205 @@
+---
+title: "Use Praxa SDK tools in an agent loop"
+sidebarTitle: "Agent tools"
+description: "Expose the 12 governed Praxa tool definitions to Vercel AI SDK, OpenAI function calling, LangChain, or a custom loop without moving authority into the model."
+---
+
+`@praxa/sdk` publishes 12 framework-neutral tool definitions and executable
+bindings. They let an agent propose Praxa operations while the Integration
+Gateway continues to enforce scopes, tenant ownership, purpose, budgets,
+consent, idempotency, and revocation.
+
+<Warning>
+  A model choosing a tool is a proposal, not authorization. Keep application
+  policy and Praxa's point-of-effect checks in the execution path.
+</Warning>
+
+## Choose the integration shape
+
+| Host capability | Use | Why |
+|---|---|---|
+| Local TypeScript tool execution | `createPraxaAgentTools(client)` | Includes validation and bound execution |
+| OpenAI-style function definitions | `PRAXA_OPENAI_FUNCTION_TOOLS` | Uses the package's exact JSON Schemas |
+| Remote MCP support | Praxa MCP endpoint | Keeps registration and execution remote |
+| Contract inspection only | `PRAXA_AGENT_TOOL_DEFINITIONS` | No executable client binding |
+
+All 12 wire names intentionally begin with `aura_`. Praxa-named package exports
+preserve those compatibility identifiers.
+
+## 1. Bind the executable tools
+
+~~~ts
+import { createPraxaAgentTools, PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: acquireDelegatedToken,
+});
+
+const tools = createPraxaAgentTools(client);
+const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
+~~~
+
+Each tool includes `name`, `description`, JSON Schema `inputSchema`,
+`requiredScope`, `readOnly`, and an `execute()` function.
+
+## 2. Filter by granted scope and policy
+
+Do not advertise a tool the current principal cannot use. Scope filtering is
+only an interface improvement; the Gateway must still reject unauthorized
+calls.
+
+~~~ts
+function visiblePraxaTools(grantedScopes: ReadonlySet<string>) {
+  return tools.filter((tool) => grantedScopes.has(tool.requiredScope));
+}
+
+const visible = visiblePraxaTools(session.praxaScopes);
+~~~
+
+Apply your own product policy after scope filtering. For example, a read-only
+analysis mode can expose only definitions with `readOnly === true`.
+
+## 3. Adapt the definitions
+
+<Tabs>
+  <Tab title="Vercel AI SDK">
+~~~ts
+import { jsonSchema, tool, ToolLoopAgent } from "ai";
+
+const aiTools = Object.fromEntries(
+  visible.map((definition) => [
+    definition.name,
+    tool({
+      description: definition.description,
+      inputSchema: jsonSchema(definition.inputSchema),
+      execute: (input, options) =>
+        definition.execute(input, { signal: options.abortSignal }),
+    }),
+  ]),
+);
+
+const agent = new ToolLoopAgent({ model, tools: aiTools });
+~~~
+  </Tab>
+  <Tab title="OpenAI function calls">
+~~~ts
+import { PRAXA_OPENAI_FUNCTION_TOOLS } from "@praxa/sdk";
+
+const response = await openai.responses.create({
+  model: "your-reviewed-model",
+  input: "Inspect the governed mission and explain its current state.",
+  tools: PRAXA_OPENAI_FUNCTION_TOOLS,
+});
+
+for (const call of extractFunctionCalls(response)) {
+  const definition = toolsByName.get(call.name);
+  if (!definition) throw new Error(`Unknown Praxa tool: ${call.name}`);
+  await enforceApplicationApproval(call, definition);
+  const result = await definition.execute(JSON.parse(call.arguments));
+  await submitFunctionResult(call.callId, result);
+}
+~~~
+  </Tab>
+  <Tab title="Custom loop">
+~~~ts
+for (const proposed of modelOutput.toolCalls) {
+  const definition = toolsByName.get(proposed.name);
+  if (!definition) throw new Error("Unregistered tool");
+  if (!session.praxaScopes.has(definition.requiredScope)) {
+    throw new Error("Tool is outside the delegated scope set");
+  }
+  if (!definition.readOnly) {
+    await requireReviewedMutation(proposed);
+  }
+  const output = await definition.execute(proposed.input, {
+    signal: request.signal,
+  });
+  await appendToolResult(proposed.id, output);
+}
+~~~
+  </Tab>
+</Tabs>
+
+Framework JSON Schema adapters differ. Preserve the package schema and use the
+host's documented raw-schema adapter instead of translating types by hand.
+
+## Approval placement
+
+~~~mermaid
+flowchart LR
+  Model["Model proposes tool call"] --> Registry["Exact registered name + schema"]
+  Registry --> Scope["Application scope and policy filter"]
+  Scope --> Approval{"Mutation needs approval?"}
+  Approval -->|"yes"| Review["Render exact action for review"]
+  Approval -->|"no"| Execute["Execute bound SDK tool"]
+  Review --> Execute
+  Execute --> Gateway["Gateway reauthorizes at point of effect"]
+  Gateway --> Result["Return bounded result to model"]
+~~~
+
+Never use a model-written summary as the authoritative approval record. Render
+the exact normalized action your application will submit, bind approval to
+that action, and let the Gateway perform its own authorization.
+
+## Handle tool errors
+
+Return bounded, non-secret failure information to the model. Keep full error
+details in redacted server telemetry.
+
+~~~ts
+import { PraxaClientError } from "@praxa/sdk";
+
+async function executeForAgent(toolName: string, input: unknown) {
+  const tool = toolsByName.get(toolName);
+  if (!tool) return { ok: false, code: "unknown_tool" };
+
+  try {
+    return { ok: true, value: await tool.execute(input) };
+  } catch (error) {
+    if (error instanceof PraxaClientError) {
+      return {
+        ok: false,
+        code: error.problem?.code ?? "praxa_request_failed",
+        retryable: error.problem?.retryable ?? false,
+      };
+    }
+    return { ok: false, code: "integration_failed", retryable: false };
+  }
+}
+~~~
+
+## Test the agent boundary
+
+1. Assert the exact 12 registered names and required scopes.
+2. Assert unknown names are rejected before execution.
+3. Assert malformed inputs fail schema validation before a network call.
+4. Assert read-only mode hides every mutating tool.
+5. Assert a proposed mutation cannot execute without application approval.
+6. Assert an under-scoped or revoked token still fails at the Gateway.
+7. Assert tool failures return bounded model-visible errors with no token,
+   provider body, memory text, or internal trace.
+8. Assert the model cannot override tenant, owner, scope, purpose, or budget
+   fields that your application owns.
+
+## Best practices
+
+- Register only the tools relevant to the current task.
+- Keep tool descriptions factual and action-specific.
+- Separate read tools from mutations in your product policy.
+- Cap tool-loop iterations and total elapsed time.
+- Forward caller cancellation through `AbortSignal`.
+- Persist mutation idempotency keys before execution.
+- Record tool name, policy decision, status, and latency without logging inputs
+  that can contain customer data.
+- Treat tool success as the returned contract state, not proof of an external
+  provider effect unless the result contains that evidence.
+
+<CardGroup cols={2}>
+  <Card title="Framework integrations" icon="diagram-project" href="/sdk/framework-integrations">
+    See the shorter adapter patterns for popular agent frameworks.
+  </Card>
+  <Card title="MCP host integration" icon="plug" href="/mcp/host-integration">
+    Use the same governed surface through a remote MCP-capable host.
+  </Card>
+</CardGroup>

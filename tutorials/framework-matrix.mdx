@@ -1,0 +1,76 @@
+---
+title: "Choose a Praxa framework integration"
+sidebarTitle: "Framework matrix"
+description: "Choose the supported Praxa integration boundary for TypeScript, Next.js, Nuxt, Python, Rust, Go, Java, .NET, React Native, SwiftUI, Kotlin, and agent frameworks."
+---
+
+Praxa uses open HTTP, SSE, webhook, OAuth, and MCP contracts. The official
+`@praxa/sdk` and `@praxa/cli` packages are TypeScript/Node.js artifacts; other
+languages integrate through the public REST plane or through a trusted
+application backend.
+
+## Decision matrix
+
+| Stack | Recommended integration | Credential location | Guide |
+|---|---|---|---|
+| TypeScript / Node.js | `@praxa/sdk` for Gateway missions; `fetch` for Execution Fabric | Server | [TypeScript](/tutorials/typescript) |
+| Next.js | App Router Route Handler or server-only module | Server | [Next.js](/tutorials/nextjs) |
+| Nuxt | Nitro `server/api` handler plus private runtime config | Server | [Nuxt](/tutorials/nuxt) |
+| Express | Validated backend route | Server | [Express](/tutorials/express) |
+| Cloudflare Workers / Hono | Worker secret plus bounded handler | Worker | [Cloudflare Workers](/tutorials/cloudflare-workers) |
+| Python | HTTPX client or FastAPI backend | Server | [Python](/tutorials/python) · [FastAPI](/tutorials/fastapi) |
+| Rust | Reused `reqwest::Client` in Axum or another server | Server | [Rust](/tutorials/rust) |
+| Go | Reused `http.Client` in a backend | Server | [Go](/tutorials/go) |
+| Java / Spring | Spring `RestClient` or `WebClient` | Server | [Spring](/tutorials/java-spring) |
+| .NET | Reused `HttpClient` through dependency injection | Server | [.NET](/tutorials/dotnet) |
+| React Native / Expo | Call your authenticated backend | No Praxa key in app | [React Native](/tutorials/react-native) |
+| SwiftUI | `URLSession` to your authenticated backend | No Praxa key in app | [SwiftUI](/tutorials/swiftui) |
+| Android / Kotlin | Ktor or platform client to your authenticated backend | No Praxa key in app | [Kotlin](/tutorials/kotlin) |
+| Vercel AI SDK | `createPraxaAgentTools()` adapter | Server | [Vercel AI SDK](/tutorials/vercel-ai-sdk) |
+| OpenAI Agents / Responses | Remote MCP or function tools | Server | [OpenAI Agents](/tutorials/openai-agents) |
+| LangGraph | Read-only memory adapter plus explicit namespace resolver | Server | [LangGraph](/tutorials/langgraph) |
+
+## Choose the API plane first
+
+~~~mermaid
+flowchart TD
+  Need{"What are you integrating?"}
+  Need -->|"Durable task API"| Fabric["Execution Fabric /v1"]
+  Need -->|"Mission, tools, capabilities, private query plane"| Gateway["Integration Gateway /v8"]
+  Need -->|"Existing provider memory"| Memory["@praxa/sdk/memory"]
+  Need -->|"Agent host protocol"| MCP["MCP contracts or remote MCP"]
+  Fabric --> Key["Personal server API key"]
+  Gateway --> OAuth["Short-lived delegated OAuth"]
+  Memory --> Provider["Backend-owned provider clients"]
+  MCP --> OAuth
+~~~
+
+Do not mix credentials between planes. A Fabric key does not become a Gateway
+OAuth token, and a provider client does not grant Praxa execution authority.
+
+## Mobile and browser rule
+
+React, Vue, Svelte, React Native, SwiftUI, and Kotlin UI code should call your
+own authenticated backend. Application bundles can be inspected by users and
+attackers; they are not a secret store for Praxa API keys or delegated backend
+tokens.
+
+## Shared acceptance matrix
+
+Every framework tutorial ends with the same core proof:
+
+1. Missing application authentication fails before Praxa is called.
+2. Invalid or over-limit input fails before Praxa is called.
+3. Tenant and owner come from the authenticated session.
+4. The backend owns the Praxa credential and idempotency key derivation.
+5. Exact retries preserve the logical operation.
+6. Changed input under an old key is refused.
+7. Revoked and under-scoped credentials fail closed.
+8. Foreign identifiers do not disclose another tenant's resource.
+9. Admission is followed to terminal readback.
+10. Disposable credentials and test data are cleaned up.
+
+<Card title="Test your integration" icon="flask" href="/tutorials/test-your-integration">
+  Apply the full package, authorization, replay, isolation, outage, stream,
+  webhook, deletion, and cleanup matrix.
+</Card>

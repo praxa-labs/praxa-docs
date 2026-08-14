@@ -1,0 +1,112 @@
+---
+title: "Benchmark troubleshooting"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose incomplete trials, incomparable arms, chart drift, checksum failures, provider limits, flaky evaluators, and unsafe evidence bundles."
+---
+
+Start with the raw trial inventory and environment receipt. A chart is a
+derived view; it is not the right place to diagnose missing or reclassified
+evidence.
+
+## Fast diagnostic sequence
+
+1. Verify the source revision, package lock, protocol version, and task manifest.
+2. Compare expected and observed trial IDs.
+3. Count every outcome and exclusion from raw records.
+4. Recompute the summary in a clean environment.
+5. Regenerate charts from that summary.
+6. Compare checksums with the versioned release.
+7. Review logs for credentials or customer content before sharing artifacts.
+
+## Symptom guide
+
+| Symptom | Likely cause | Safe response |
+|---|---|---|
+| Aggregate denominator is smaller than planned | Missing, excluded, or overwritten trials | List every missing ID and keep it out of the success numerator |
+| Pass rate changes after regeneration | Parser, rubric, task manifest, or source revision drift | Freeze the changed input; publish a new artifact version |
+| Two arms have different attempt counts | Provider failures or asymmetric retry policy | Report counts; do not compare the percentages as paired evidence |
+| Chart differs from the table | Multiple summary sources or manual chart edits | Generate both from one checked data file |
+| Checksum mismatch | Wrong release, modified file, or incomplete download | Stop; reacquire the artifact and verify lineage |
+| All trials fail authorization | Wrong credential plane, audience, tenant, or scope | Correct the test setup without reclassifying failures as task outcomes |
+| Frequent `429` or timeout | Provider quota or concurrency exceeds the frozen setup | Preserve failures; rerun only under a declared new protocol |
+| Evaluator result changes across runs | Nondeterministic judge, ambiguous rubric, or unstable parsing | Add blind adjudication and report agreement |
+| Logs contain secrets or customer data | Evidence capture was too broad | Quarantine the bundle, rotate exposed credentials, redact, and review |
+
+## Missing trials
+
+Do not impute a pass or silently drop the row. Classify why the expected trial
+is absent:
+
+- never scheduled;
+- infrastructure unavailable;
+- provider refusal or rate limit;
+- runner crash;
+- timeout;
+- result parse failure; or
+- evidence rejected by validation.
+
+Publish the classification and explain whether the trial remains in the
+primary denominator. That rule must be fixed before comparative results are
+viewed.
+
+## Incomparable environments
+
+If source, model, provider, region, prompt, budget, tools, or evaluator differ,
+the runs may still be useful individually but not as a controlled comparison.
+Create an environment-difference table and either:
+
+1. rerun under compatible conditions;
+2. narrow the claim to each configuration; or
+3. label the result observational and identify the confounders.
+
+Do not normalize unlike token budgets or timeouts into a single headline score.
+
+## Flaky evaluators and parsers
+
+- Retain the original model output and parser version in protected evidence.
+- Test the parser against fixed valid, invalid, truncated, and adversarial
+  fixtures.
+- Keep `parse_error` distinct from task failure.
+- Use dual review or adjudication for subjective rubrics.
+- Report evaluator agreement and unresolved judgments.
+- Version any rubric change and rerun the affected sample deliberately.
+
+## Chart or generated-page drift
+
+In the public docs repository:
+
+~~~bash
+npm ci
+npm run docs:generate:check
+npm run docs:quality
+~~~
+
+If generation check fails, run the documented generator, inspect the source
+data change, and commit source plus generated artifacts together. Never patch
+an SVG or table manually to hide a source mismatch.
+
+## Escalation bundle
+
+Share only a redacted bundle containing:
+
+- artifact/release identifier and checksums;
+- source revision and clean/dirty state;
+- protocol and task-manifest versions;
+- expected, observed, missing, and excluded trial counts;
+- failure-class counts;
+- generator and evaluator versions;
+- exact failing command and safe error text; and
+- the claim you were trying to evaluate.
+
+Exclude credentials, authorization headers, provider responses containing
+customer data, unredacted prompts, and tenant identifiers.
+
+<CardGroup cols={2}>
+  <Card title="Reproduction workflow" icon="rotate" href="/benchmarks/reproduction-workflow">
+    Rebuild a published artifact from pinned lineage and verify raw-to-summary
+    parity.
+  </Card>
+  <Card title="Interpret results" icon="chart-line" href="/benchmarks/interpreting-results">
+    Keep counts, failures, resources, uncertainty, and claim boundaries visible.
+  </Card>
+</CardGroup>

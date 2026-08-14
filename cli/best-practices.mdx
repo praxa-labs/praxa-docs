@@ -1,0 +1,126 @@
+---
+title: "Praxa CLI best practices"
+sidebarTitle: "Best practices"
+description: "Operate @praxa/cli safely across local setup, missions, read-only memory plans, shell automation, CI, redaction, and upgrades."
+---
+
+The CLI is an operator interface, not a credential vault or background
+synchronization daemon. Keep its input, output, exit status, and network
+authority explicit in every local or CI workflow.
+
+## Installation and invocation
+
+- Pin `@praxa/cli@0.3.0` in automated workflows.
+- Use the explicit `praxa` executable with one-off `npx` commands because the
+  package also exposes the legacy `aura` bin.
+- Run `praxa version` and assert the OpenAPI fingerprint before networked work.
+- Prefer a project development dependency for repeatable team automation.
+- Keep global installs for interactive convenience, not release authority.
+
+~~~bash
+npx --package=@praxa/cli@0.3.0 praxa version
+~~~
+
+## Preview before mutation
+
+Use `--dry-run` for project setup and memory metadata planning. Review paths,
+targets, auth mode, provider, and read-only capability before allowing local
+configuration writes.
+
+~~~bash
+npx --package=@praxa/cli@0.3.0 praxa init \
+  --project-dir . \
+  --target codex \
+  --auth environment \
+  --dry-run \
+  --json
+~~~
+
+The memory commands in `0.3.0` plan or store local read-only source metadata.
+They do not connect providers, synchronize records, import data, mirror, cut
+over, or write provider memory.
+
+## Credential handling
+
+- Supply `PRAXA_ACCESS_TOKEN` only at runtime.
+- Use a short-lived delegated Gateway OAuth token, never an Execution Fabric
+  API key or provider key.
+- Keep `.praxa/config.json` limited to non-secret project metadata and Gateway
+  origin.
+- Mask environment values in CI and disable shell tracing around secrets.
+- Remove tokens from child-process environments that do not need them.
+- Revoke disposable credentials after live tests.
+
+## Stable mission identity
+
+Persist one idempotency key per logical mission mutation. Reuse it with the
+exact original body after a timeout or process interruption. Create a new key
+when the requested operation changes.
+
+~~~bash
+praxa mission create \
+  --file mission.json \
+  --idempotency-key "$LOGICAL_MISSION_KEY"
+~~~
+
+Avoid inline `$(uuidgen)` in a command that an automation system may rerun. The
+retry would generate a different key and could admit separate work.
+
+## Shell and CI behavior
+
+~~~bash
+set -euo pipefail
+
+output="$(praxa doctor)"
+printf '%s\n' "$output" | jq -e '.ok == true' >/dev/null
+~~~
+
+- Check the process exit before parsing stdout.
+- Capture stderr separately and redact it before artifact upload.
+- Use `--json` where the command supports it; help and default `init` output are
+  human text.
+- Validate required JSON fields with `jq -e` or a typed parser.
+- Set an outer job timeout; do not assume the command owns the complete
+  pipeline deadline.
+- Serialize operations that share one logical idempotency record.
+
+## Failure and reconciliation
+
+| Failure | Response |
+|---|---|
+| Missing base URL | Restore flag, environment, or project config |
+| `401` | Refresh the Gateway token once; never print it |
+| `403` | Correct tenant/scope authority; do not retry blindly |
+| `409` | Restore the original keyed body or start new work |
+| Timeout after mission mutation | Read the mission with the same identity before retrying |
+| Invalid JSON | Treat the command as failed and preserve safe stderr |
+| Memory execution command refused | Keep the workflow local/read-only; use the SDK adapter for recall |
+
+## Team operations
+
+- Document which environment owns each Gateway URL.
+- Keep production invocations in reviewed scripts, not copied shell history.
+- Require peer review for mission JSON that changes budgets or committing tool
+  authority.
+- Store redacted run IDs and outcomes as deployment evidence.
+- Test missing, expired, revoked, and under-scoped tokens in staging.
+- Include a rollback path to the prior pinned CLI package.
+
+## Upgrade checklist
+
+1. Install the new CLI and SDK in a clean temporary project.
+2. Compare `praxa version` with the approved contract values.
+3. Run `init --dry-run --json` and memory planning; require no unexpected write.
+4. Review help and command-reference changes.
+5. Run a read-only `doctor` against staging.
+6. Exercise one disposable mission with replay and terminal readback.
+7. Update the project lock and automation image only after those checks pass.
+
+<CardGroup cols={2}>
+  <Card title="Automation and JSON" icon="gears" href="/cli/automation-and-json">
+    Build a strict CI workflow with pinned binaries, safe output, and cleanup.
+  </Card>
+  <Card title="CLI troubleshooting" icon="wrench" href="/cli/troubleshooting">
+    Resolve install, configuration, auth, output, replay, and memory-plan issues.
+  </Card>
+</CardGroup>

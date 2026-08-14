@@ -1,0 +1,114 @@
+---
+title: "Praxa SDK best practices"
+sidebarTitle: "Best practices"
+description: "Use @praxa/sdk safely in production with explicit credential, replay, timeout, event, tool, memory, observability, and upgrade boundaries."
+---
+
+Treat the SDK as a typed transport for an authority enforced by your Praxa
+deployment. Package types improve integration correctness; they do not replace
+application authentication, server-side authorization, or terminal readback.
+
+## Client lifecycle
+
+- Create one `PraxaClient` per Gateway configuration and reuse it.
+- Keep the client in a trusted server process, not a browser or mobile bundle.
+- Supply a renewable token function rather than freezing one access token for
+  the process lifetime.
+- Reject a non-HTTPS Gateway origin and keep staging and production origins
+  explicit.
+- Bound attempts, per-request time, total operation time, and application
+  concurrency independently.
+
+## Authentication and tenancy
+
+- Request only the OAuth scopes needed by the operation.
+- Derive tenant and principal from the authenticated application session.
+- Never accept a tenant, owner, purpose, or scope assertion from an untrusted
+  request body.
+- Refresh an expired token once through the reviewed token broker; do not loop
+  indefinitely on `401`.
+- Exercise revoked, under-scoped, and foreign-tenant cases before release.
+
+## Replay-safe mutations
+
+Create the idempotency key when the user or job commits the logical action.
+Persist it with a digest of the exact request body and reuse both after an
+ambiguous failure.
+
+| Situation | Correct action |
+|---|---|
+| Connection failed before response | Reconcile or retry the exact body and key |
+| Same logical operation | Reuse the stored body and key |
+| User changed the requested operation | Create a new key |
+| Server returned conflict | Restore the original body or begin a new operation |
+| Local cancellation | Treat outcome as unknown until readback |
+
+Do not generate a fresh key inside a generic retry callback. That turns one
+logical operation into multiple mutations.
+
+## Events and terminal state
+
+- Persist an SSE event before advancing its cursor.
+- Deduplicate by event identity or sequence, not payload text.
+- Resume with the last durably processed event ID.
+- Reconcile with `getMission()` after reconnect, timeout, or cancellation.
+- Treat create responses and progress events as intermediate evidence.
+- Branch explicitly on every terminal state, including unknown or failed
+  outcomes represented by your application.
+
+## Agent tools
+
+- Build tools from package-owned definitions rather than copying schemas.
+- Filter registration by granted scope and product policy.
+- Keep approval before the committing tool call.
+- Bind execution to the same `PraxaClient` and principal context used for
+  authorization.
+- Return customer-safe tool results to the model; keep raw errors and secrets
+  out of prompts.
+- Test direct tool invocation as well as model-selected invocation.
+
+## Memory federation
+
+- Instantiate provider clients in the backend and pass them to
+  `@praxa/sdk/memory` adapters.
+- Provide explicit tenant and subject namespace resolution.
+- Keep the provider capability read-only; no provider write path exists in the
+  package.
+- Inspect aggregate `ok`, `partial`, or `failed` status and each source status.
+- Preserve provenance and contradictions for caller policy.
+- Exclude checkpoints and other execution state from portable memory kinds.
+
+## Observability
+
+Record safe correlation data:
+
+- application request ID;
+- hashed idempotency identity;
+- run ID and event cursor;
+- route operation ID;
+- HTTP status and problem code;
+- attempt count and bounded latency; and
+- installed package and contract fingerprint.
+
+Redact authorization, cookies, provider credentials, request content, memory
+content, and unreviewed upstream response bodies.
+
+## Upgrades
+
+1. Pin the package version and lockfile.
+2. Assert `PRAXA_CONTRACT_VERSION`, `PRAXA_OPENAPI_VERSION`, and
+   `PRAXA_OPENAPI_SHA256` in CI.
+3. Review route, schema, retry, and event changes.
+4. Run fake-transport contract tests.
+5. Run negative authorization and replay tests in staging.
+6. Exercise a disposable live mission and terminal readback.
+7. Roll out gradually with a documented package rollback.
+
+<CardGroup cols={2}>
+  <Card title="Production checklist" icon="list-check" href="/sdk/production-checklist">
+    Turn these practices into a release gate with automated and live evidence.
+  </Card>
+  <Card title="SDK troubleshooting" icon="wrench" href="/sdk/troubleshooting">
+    Diagnose configuration, auth, retry, conflict, stream, and contract drift.
+  </Card>
+</CardGroup>

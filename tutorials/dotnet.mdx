@@ -1,0 +1,156 @@
+---
+title: "Build a Praxa backend with .NET"
+sidebarTitle: ".NET"
+description: "Use a dependency-injected HttpClient to call the Praxa Execution Fabric with typed JSON, stable idempotency, cancellation, and integration tests."
+---
+
+.NET integrates through the Execution Fabric REST API. Register a reusable
+`HttpClient` in your trusted backend and keep the Praxa key out of WebAssembly,
+desktop, and mobile bundles.
+
+## 1. Register the client
+
+~~~csharp Program.cs
+builder.Services.AddHttpClient<PraxaClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.praxa.io");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+~~~
+
+## 2. Implement the typed client
+
+~~~csharp PraxaClient.cs
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json.Serialization;
+
+public sealed record PraxaRun(
+    [property: JsonPropertyName("run_id")] string RunId,
+    [property: JsonPropertyName("status")] string Status);
+
+public sealed class PraxaClient
+{
+    private readonly HttpClient _http;
+    private readonly string _apiKey;
+
+    public PraxaClient(HttpClient http, IConfiguration configuration)
+    {
+        _http = http;
+        _apiKey = configuration["Praxa:ApiKey"]
+            ?? throw new InvalidOperationException("Praxa API key is required");
+    }
+
+    public async Task<PraxaRun> SubmitTaskAsync(
+        string userId,
+        string logicalRequestId,
+        string input,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(input) || input.Length > 16_000)
+            throw new ArgumentException("Invalid task input", nameof(input));
+
+        var digest = SHA256.HashData(
+            Encoding.UTF8.GetBytes(userId + "\0" + logicalRequestId));
+        var key = "dotnet:" + Convert.ToHexString(digest).ToLowerInvariant();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/execute");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        request.Headers.Add("Idempotency-Key", key);
+        request.Content = JsonContent.Create(new
+        {
+            apiVersion = "v1",
+            requestId = key,
+            mode = "task",
+            task = new { input },
+            idempotencyKey = key,
+        });
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<PraxaRun>(
+            cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("Praxa returned no run");
+    }
+}
+~~~
+
+The application principal supplies `userId`; the untrusted request body does
+not. Store the key in a protected configuration provider such as your cloud
+secret manager or environment, not in `appsettings.json` committed to Git.
+
+## 3. Expose a bounded endpoint
+
+In ASP.NET Core, authenticate and validate before invoking the client:
+
+~~~csharp
+app.MapPost("/api/tasks", async (
+    TaskRequest body,
+    ClaimsPrincipal principal,
+    PraxaClient praxa,
+    CancellationToken cancellationToken) =>
+{
+    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (userId is null) return Results.Unauthorized();
+    if (body.Task.Length is < 1 or > 16_000) return Results.BadRequest();
+
+    var run = await praxa.SubmitTaskAsync(
+        userId,
+        body.RequestId,
+        body.Task,
+        cancellationToken);
+    return Results.Json(run, statusCode: 202);
+}).RequireAuthorization();
+~~~
+
+Add `Cache-Control: no-store` and your application rate limit. Map upstream
+errors to a safe problem document rather than exposing the response body.
+
+## 4. Test with a fake handler
+
+Create a custom `HttpMessageHandler` or use your preferred HTTP test library.
+Assert:
+
+- invalid input makes no outbound request;
+- authorization and idempotency headers are correct;
+- the same user/request pair produces the same key;
+- cancellation reaches `SendAsync`;
+- `401`, `403`, `409`, and `429` map to distinct safe errors;
+- no secret appears in logs or response JSON.
+
+~~~bash
+dotnet test
+~~~
+
+## 5. Verify live behavior
+
+Use a disposable least-privilege key, submit one task, read it to terminal,
+replay the exact request, then revoke the key. An `Accepted` response proves
+admission only.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Socket exhaustion | Use `IHttpClientFactory`; do not instantiate `HttpClient` per request |
+| Operation canceled after admission | Reconcile with the same key/body and run readback |
+| `403` | Verify personal tenant and exact scopes |
+| Duplicate logical work | Persist the application request ID before submission |
+| Secret in structured logs | Redact authorization headers and configuration values |
+| Browser app contains key | Move the Praxa call to ASP.NET Core; WebAssembly bundles are inspectable |
+
+## Best practices
+
+- Use `IHttpClientFactory` and explicit timeouts.
+- Forward cancellation tokens.
+- Keep typed authority outside client-controlled DTOs.
+- Bound JSON input and response size.
+- Record safe status/problem metadata only.
+- Test exact retry and cross-tenant refusal before production.
+
+<Card title="HttpClient guidelines" icon="arrow-up-right-from-square" href="https://learn.microsoft.com/dotnet/fundamentals/networking/http/httpclient-guidelines">
+  Review connection pooling, lifetime, DNS, retry, and client-factory guidance
+  in the official .NET documentation.
+</Card>

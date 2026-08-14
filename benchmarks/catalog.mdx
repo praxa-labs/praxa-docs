@@ -1,0 +1,85 @@
+---
+title: "Praxa evidence and benchmark catalog"
+sidebarTitle: "Evidence catalog"
+description: "Choose the right Praxa evidence lane for contract correctness, task quality, performance, provider effects, or production reliability."
+---
+
+Different questions need different evidence. Start here before selecting a
+chart, test suite, or benchmark protocol.
+
+## Choose by question
+
+| Your question | Required evidence lane | Current public evidence |
+|---|---|---|
+| Does the package expose the documented contract? | Package import and conformance tests | Available for SDK, CLI, and MCP `0.3.0` |
+| Does the repository satisfy its own tests? | Repository-local validation | Reported at the preprint revision |
+| How did two harness loops perform on one controlled task sample? | Controlled benchmark pilot | Terminal-Bench Core pilot available |
+| Is one harness generally more accurate? | Repeated, randomized, independently reviewed comparative study | Not established |
+| What is production p95 latency or throughput? | Identified deployment and observation window | Not published |
+| Did a provider-side action actually happen? | Independent effect readback or receipt | Not benchmarked publicly |
+| Is my integration safe to deploy? | Application tests, authenticated canaries, observability, rollback, and user acceptance | Must be established by the integrator |
+
+## Evidence ladder
+
+~~~mermaid
+flowchart LR
+  Contract["Contract conformance"] --> Repo["Repository validation"]
+  Repo --> Pilot["Controlled pilot"]
+  Pilot --> Replication["Independent replication"]
+  Replication --> Production["Production observation"]
+  Production --> User["User outcome evidence"]
+~~~
+
+Higher lanes answer broader questions, but they do not invalidate the lower
+ones. A production observation still needs a pinned contract, and a conformance
+test still cannot predict user outcomes.
+
+## Current public artifacts
+
+| Artifact | Evidence class | Use it for | Do not use it for |
+|---|---|---|---|
+| SDK/CLI/MCP example tests | Package conformance | Exact imports, constants, local behavior | Gateway availability or authorization |
+| 1,027 unit tests and 89 Workerd tests | Repository-local validation | Tested implementation behavior at the recorded revision | General agent quality or live providers |
+| Terminal-Bench pilot | Tracked provider experiment pilot | Describing outcomes for 12 tasks and 36 trials per arm | Superiority, causal benefit, or production readiness |
+| Generated docs charts | Presentation of checked summary data | Reading the published pilot values | New measurement or independent reproduction |
+| API Playground | Interactive contract exploration | Constructing disposable requests | Production workload testing |
+
+## Terminal-Bench pilot snapshot
+
+| Design element | Published value |
+|---|---|
+| Benchmark | `terminal-bench-core==0.1.1` |
+| Model binding | `vercel_ai_gateway/openai/gpt-4.1-mini` |
+| Tasks | 12 |
+| Attempts per task per arm | 3 |
+| Trials per arm | 36 |
+| Baseline passed | 17 of 36 |
+| Reliability-layer passed | 17 of 36 |
+| Accuracy | 47.2% in both arms |
+| Independent reproduction | No |
+| Production status | Hold |
+
+The reliability-oriented arm used more tokens and steps while producing the
+same aggregate pass count. The study supports failure analysis and design
+questions for this sample, not a claim that either arm is generally superior.
+
+## Select the next guide
+
+<CardGroup cols={2}>
+  <Card title="Interpret results" icon="chart-line" href="/benchmarks/interpreting-results">
+    Read counts, rates, resources, uncertainty, missing trials, and limitations
+    without overstating the result.
+  </Card>
+  <Card title="Design an evaluation" icon="flask-vial" href="/benchmarks/designing-evaluations">
+    Define the decision, task sample, controls, metrics, evidence, stop rules,
+    and acceptance threshold before running.
+  </Card>
+  <Card title="Reproduction workflow" icon="rotate" href="/benchmarks/reproduction-workflow">
+    Trace the versioned publication, regenerate checked docs artifacts, and
+    plan a compatible or intentionally different experiment.
+  </Card>
+  <Card title="Metrics glossary" icon="book-open" href="/benchmarks/metrics-glossary">
+    Use consistent definitions for accuracy, unresolved trials, latency,
+    throughput, token use, effects, and evidence classes.
+  </Card>
+</CardGroup>

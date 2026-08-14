@@ -113,6 +113,26 @@ and an authenticated disposable task that must return a run owned by the
 configured personal tenant. Follow the run to terminal before declaring the
 workflow complete.
 
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Secret undefined locally | Add it to `.dev.vars`, which must remain ignored |
+| Secret undefined after deploy | Run `wrangler secret put PRAXA_API_KEY` for the intended environment |
+| Request exceeds Worker time budget | Use durable admission and asynchronous readback instead of holding the client open |
+| `403` | Verify personal key ownership and scopes |
+| Duplicate work after retry | Reuse the same application request ID and normalized body |
+| Upstream response leaks details | Project a safe response instead of returning arbitrary problem bodies |
+
+## Best practices
+
+- Store the key as a Worker secret, never a `vars` value.
+- Validate authentication and body size before upstream work.
+- Reuse one stable idempotency key per logical request.
+- Use explicit `AbortSignal` deadlines for upstream calls.
+- Rate-limit by the authenticated application principal.
+- Test locally with a fake upstream, then run a disposable deployed canary.
+
 <Card title="Cloudflare Workers secrets" icon="arrow-up-right-from-square" href="https://developers.cloudflare.com/workers/configuration/secrets/">
   Review the official secret-binding and local-development guidance.
 </Card>

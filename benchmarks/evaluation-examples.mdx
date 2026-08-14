@@ -1,0 +1,137 @@
+---
+title: "Benchmark design examples"
+sidebarTitle: "Evaluation examples"
+description: "Adapt concrete Praxa evaluation designs for task execution, event recovery, memory federation, and agent-tool governance."
+---
+
+Use these examples as study templates, not as published Praxa results. Each
+example names the decision, unit of analysis, evidence, failures, and acceptance
+rule before any run begins.
+
+## Example 1: durable task reliability
+
+**Decision:** Is a candidate release safe enough to admit, execute, and
+reconcile a fixed suite of durable tasks in staging?
+
+| Field | Frozen design |
+|---|---|
+| Unit | One logical task, including exact retries |
+| Sample | 30 fixed tasks across read-only, synthesis, and approval-bound classes |
+| Attempts | 3 independent attempts per task and release |
+| Primary metric | Verified terminal outcomes / eligible trials |
+| Failure classes | admission, authorization, timeout, execution, verification, unknown outcome, parse |
+| Evidence | request digest, idempotency key hash, run ID, terminal projection, verifier record |
+| Stop rule | Stop on cross-tenant disclosure, secret exposure, or unbounded execution |
+
+Record admission and outcome separately:
+
+~~~json trial-record.json
+{
+  "trialId": "task-07-attempt-2",
+  "release": "candidate-a",
+  "taskClass": "approval-bound",
+  "admitted": true,
+  "terminalStatus": "completed",
+  "effectStatus": "verified",
+  "failureClass": null,
+  "elapsedMs": 18420,
+  "inputTokens": 2140,
+  "outputTokens": 388
+}
+~~~
+
+A `202` response counts only as admission. The success numerator changes only
+after terminal and effect evidence meet the frozen protocol.
+
+## Example 2: resumable event consumption
+
+**Decision:** Does a consumer recover from disconnects without losing or
+double-applying lifecycle events?
+
+1. Create one disposable run.
+2. Persist events and the cursor only after the local transaction commits.
+3. Disconnect after each selected sequence boundary.
+4. Resume with the persisted `Last-Event-ID`.
+5. Compare stored sequences with the authoritative run projection.
+6. Repeat under slow-consumer, duplicate-delivery, and temporary-outage cases.
+
+Measure:
+
+- missing unique sequences;
+- duplicate deliveries and duplicate side effects separately;
+- reconnect attempts and recovery time;
+- terminal projection mismatches; and
+- unreconciled outcomes.
+
+Passing means every expected sequence is present, the application side effect
+is applied once per event identity, and terminal readback agrees with the event
+projection. It does not mean the network delivered each event exactly once.
+
+## Example 3: federated memory degradation
+
+**Decision:** Does an agent retain useful, source-labelled recall when one
+read-only memory provider is unavailable?
+
+Build a fixture set with expected facts, contradictions, recency, and source
+lineage. Run the same queries against:
+
+1. every configured source available;
+2. each source timed out in turn;
+3. malformed records from one source; and
+4. every source unavailable.
+
+Report both retrieval quality and operating state:
+
+| Metric | Why it matters |
+|---|---|
+| Recall@k | Expected relevant items retrieved within the result budget |
+| Source coverage | Providers contributing at least one valid result |
+| Provenance completeness | Results carrying required source identity and capture metadata |
+| Contradiction visibility | Conflicting normalized statements retained for caller policy |
+| Partial-result rate | Queries with at least one success and at least one failure |
+| Failed-query rate | Queries with no successful source |
+
+The federation API returns `partial` only when at least one source succeeds and
+`failed` when none succeeds. Provider failures are result states; callers must
+inspect the aggregate and per-source statuses instead of relying on exceptions.
+
+## Example 4: governed agent tools
+
+**Decision:** Does an agent host expose only tools allowed by the granted scope
+and require approval before a committing action?
+
+Create a matrix of principal, scope set, tool, operation class, approval state,
+and expected result. Include:
+
+- read-only tool with matching scope;
+- tool absent from the granted scope set;
+- committing tool before approval;
+- committing tool after approval;
+- expired or revoked token;
+- replay of the same logical mutation; and
+- foreign-tenant resource identifier.
+
+Count a trial as passing only when registration, host selection, Praxa policy,
+and final readback all match the expected boundary. A model declining to call a
+tool is not evidence that the authorization gate would refuse it.
+
+## Turn a template into a study
+
+1. Copy the closest example.
+2. Replace the decision with the exact release or product choice.
+3. Freeze task IDs, inputs, attempts, budgets, and exclusions.
+4. Define machine-readable evidence records and a redaction review.
+5. Run a small pilot to debug the harness.
+6. Freeze the confirmatory protocol before viewing comparative results.
+7. Publish counts, denominators, failures, resources, and limitations together.
+
+<CardGroup cols={2}>
+  <Card title="Design the evaluation" icon="flask-vial" href="/benchmarks/designing-evaluations">
+    Define the decision, evidence class, controls, metrics, stop rules, and
+    acceptance threshold.
+  </Card>
+  <Card title="Metrics glossary" icon="book-open" href="/benchmarks/metrics-glossary">
+    Keep outcome, reliability, performance, resource, and validation metrics
+    distinct.
+  </Card>
+</CardGroup>

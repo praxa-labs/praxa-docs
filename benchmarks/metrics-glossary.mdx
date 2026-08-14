@@ -1,0 +1,127 @@
+---
+title: "Benchmark metrics glossary"
+sidebarTitle: "Metrics glossary"
+description: "Define Praxa benchmark outcomes, resource metrics, latency statistics, effect evidence, coverage, and evidence classes consistently."
+---
+
+Use these definitions in protocols, dashboards, and result reports. Always
+publish the numerator, denominator, unit, observation window, and missing-data
+rule next to a metric.
+
+## Outcome metrics
+
+<AccordionGroup>
+  <Accordion title="Trial accuracy">
+    Passed trials divided by all scheduled trials in the stated denominator.
+    Publish passed, unresolved, invalid, excluded, and missing counts so the
+    denominator can be reconstructed.
+  </Accordion>
+  <Accordion title="Task success">
+    Whether one task attempt met the predeclared grader rubric. A model's claim
+    of success is not sufficient unless the rubric explicitly makes it the
+    outcome.
+  </Accordion>
+  <Accordion title="Unresolved trial">
+    A scheduled attempt that did not produce a gradable successful or failed
+    solution under the protocol. Keep it separate from parse and infrastructure
+    failures.
+  </Accordion>
+  <Accordion title="Parse error">
+    The evaluation pipeline could not interpret the trial output. This often
+    indicates a contract, serialization, or grader-integration problem rather
+    than task reasoning quality.
+  </Accordion>
+  <Accordion title="Provider-effect success">
+    The expected external effect was independently read back from the provider
+    or an authoritative receipt and matched the approved target and payload.
+    Agent output alone does not establish this metric.
+  </Accordion>
+</AccordionGroup>
+
+## Reliability metrics
+
+| Metric | Definition | Required context |
+|---|---|---|
+| Exact replay success | Same logical mutation and body under the same key resolve to one logical operation | Key/body digest and readback |
+| Reconciliation success | An uncertain outcome is resolved to an authoritative terminal state | Deadline and reconciliation window |
+| Event recovery | Consumer resumes after its durable cursor without an unprocessed gap | Cursor commit order and duplicate policy |
+| Cancellation settlement | Run reaches a documented terminal state after cancellation request | Provider-in-flight policy; cancellation is not rollback |
+| False success | System reports success without the required terminal or effect evidence | This is normally a safety veto |
+| Cleanup success | Disposable state and credentials are removed or revoked as specified | Retention and provider-owned data boundary |
+
+## Performance metrics
+
+| Metric | Definition |
+|---|---|
+| Admission latency | Time from request start to durable admission response |
+| Time to first event | Time from stream request to first non-heartbeat event |
+| Terminal latency | Time from logical submission to authoritative terminal state |
+| Provider-effect latency | Time from submission to independently observed external effect |
+| Throughput | Completed units per stated interval at the stated concurrency and topology |
+| p50 | Median observed value |
+| p95 | Value at or below which 95% of included observations fall |
+| p99 | Value at or below which 99% of included observations fall |
+
+Publish cold-start policy, warmup, concurrency, sample size, missing requests,
+and whether latency spans retries and queue time.
+
+## Resource metrics
+
+| Metric | Interpretation |
+|---|---|
+| Input tokens | Model input counted under the recorded provider tokenizer |
+| Output tokens | Model output counted under the recorded provider tokenizer |
+| Steps | Protocol-defined agent loop iterations; definitions vary by harness |
+| Tool calls | Attempted model tool invocations; distinguish admitted, executed, and successful |
+| Verification rounds | Protocol-defined verification passes |
+| Rollbacks | Protocol-defined state restorations, not necessarily external provider rollback |
+| Cost | Provider and infrastructure charges under the stated price sheet and cache policy |
+
+Never compare token counts across models without noting tokenizer and prompt
+differences. Never project pilot token totals directly into a production bill.
+
+## Repository validation metrics
+
+| Metric | What it measures | What it does not measure |
+|---|---|---|
+| Statement coverage | Instrumented statements executed by tests | Correctness of every executed statement |
+| Branch coverage | Instrumented branches exercised | Completeness of business scenarios |
+| Function coverage | Instrumented functions invoked | Production reachability |
+| Line coverage | Instrumented source lines executed | Agent quality or provider reliability |
+| Test count | Number of recorded tests | Independence, quality, or breadth of those tests |
+
+Coverage is useful for finding untested code. It is not a product reliability
+score.
+
+## Evidence classes
+
+| Class | Meaning |
+|---|---|
+| Package conformance | Exact public artifact imports and local contract behavior |
+| Repository-local validation | Tests and static gates at a source revision |
+| Synthetic conformance fixture | Constructed data proves runner mechanics |
+| Controlled provider benchmark | Provider-backed attempts under a recorded protocol |
+| Independent reproduction | Separate team or environment repeats a compatible protocol |
+| Production observation | Identified deployment measured over a stated window |
+| User outcome evidence | Observed effect on the user's or business's goal |
+
+## Reporting template
+
+~~~md
+Metric: terminal latency p95
+Value: 4.2 seconds
+Numerator/denominator: 95th percentile of 500 completed runs
+Unit: milliseconds from admission request start to terminal readback
+Environment: staging, region, worker revision, provider/model binding
+Concurrency: 20
+Window: 2026-08-14T12:00Z to 2026-08-14T13:00Z
+Excluded: 0
+Missing: 3 timed-out runs, reported separately
+Cold-start policy: first sample retained
+Claim boundary: deployment-specific; not an SDK constant
+~~~
+
+<Card title="Interpret results" icon="chart-line" href="/benchmarks/interpreting-results">
+  Apply these definitions to the published Terminal-Bench pilot and future
+  production measurements.
+</Card>

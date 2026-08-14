@@ -1,0 +1,216 @@
+---
+title: "Praxa TypeScript SDK quickstart"
+sidebarTitle: "Quickstart"
+description: "Install @praxa/sdk, create a server-side PraxaClient, run a governed mission, consume its events, and verify the result."
+---
+
+This guide takes you from an empty Node.js project to an inspected mission
+lifecycle. It uses the Integration Gateway and its short-lived delegated OAuth
+token. It does **not** use an Execution Fabric API key.
+
+~~~mermaid
+flowchart LR
+  App["Your trusted TypeScript service"] -->|"short-lived OAuth token"| Client["PraxaClient"]
+  Client --> Gateway["Your Praxa Integration Gateway"]
+  Gateway --> Mission["Governed mission"]
+  Mission -->|"resumable SSE"| Client
+~~~
+
+<Note>
+  The Integration Gateway is deployment-specific. You need the HTTPS origin
+  and OAuth audience supplied for your Praxa deployment before live calls can
+  succeed. Package installation alone does not create a Gateway.
+</Note>
+
+## 1. Create the project
+
+<CodeGroup>
+~~~bash npm
+mkdir praxa-sdk-quickstart && cd praxa-sdk-quickstart
+npm init -y
+npm install @praxa/sdk@0.3.0
+~~~
+
+~~~bash pnpm
+mkdir praxa-sdk-quickstart && cd praxa-sdk-quickstart
+pnpm init
+pnpm add @praxa/sdk@0.3.0
+~~~
+
+~~~bash yarn
+mkdir praxa-sdk-quickstart && cd praxa-sdk-quickstart
+yarn init -y
+yarn add @praxa/sdk@0.3.0
+~~~
+</CodeGroup>
+
+Use Node.js 20 or newer. The package is ESM and ships its own TypeScript
+declarations.
+
+## 2. Configure server-only values
+
+~~~bash .env
+PRAXA_BASE_URL="https://your-gateway.example"
+PRAXA_ACCESS_TOKEN="<short-lived delegated OAuth token>"
+~~~
+
+Keep both values in your trusted server runtime. Never expose the access token
+through a `NEXT_PUBLIC_`, `NUXT_PUBLIC_`, `VITE_`, Expo public, or mobile build
+variable.
+
+## 3. Create the client
+
+~~~ts src/praxa.ts
+import { PraxaClient } from "@praxa/sdk";
+
+const baseUrl = process.env.PRAXA_BASE_URL;
+
+if (!baseUrl) {
+  throw new Error("PRAXA_BASE_URL is required");
+}
+
+export const praxa = new PraxaClient({
+  baseUrl,
+  accessToken: async () => {
+    const token = process.env.PRAXA_ACCESS_TOKEN;
+    if (!token) throw new Error("PRAXA_ACCESS_TOKEN is required");
+    return token;
+  },
+  maximumAttempts: 3,
+  retryBaseDelayMs: 100,
+});
+~~~
+
+The SDK calls the token provider before each request. In production, replace
+the environment lookup with your OAuth token cache or broker so expired tokens
+can be refreshed without recreating the client.
+
+## 4. Create and observe a mission
+
+~~~ts src/run.ts
+import { randomUUID } from "node:crypto";
+import type { CreateMissionRequest } from "@praxa/sdk";
+import { praxa } from "./praxa.js";
+
+const request: CreateMissionRequest = {
+  goalSpec: {
+    task: "Prepare a governed deployment checklist for the next release",
+  },
+  resourceBudget: {
+    maximumSteps: 12,
+    maximumToolCalls: 8,
+    maximumElapsedMs: 120_000,
+    maximumParallelism: 2,
+  },
+};
+
+// Persist this key with the logical request. Reuse it only when retrying the
+// same request body.
+const idempotencyKey = randomUUID();
+const mission = await praxa.createMission(request, idempotencyKey);
+
+console.log("admitted", mission.runId, mission.status);
+
+let lastEventId: string | undefined;
+for await (const event of praxa.missionEvents(mission.runId)) {
+  lastEventId = event.id;
+  console.log(event.id, event.event, event.data);
+}
+
+const terminal = await praxa.getMission(mission.runId);
+console.log("readback", terminal.status, terminal.sequence, lastEventId);
+~~~
+
+Run the file with your preferred TypeScript runner, or compile it with
+`tsc`. A create response is admission evidence only. The final `getMission`
+readback is the authoritative mission projection.
+
+## 5. Resume after a disconnect
+
+Persist the latest event ID only after your consumer durably processes that
+event. Reconnect with the cursor:
+
+~~~ts
+for await (const event of praxa.missionEvents(runId, {
+  lastEventId: savedEventId,
+  signal: abortController.signal,
+})) {
+  await saveEvent(event);
+  await saveCursor(runId, event.id);
+}
+~~~
+
+Do not advance the cursor before the side effect associated with an event has
+committed. That ordering avoids acknowledging work your application did not
+finish.
+
+## 6. Test without a live credential
+
+Inject a fake `fetch` and assert the outbound contract. This test proves your
+application wiring without contacting Praxa:
+
+~~~ts
+import assert from "node:assert/strict";
+import test from "node:test";
+import { PraxaClient } from "@praxa/sdk";
+
+test("creates one replay-safe mission", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const client = new PraxaClient({
+    baseUrl: "https://gateway.example",
+    accessToken: () => "test-token",
+    maximumAttempts: 1,
+    fetch: async (input, init) => {
+      calls.push({ url: String(input), init });
+      return Response.json(
+        { runId: "00000000-0000-4000-8000-000000000001", status: "running", sequence: 1, steps: [] },
+        { status: 202 },
+      );
+    },
+  });
+
+  const key = "quickstart-request-0001";
+  const mission = await client.createMission(
+    {
+      goalSpec: { task: "Prepare the review" },
+      resourceBudget: {
+        maximumSteps: 4,
+        maximumToolCalls: 2,
+        maximumElapsedMs: 30_000,
+        maximumParallelism: 1,
+      },
+    },
+    key,
+  );
+
+  assert.equal(mission.status, "running");
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/v8\/missions$/);
+  assert.equal(new Headers(calls[0].init?.headers).get("idempotency-key"), key);
+});
+~~~
+
+## End-to-end acceptance
+
+Before calling the integration complete, prove all of these with a disposable
+tenant and least-privilege token:
+
+1. A valid mission is admitted and can be read by its owner.
+2. The event stream reconnects from a saved cursor without losing events.
+3. Replaying the same body and idempotency key returns the same logical work.
+4. Reusing the key with a changed body returns a conflict.
+5. A missing or expired token fails before application success is reported.
+6. An under-scoped token is denied.
+7. A foreign-tenant run ID is not disclosed.
+8. The mission reaches a terminal projection or is deliberately cancelled.
+
+<CardGroup cols={2}>
+  <Card title="Configuration and authentication" icon="key" href="/sdk/configuration-and-auth">
+    Add token refresh, timeouts, cancellation, redacted observability, and
+    contract pinning.
+  </Card>
+  <Card title="Mission events" icon="satellite-dish" href="/sdk/mission-events">
+    Handle resumable SSE, event filtering, stream cancellation, and terminal
+    reconciliation.
+  </Card>
+</CardGroup>

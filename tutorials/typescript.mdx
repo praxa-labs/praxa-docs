@@ -1,0 +1,161 @@
+---
+title: "Integrate Praxa with TypeScript"
+sidebarTitle: "TypeScript & Node.js"
+description: "Use @praxa/sdk for Integration Gateway missions and native fetch for Execution Fabric tasks, with typed tests and production safeguards."
+---
+
+TypeScript has two first-class integration paths:
+
+- use `@praxa/sdk` with a deployment-specific Integration Gateway;
+- use Node.js `fetch` with the public Execution Fabric API.
+
+Choose one plane per operation.
+
+## Prerequisites
+
+- Node.js 20 or newer
+- TypeScript with ESM (`NodeNext` or `ESNext`)
+- either a Gateway origin and delegated OAuth token, or a personal Execution
+  Fabric API key
+
+## Path A: Integration Gateway SDK
+
+~~~bash
+npm install @praxa/sdk@0.3.0
+~~~
+
+~~~ts src/mission.ts
+import { randomUUID } from "node:crypto";
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const mission = await client.createMission(
+  {
+    goalSpec: { task: "Prepare the weekly review" },
+    resourceBudget: {
+      maximumSteps: 12,
+      maximumToolCalls: 8,
+      maximumElapsedMs: 120_000,
+      maximumParallelism: 2,
+    },
+  },
+  randomUUID(),
+);
+
+for await (const event of client.missionEvents(mission.runId)) {
+  console.log(event.id, event.event);
+}
+
+console.log(await client.getMission(mission.runId));
+~~~
+
+Continue with the [SDK quickstart](/sdk/quickstart) for token refresh,
+reconnectable SSE, injected-fetch tests, and the complete acceptance matrix.
+
+## Path B: Execution Fabric
+
+~~~ts src/task.ts
+import { createHash, randomUUID } from "node:crypto";
+
+const apiKey = process.env.PRAXA_API_KEY;
+if (!apiKey) throw new Error("PRAXA_API_KEY is required");
+
+const logicalRequestId = randomUUID();
+const idempotencyKey =
+  "typescript:" + createHash("sha256").update(logicalRequestId).digest("hex");
+
+const response = await fetch("https://api.praxa.io/v1/execute", {
+  method: "POST",
+  headers: {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json",
+    "idempotency-key": idempotencyKey,
+  },
+  body: JSON.stringify({
+    apiVersion: "v1",
+    requestId: idempotencyKey,
+    mode: "task",
+    task: { input: "Summarize the incident and propose the next safe action." },
+    idempotencyKey,
+  }),
+});
+
+if (!response.ok) {
+  throw new Error(`Praxa admission failed with HTTP ${response.status}`);
+}
+
+const run = await response.json();
+console.log(run.run_id, run.status);
+~~~
+
+Store the key with the exact request body before the first attempt. A `202`
+response proves durable admission, not task completion.
+
+## Add a terminal readback
+
+~~~ts
+const terminal = new Set(["completed", "failed", "cancelled"]);
+let current = run;
+
+while (!terminal.has(current.status)) {
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+  const read = await fetch(
+    `https://api.praxa.io/v1/runs/${encodeURIComponent(current.run_id)}`,
+    {
+      headers: { authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+    },
+  );
+  if (!read.ok) throw new Error(`Run read failed with HTTP ${read.status}`);
+  current = await read.json();
+}
+~~~
+
+The key needs `execute:write` for admission and `runs:read` for readback.
+
+## Test with native fakes
+
+Use Node's test runner and inject `fetch` into your own client wrapper. Assert:
+
+- exact URL, method, header, and body;
+- one stable key for repeated logical input;
+- no token in returned values or logs;
+- `401`, `403`, `409`, `429`, and network errors remain distinguishable;
+- polling stops only at a public terminal state.
+
+~~~bash
+node --test
+~~~
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| ESM import failure | Set `"type": "module"` and use NodeNext/ESNext |
+| `fetch` missing | Upgrade to Node 20 or provide an explicit implementation to `PraxaClient` |
+| SDK request returns `401` | Refresh the delegated Gateway token; do not substitute a Fabric key |
+| Fabric request returns `403` | Verify key tenant and exact scopes |
+| Replay creates conflict | Restore the original body associated with the key |
+| Process exits while stream runs | Keep the async iterator alive and forward an explicit abort signal |
+
+## Best practices
+
+- Reuse one configured SDK or HTTP client per process.
+- Keep all credentials in the server runtime.
+- Use `AbortSignal` and an overall deadline.
+- Redact authorization and customer payloads from telemetry.
+- Bound concurrency and respect `429` responses.
+- Reconcile every ambiguous mutation through exact replay or readback.
+
+<CardGroup cols={2}>
+  <Card title="Next.js" icon="n" href="/tutorials/nextjs">
+    Put the TypeScript client behind an authenticated App Router boundary.
+  </Card>
+  <Card title="Nuxt" icon="n" href="/tutorials/nuxt">
+    Use a Nitro server route and private runtime config.
+  </Card>
+</CardGroup>

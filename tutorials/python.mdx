@@ -1,0 +1,172 @@
+---
+title: "Integrate Praxa with Python"
+sidebarTitle: "Python"
+description: "Call the Praxa Execution Fabric from Python with HTTPX, typed request validation, stable idempotency, terminal polling, and pytest fakes."
+---
+
+Python integrates through the Execution Fabric REST API. Use HTTPX in a trusted
+service or worker; browser and mobile clients should call your application
+backend instead.
+
+## 1. Install the client
+
+~~~bash
+python -m pip install "httpx>=0.28,<1" "pydantic>=2,<3" pytest
+export PRAXA_API_KEY="praxa_sk_<redacted>"
+~~~
+
+## 2. Build a typed client
+
+~~~python praxa_client.py
+import hashlib
+import os
+from typing import Any
+
+import httpx
+from pydantic import BaseModel, Field
+
+TERMINAL = {"completed", "failed", "cancelled"}
+
+
+class TaskInput(BaseModel):
+    input: str = Field(min_length=1, max_length=16_000)
+    logical_request_id: str = Field(min_length=16, max_length=128)
+
+
+class PraxaClient:
+    def __init__(self, api_key: str, transport: httpx.AsyncBaseTransport | None = None):
+        self._api_key = api_key
+        self._client = httpx.AsyncClient(
+            base_url="https://api.praxa.io",
+            timeout=httpx.Timeout(30.0, connect=5.0),
+            transport=transport,
+        )
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    async def submit_task(self, user_id: str, task: TaskInput) -> dict[str, Any]:
+        digest = hashlib.sha256(
+            f"{user_id}\0{task.logical_request_id}".encode()
+        ).hexdigest()
+        key = f"python:{digest}"
+        response = await self._client.post(
+            "/v1/execute",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Idempotency-Key": key,
+            },
+            json={
+                "apiVersion": "v1",
+                "requestId": key,
+                "mode": "task",
+                "task": {"input": task.input},
+                "idempotencyKey": key,
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_run(self, run_id: str) -> dict[str, Any]:
+        response = await self._client.get(
+            f"/v1/runs/{run_id}",
+            headers={"Authorization": f"Bearer {self._api_key}"},
+        )
+        response.raise_for_status()
+        return response.json()
+~~~
+
+Reuse the `AsyncClient`; do not create it in a hot loop. HTTPX enforces
+timeouts by default, and explicit connect/overall values make your operational
+contract clear.
+
+## 3. Use it from a service
+
+~~~python
+client = PraxaClient(os.environ["PRAXA_API_KEY"])
+
+try:
+    run = await client.submit_task(
+        authenticated_user.id,
+        TaskInput(
+            input="Summarize the incident and propose a safe next action.",
+            logical_request_id="request-0000000001",
+        ),
+    )
+finally:
+    await client.close()
+~~~
+
+In a long-running application, create the client during startup and close it
+during shutdown.
+
+## 4. Test without the network
+
+~~~python test_praxa_client.py
+import httpx
+import pytest
+
+from praxa_client import PraxaClient, TaskInput
+
+
+@pytest.mark.asyncio
+async def test_submit_is_replay_safe():
+    calls = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(202, json={"run_id": "run-1", "status": "queued"})
+
+    client = PraxaClient("test-key", httpx.MockTransport(handler))
+    task = TaskInput(input="Prepare the review", logical_request_id="request-0000000001")
+    try:
+        first = await client.submit_task("user-1", task)
+        second = await client.submit_task("user-1", task)
+    finally:
+        await client.close()
+
+    assert first["run_id"] == second["run_id"]
+    assert calls[0].headers["idempotency-key"] == calls[1].headers["idempotency-key"]
+~~~
+
+Add tests for invalid input, missing authentication in your web framework,
+under-scoped responses, conflict handling, timeout reconciliation, and secret
+redaction.
+
+## 5. Verify end to end
+
+1. Submit one disposable task.
+2. Persist its request body digest, idempotency key, and run ID.
+3. Poll with `get_run` until `completed`, `failed`, or `cancelled`.
+4. Replay the exact task and require the same logical run.
+5. Revoke the key and require the next call to fail.
+6. Remove temporary files and preserve only the minimum redacted receipt.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `httpx.TimeoutException` | Reconcile keyed mutation before retrying; tune explicit connect/read/write/pool budgets |
+| Too many sockets | Reuse one `AsyncClient` and close it at shutdown |
+| `401` | Check the Fabric key, not a Gateway OAuth token |
+| `403` | Verify personal tenant and exact scopes |
+| Error leaks upstream text | Map `HTTPStatusError` to a safe application error |
+| Event loop blocked | Use `AsyncClient` in async frameworks; do not call blocking clients in handlers |
+
+## Best practices
+
+- Use Pydantic or an equivalent schema at your application boundary.
+- Keep user and tenant authority out of the body.
+- Reuse clients and bound connection pools.
+- Record status/problem code, not raw sensitive bodies.
+- Use FastAPI dependency injection for authenticated principals.
+- Test with `MockTransport` before a disposable staging canary.
+
+<CardGroup cols={2}>
+  <Card title="FastAPI tutorial" icon="bolt" href="/tutorials/fastapi">
+    Put the client behind a typed FastAPI route and dependency-based auth.
+  </Card>
+  <Card title="HTTPX timeouts" icon="arrow-up-right-from-square" href="https://www.python-httpx.org/advanced/timeouts/">
+    Review current connect, read, write, and pool timeout behavior.
+  </Card>
+</CardGroup>

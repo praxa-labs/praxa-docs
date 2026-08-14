@@ -1,0 +1,162 @@
+---
+title: "Reproduce Praxa benchmark artifacts"
+sidebarTitle: "Reproduction workflow"
+description: "Trace the published release, verify artifact provenance, regenerate documentation charts, and run a compatible or intentionally different evaluation."
+---
+
+Reproduction has two useful forms:
+
+- **artifact reproduction** regenerates tables and charts from the published
+  evidence;
+- **experimental reproduction** reruns the protocol in a compatible
+  environment.
+
+The first checks analysis integrity. The second tests whether the observed
+result recurs.
+
+## Published lineage
+
+~~~mermaid
+flowchart LR
+  Tag["preprint-v1.1.0"] --> Paper["Paper and protocols"]
+  Tag --> Raw["Versioned evidence JSON"]
+  Raw --> Summary["Docs summary JSON"]
+  Summary --> Charts["Generated accessible SVG charts"]
+  Charts --> Pages["Benchmark documentation"]
+~~~
+
+The docs summary records:
+
+| Field | Value |
+|---|---|
+| Release | `preprint-v1.1.0` |
+| Artifact revision | `e7726c8310b18b1e6929007d92986b23db81ea5d` |
+| Source file | `paper/data/terminal-bench-pilot.json` |
+| Evidence class | `tracked_provider_experiment_pilot` |
+
+## 1. Inspect the versioned release
+
+~~~bash
+git clone https://github.com/praxa-labs/praxa-benchmarks.git
+cd praxa-benchmarks
+git fetch --tags --force
+git checkout --detach preprint-v1.1.0
+git status --short
+~~~
+
+Require a clean detached checkout. Read the paper, `paper/data`, and
+`paper/protocols` before attempting to run anything. Do not assume current
+default-branch scripts are identical to the tagged protocol.
+
+## 2. Preserve an environment receipt
+
+Record:
+
+~~~text
+source revision
+dependency lock digests
+operating system and container image
+benchmark package version
+model and provider binding
+prompt and reasoning settings
+task inventory and order
+token, step, wall-clock, and concurrency budgets
+cache and warmup state
+grader version
+UTC run window
+~~~
+
+Store secret values outside the receipt. Record only the credential class,
+scope, and issuer required to interpret the run.
+
+## 3. Regenerate documentation artifacts
+
+From the docs repository:
+
+~~~bash
+npm ci
+npm run docs:generate
+npm run docs:generate:check
+npm run docs:verify
+~~~
+
+`docs:generate:check` fails when a checked generated page or chart differs from
+its source JSON. This proves deterministic documentation generation, not an
+experimental rerun.
+
+## 4. Decide compatibility
+
+| Difference | Classification |
+|---|---|
+| Same tasks, model, prompt, budgets, environment, and grader | Candidate reproduction |
+| New model or provider | New experiment |
+| New task sample | New generalization study |
+| Changed reliability loop | New treatment evaluation |
+| Different cache or arm order | Timing/resource comparison is not directly compatible |
+| Missing raw trials | Incomplete evidence |
+
+An intentionally different experiment is valuable. Label it accurately and do
+not combine its aggregate with the pilot.
+
+## 5. Run with fail-closed collection
+
+Before the full run, prove the collector records:
+
+1. every scheduled trial;
+2. terminal status and grader outcome;
+3. unresolved and parse-error states;
+4. missing trials explicitly;
+5. token, step, and elapsed-resource fields;
+6. exclusions with reasons;
+7. provider readback when effect claims are made;
+8. environment and source fingerprints.
+
+If the model or provider quota becomes unavailable for one arm, stop or mark
+the run incomplete. Do not compare a fully executed arm with a quota-truncated
+arm.
+
+## 6. Validate raw-to-aggregate parity
+
+For every reported metric:
+
+- recompute it from raw trial records;
+- verify the denominator;
+- confirm missing and excluded trials;
+- compare task-level and aggregate results;
+- reject metrics whose source metadata disagrees.
+
+The published pilot omits pass-at-k because aggregate and raw metadata did not
+agree for one arm. Omission is the correct outcome when provenance is
+unresolved.
+
+## 7. Publish a claim boundary
+
+Include a plain-language statement such as:
+
+> This run measures the named systems on the recorded task sample and
+> environment. It does not establish general superiority, production
+> reliability, or provider-effect success outside the included verifier data.
+
+## Reproduction checklist
+
+- [ ] Versioned source and artifacts
+- [ ] Locked environment and dependency receipt
+- [ ] Exact task and attempt inventory
+- [ ] Model/provider/prompt settings
+- [ ] Budgets and stop rules
+- [ ] Cache, warmup, and arm-order policy
+- [ ] Raw outcomes including missing trials
+- [ ] Deterministic aggregation code
+- [ ] Secret and customer-data review
+- [ ] Independent reviewer
+- [ ] Limitations and unsupported claims
+
+<CardGroup cols={2}>
+  <Card title="Published data and reproduction" icon="table" href="/benchmarks/data-and-reproduction">
+    Open the exact public artifacts and generated chart sources.
+  </Card>
+  <Card title="Design an evaluation" icon="flask-vial" href="/benchmarks/designing-evaluations">
+    Create a new protocol when your model, tasks, treatment, or deployment
+    differs from the pilot.
+  </Card>
+</CardGroup>

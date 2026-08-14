@@ -42,8 +42,12 @@ flowchart TD
 
 ## Choose by environment
 
+Start with the [framework matrix](/tutorials/framework-matrix) when you need to
+compare credential placement, API planes, and verification requirements across
+web, server, mobile, and agent stacks.
+
 <CardGroup cols={2}>
-  <Card title="Node.js or TypeScript" icon="node-js" href="/sdk/overview">
+  <Card title="Node.js or TypeScript" icon="node-js" href="/tutorials/typescript">
     Use the typed SDK for Gateway missions or native fetch for Execution Fabric.
   </Card>
   <Card title="Next.js" icon="n" href="/tutorials/nextjs">
@@ -55,8 +59,16 @@ flowchart TD
   <Card title="Cloudflare Workers" icon="cloud" href="/tutorials/cloudflare-workers">
     Call Praxa from a Worker with secrets held in the environment binding.
   </Card>
-  <Card title="Python and FastAPI" icon="python" href="/tutorials/fastapi">
-    Submit and verify durable tasks from an async Python backend.
+  <Card title="Python and FastAPI" icon="python" href="/tutorials/python">
+    Use HTTPX directly or place the same bounded client behind FastAPI.
+  </Card>
+  <Card title="Rust, Go, Java, or .NET" icon="server" href="/tutorials/framework-matrix">
+    Build a typed server integration with a reused HTTP client and explicit
+    retry, timeout, and tenant boundaries.
+  </Card>
+  <Card title="React Native, SwiftUI, or Kotlin" icon="mobile-screen" href="/tutorials/framework-matrix">
+    Call an authenticated application backend without embedding Praxa
+    credentials in the mobile application.
   </Card>
   <Card title="Agent frameworks" icon="diagram-project" href="/tutorials/agent-frameworks">
     Integrate Vercel AI SDK, OpenAI Agents, LangGraph, or an MCP host without resetting memory.

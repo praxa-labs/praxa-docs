@@ -1,61 +1,166 @@
 ---
-title: "Praxa tutorials"
+title: "Praxa integration tutorials"
 sidebarTitle: "Tutorials overview"
-description: "Build and test Praxa integrations end to end with Node.js, Next.js, Express, Cloudflare Workers, Python, MCP hosts, and existing memory providers."
+description: "Build and test Praxa integrations end to end across TypeScript, Next.js, Nuxt, Python, Rust, Go, Java, .NET, React Native, SwiftUI, Kotlin, agent frameworks, and memory providers."
 ---
 
-These tutorials start with a runnable contract, keep credentials on trusted
-servers, and end with an observable verification. Choose the tutorial for your
-product surface and deployment model.
+Every tutorial starts with a credential boundary, builds one complete path,
+tests its failure states, and ends with observable readback and cleanup.
 
-## Choose a tutorial
+~~~mermaid
+flowchart TD
+  Start{"What are you building?"}
+  Start -->|"Backend or API"| Server["Server framework tutorials"]
+  Start -->|"Mobile app"| Mobile["Mobile calls your trusted backend"]
+  Start -->|"Agent loop"| Agent["SDK tools or MCP"]
+  Start -->|"Existing memory"| Memory["Read-only federation"]
+  Server --> Fabric["Execution Fabric or Integration Gateway"]
+  Mobile --> Server
+  Agent --> Gateway["Integration Gateway"]
+  Memory --> Providers["Backend-owned provider clients"]
+~~~
 
-| Tutorial | What you build | Frameworks and runtimes | Credential |
-|---|---|---|---|
-| [Run a durable task](/tutorials/durable-tasks) | Submit, poll, stream, and optionally cancel a v1 run | cURL, Node.js, Next.js, Cloudflare Workers, Python | Personal Execution Fabric API key |
-| [Run a mission lifecycle](/tutorials/mission-lifecycle) | Create a budgeted mission and consume resumable events | Node.js, Next.js server code, Express | Short-lived Integration Gateway OAuth token |
-| [Federate existing memory](/tutorials/memory-federation) | Recall from provider-owned stores with provenance and partial degradation | Mem0, LangGraph, Zep, Graphiti, Letta, OpenAI Agents, custom | Provider client owned by your backend |
-| [Test hosted memory candidates](/tutorials/hosted-memory-candidates) | Create, lexically query, export, and erase isolated portable candidates | cURL, JavaScript, Python | Personal memory-scoped API key |
-| [Add MCP tools](/tutorials/mcp-tools) | Register or remotely connect the 12 governed tool contracts | Vercel AI SDK, OpenAI, LangChain, MCP hosts | Short-lived Integration Gateway OAuth token |
-| [Receive signed webhooks](/tutorials/webhooks) | Verify, deduplicate, and acknowledge raw webhook deliveries | Next.js, Express, Cloudflare Workers | One-time webhook signing secret |
-| [Add observability](/tutorials/observability) | Combine run polling, SSE, usage, webhook delivery status, traces, and coverage | Node.js, dashboards, backend workers | API key or OAuth token, depending on plane |
-| [Integrate a backend framework](/tutorials/framework-backends) | Keep Praxa credentials off the browser while exposing an application-specific endpoint | Next.js, Express, Hono/Workers, FastAPI | Server-only credential |
-| [Build with Next.js](/tutorials/nextjs) | Add an authenticated App Router backend-for-frontend | Next.js App Router | Personal Execution Fabric API key |
-| [Build with Express](/tutorials/express) | Add a validated Express 5 endpoint and replay-safe client | Express 5 | Personal Execution Fabric API key |
-| [Build with Cloudflare Workers](/tutorials/cloudflare-workers) | Store a Praxa key as an edge secret and forward bounded work | Cloudflare Workers | Personal Execution Fabric API key |
-| [Build with FastAPI](/tutorials/fastapi) | Add typed dependency-based auth and pytest coverage | FastAPI, HTTPX, pytest | Personal Execution Fabric API key |
-| [Use Vercel AI SDK](/tutorials/vercel-ai-sdk) | Bind Praxa tools to a ToolLoopAgent | Vercel AI SDK | Integration Gateway OAuth token |
-| [Use OpenAI Agents](/tutorials/openai-agents) | Connect remote MCP and federate an existing session | OpenAI Agents and Responses | Gateway token plus backend-owned session |
-| [Use LangGraph memory](/tutorials/langgraph) | Federate a long-term BaseStore while excluding checkpoints | LangGraph | Backend-owned store |
-| [Choose an agent framework](/tutorials/agent-frameworks) | Select the smallest tool, mission, or memory integration | Vercel AI SDK, OpenAI Agents, LangGraph, MCP, custom | Depends on selected lane |
-| [Build a resilient event consumer](/tutorials/resilient-events) | Combine resumable SSE with a durable signed-webhook inbox | Any server runtime | API key and webhook secret remain separate |
-| [Test your integration](/tutorials/test-your-integration) | Run the required success, isolation, idempotency, outage, and deletion matrix | Vitest, Node test runner, pytest | Disposable least-privilege credentials |
-
-## Before you begin
-
-<Steps>
-  <Step title="Choose one API plane">
-    Use `api.praxa.io/v1` for the deployed personal-tenant Execution Fabric and
-    memory-candidate previews. Use `@praxa/sdk` only with the Integration
-    Gateway origin and OAuth flow provided by your deployment.
-  </Step>
-  <Step title="Create a least-privilege credential">
-    Select only the scopes required by the tutorial. Never put a Praxa API key,
-    OAuth token, webhook secret, or provider credential in browser JavaScript.
-  </Step>
-  <Step title="Use stable idempotency keys">
-    Generate one key for each logical mutation, persist it before the first
-    request, and reuse it only for retries of that same request body.
-  </Step>
-  <Step title="Verify the observable outcome">
-    Admission is not completion. Read the run, consume its terminal event,
-    inspect a receipt, or query the created candidate before calling the
-    integration successful.
-  </Step>
-</Steps>
-
-<Card title="Open the API Playground" icon="flask" href="/api-playground/overview">
-  Explore the concrete `api.praxa.io` contracts with generated cURL,
-  JavaScript, and Python examples. Use a disposable key and preserve the
-  documented release boundary for each endpoint.
+<Card title="Open the framework matrix" icon="table-cells-large" href="/tutorials/framework-matrix">
+  Compare every supported language, runtime, API plane, credential location,
+  and recommended integration path before choosing a tutorial.
 </Card>
+
+## Start with a Praxa workflow
+
+<CardGroup cols={2}>
+  <Card title="Run a durable task" icon="play" href="/tutorials/durable-tasks">
+    Submit, poll, stream, and optionally cancel an Execution Fabric run with a
+    personal server-side API key.
+  </Card>
+  <Card title="Run a mission lifecycle" icon="route" href="/tutorials/mission-lifecycle">
+    Create a budgeted Gateway mission, resume SSE, signal, cancel, and read the
+    terminal projection.
+  </Card>
+  <Card title="Federate existing memory" icon="database" href="/tutorials/memory-federation">
+    Read from Mem0, Zep, Graphiti, LangGraph, Letta, OpenAI Agents, or a custom
+    source without migrating provider data.
+  </Card>
+  <Card title="Use hosted memory candidates" icon="boxes-stacked" href="/tutorials/hosted-memory-candidates">
+    Create, query, export, and erase isolated portable candidates in the
+    qualification-preview plane.
+  </Card>
+  <Card title="Add MCP tools" icon="plug" href="/tutorials/mcp-tools">
+    Register or remotely connect all 12 Aura-compatible governed tool
+    contracts with approval and scope checks.
+  </Card>
+  <Card title="Receive webhooks" icon="webhook" href="/tutorials/webhooks">
+    Verify raw signatures, deduplicate deliveries, acknowledge quickly, and
+    reconcile durable run state.
+  </Card>
+</CardGroup>
+
+## Web and server frameworks
+
+<CardGroup cols={3}>
+  <Card title="TypeScript" icon="code" href="/tutorials/typescript">
+    Use the official SDK or native Node.js fetch.
+  </Card>
+  <Card title="Next.js" icon="n" href="/tutorials/nextjs">
+    Build an App Router backend-for-frontend.
+  </Card>
+  <Card title="Nuxt" icon="n" href="/tutorials/nuxt">
+    Use Nitro routes and private runtime config.
+  </Card>
+  <Card title="Express" icon="server" href="/tutorials/express">
+    Add a validated Express 5 boundary.
+  </Card>
+  <Card title="Cloudflare Workers" icon="cloud" href="/tutorials/cloudflare-workers">
+    Use edge secrets and a bounded Worker handler.
+  </Card>
+  <Card title="Python" icon="python" href="/tutorials/python">
+    Build a reusable HTTPX client and tests.
+  </Card>
+  <Card title="FastAPI" icon="bolt" href="/tutorials/fastapi">
+    Add dependency-based auth and Pydantic validation.
+  </Card>
+  <Card title="Rust" icon="gear" href="/tutorials/rust">
+    Use a pooled reqwest client in a trusted server.
+  </Card>
+  <Card title="Go" icon="code" href="/tutorials/go">
+    Use `net/http`, contexts, and `httptest`.
+  </Card>
+  <Card title="Java & Spring" icon="leaf" href="/tutorials/java-spring">
+    Use Spring RestClient and safe controller errors.
+  </Card>
+  <Card title=".NET" icon="code" href="/tutorials/dotnet">
+    Use `IHttpClientFactory` and typed JSON.
+  </Card>
+  <Card title="Framework boundary pattern" icon="shield" href="/tutorials/framework-backends">
+    Compare shared authentication, tenancy, idempotency, and response rules.
+  </Card>
+</CardGroup>
+
+## Mobile frameworks
+
+<CardGroup cols={3}>
+  <Card title="React Native & Expo" icon="mobile-screen" href="/tutorials/react-native">
+    Call your backend with Fetch and test offline/background recovery.
+  </Card>
+  <Card title="SwiftUI" icon="apple" href="/tutorials/swiftui">
+    Use URLSession, app-session auth, and lifecycle reconciliation.
+  </Card>
+  <Card title="Kotlin & Android" icon="mobile" href="/tutorials/kotlin">
+    Use Ktor Client without placing Praxa credentials in the APK.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Mobile and browser applications must call your authenticated backend. Do not
+  embed Praxa API keys, delegated Gateway tokens, provider clients, or webhook
+  secrets in an application bundle.
+</Warning>
+
+## Agent frameworks
+
+<CardGroup cols={2}>
+  <Card title="Vercel AI SDK" icon="robot" href="/tutorials/vercel-ai-sdk">
+    Adapt package-owned schemas and executable tools to a ToolLoopAgent.
+  </Card>
+  <Card title="OpenAI Agents" icon="robot" href="/tutorials/openai-agents">
+    Connect remote MCP and federate a backend-owned session.
+  </Card>
+  <Card title="LangGraph" icon="diagram-project" href="/tutorials/langgraph">
+    Federate long-term store records while excluding checkpoints.
+  </Card>
+  <Card title="Choose an agent framework" icon="code-branch" href="/tutorials/agent-frameworks">
+    Select the smallest tool, mission, MCP, or memory integration.
+  </Card>
+</CardGroup>
+
+## Operate and prove the integration
+
+<CardGroup cols={2}>
+  <Card title="Add observability" icon="chart-line" href="/tutorials/observability">
+    Combine run state, resumable events, usage, delivery status, traces, and
+    coverage without logging secrets.
+  </Card>
+  <Card title="Build resilient event consumption" icon="arrows-rotate" href="/tutorials/resilient-events">
+    Pair a durable SSE cursor with a signed webhook inbox and reconciliation.
+  </Card>
+  <Card title="Test your integration" icon="flask" href="/tutorials/test-your-integration">
+    Run success, denial, replay, isolation, outage, event, deletion, and
+    cleanup checks.
+  </Card>
+  <Card title="Open the API Playground" icon="vial" href="/api-playground/overview">
+    Explore generated cURL, JavaScript, and Python requests with disposable
+    least-privilege credentials.
+  </Card>
+</CardGroup>
+
+## Shared completion criteria
+
+You are done only when the chosen tutorial proves:
+
+1. credentials stay in the intended trusted boundary;
+2. missing auth and invalid input fail before Praxa is called;
+3. tenant and subject are server-derived;
+4. exact retries reuse the stored body and idempotency key;
+5. under-scoped, revoked, and foreign-tenant requests fail closed;
+6. admission is followed to terminal or effect readback;
+7. logs and artifacts contain no secrets or raw sensitive payloads;
+8. disposable credentials and data are cleaned up.

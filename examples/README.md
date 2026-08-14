@@ -30,6 +30,7 @@ disposable personal key with <code>execute:write</code> and
 | Example | Proof |
 |---|---|
 | <code>execution-fabric/durable-task.test.mjs</code> | Request shape, stable idempotency, no-store behavior, and terminal polling |
+| <code>sdk/quickstart.test.mjs</code> | Exact SDK mission path, bearer/contract/idempotency headers, and the public contract fingerprint |
 | <code>memory-federation/custom-source.test.mjs</code> | Exact package import, provenance-preserving merge, and explicit partial degradation |
 | <code>mcp/contracts.test.mjs</code> | Exact public package import, protocol versions, annotations, and 12 Aura-compatible wire names |
 | <code>cli/public-cli.test.mjs</code> | Exact version constants plus read-only memory dry runs that leave no project file |

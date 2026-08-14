@@ -141,6 +141,27 @@ Mock the upstream request in a Route Handler test and prove:
 Then run one disposable live task and follow its run to a terminal state. A
 <code>202</code> response proves admission, not completion.
 
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `PRAXA_API_KEY` is undefined | Set it in the server runtime and restart; do not add `NEXT_PUBLIC_` |
+| Route compiles into a client import | Keep the Praxa helper in a `server-only` module and import it only from server code |
+| Response is cached | Return `Cache-Control: no-store`; mutation Route Handlers are not cached by default |
+| Timeout after admission | Reuse the same request ID/body and reconcile the run |
+| `403` | Verify personal key ownership and exact scopes |
+| Browser can choose tenant or scope | Remove those fields and derive authority from the session/server key |
+
+## Best practices
+
+- Import `server-only` in credential-owning modules.
+- Keep the key unprefixed and scan built client chunks for credential patterns.
+- Authenticate and bound the body before calling Praxa.
+- Rate-limit per application principal.
+- Store the request ID with the draft before the first mutation.
+- Add a server-owned run-read route instead of exposing the Praxa key.
+- Test Node and edge runtimes separately if your deployment uses both.
+
 <Card title="Next.js Route Handler reference" icon="arrow-up-right-from-square" href="https://nextjs.org/docs/app/getting-started/route-handlers">
   Review the current framework conventions in the official Next.js guide.
 </Card>

@@ -1,0 +1,131 @@
+---
+title: "Use Praxa from Kotlin and Android"
+sidebarTitle: "Kotlin & Android"
+description: "Call your authenticated Praxa backend with Ktor Client, preserve replay identity, test coroutine cancellation, and keep server credentials out of Android apps."
+---
+
+Android and Kotlin Multiplatform apps should call your authenticated application backend,
+not `api.praxa.io` with a server key. App bundles, resources, BuildConfig, and
+native libraries are inspectable.
+
+## 1. Add Ktor Client
+
+~~~kotlin build.gradle.kts
+dependencies {
+    implementation("io.ktor:ktor-client-core:3.5.1")
+    implementation("io.ktor:ktor-client-okhttp:3.5.1")
+    implementation("io.ktor:ktor-client-content-negotiation:3.5.1")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.5.1")
+}
+~~~
+
+Use the compatible Ktor version selected by your application dependency
+catalog. The example reflects the current official documentation line; pin and
+test your own lock.
+
+## 2. Implement the app-facing client
+
+~~~kotlin PraxaBackendClient.kt
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class TaskSubmission(val task: String, val requestId: String)
+
+@Serializable
+data class TaskRun(val runId: String, val status: String)
+
+class PraxaBackendClient(
+    private val applicationOrigin: String,
+    private val applicationToken: suspend () -> String,
+    private val http: HttpClient = HttpClient(OkHttp) {
+        install(ContentNegotiation) { json() }
+        install(HttpTimeout) { requestTimeoutMillis = 30_000 }
+    },
+) {
+    suspend fun submitTask(task: String, requestId: String): TaskRun {
+        require(task.isNotBlank() && task.length <= 16_000)
+        return http.post("$applicationOrigin/api/tasks") {
+            bearerAuth(applicationToken())
+            contentType(ContentType.Application.Json)
+            setBody(TaskSubmission(task, requestId))
+        }.body()
+    }
+
+    fun close() = http.close()
+}
+~~~
+
+The bearer token is your application session. The backend derives user,
+tenant, scope, Praxa key, and upstream idempotency identity.
+
+## 3. Preserve request identity
+
+Create a UUID when the user commits the action, save it with the unresolved
+draft, and reuse it after a timeout or process restart. If the task changes,
+create a new UUID.
+
+~~~kotlin
+val pending = repository.loadPending() ?: PendingTask(
+    requestId = UUID.randomUUID().toString(),
+    task = draft,
+).also(repository::save)
+
+val run = client.submitTask(pending.task, pending.requestId)
+repository.markAdmitted(pending.requestId, run.runId)
+~~~
+
+## 4. Test with `MockEngine`
+
+Use Ktor's mock engine and coroutine test tools to assert:
+
+1. Only your application origin is called.
+2. No Praxa or provider credential exists in request or bundle constants.
+3. Same pending task reuses the request ID.
+4. Invalid input makes no request.
+5. `401`, `409`, `429`, timeout, and malformed JSON map to recoverable states.
+6. Coroutine cancellation stops the local call but preserves unknown outcome.
+7. Logging sanitizes the `Authorization` header and body.
+
+Then test the staging flow on a physical Android device across airplane mode,
+process death, background/foreground, and expired application sessions.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Cleartext traffic blocked | Use HTTPS; keep Android network security defaults |
+| Key found in APK | Revoke it and move the Praxa call server-side |
+| `401` after restore | Refresh the application session; never fall back to a bundled secret |
+| Duplicate work after process death | Persist request ID before the first call |
+| Coroutine canceled | Reconcile through the backend before declaring failure |
+| Authorization printed by Ktor logging | Configure `sanitizeHeader` and avoid body logging |
+
+## Best practices
+
+- Reuse one `HttpClient` and close it with the application/service lifecycle.
+- Use HTTPS and keep certificate validation enabled.
+- Store application session material with the Android Keystore-backed design
+  approved for your app.
+- Keep task content out of analytics and crash reports.
+- Model offline, unknown, admitted, running, failed, and completed states.
+- Test process death, not only recomposition.
+
+<CardGroup cols={2}>
+  <Card title="Ktor client requests" icon="arrow-up-right-from-square" href="https://ktor.io/docs/client-requests.html">
+    Review current request, response, cancellation, and timeout APIs.
+  </Card>
+  <Card title="Android security checklist" icon="shield" href="https://developer.android.com/privacy-and-security/security-tips">
+    Review current Android guidance for network and secret handling.
+  </Card>
+</CardGroup>

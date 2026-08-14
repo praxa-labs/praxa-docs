@@ -6,6 +6,20 @@ description: "@praxa/cli submits, inspects, and cancels Praxa missions from the 
 
 `@praxa/cli` is a thin command-line adapter over `@praxa/sdk`. It submits, inspects, and cancels Praxa missions through your Integration Gateway, and it can plan read-only memory federation metadata locally. The CLI never stores provider credentials or calls AI providers directly.
 
+<CardGroup cols={3}>
+  <Card title="Install and verify" icon="download" href="/cli/getting-started">
+    Pin `0.3.0`, select the explicit `praxa` bin, verify the contract, and run a
+    read-only diagnostic.
+  </Card>
+  <Card title="Configure a project" icon="folder-tree" href="/cli/project-setup">
+    Set up Codex, Claude Code, Cursor, VS Code, or environment-only clients
+    without writing a token.
+  </Card>
+  <Card title="Automate with JSON" icon="gears" href="/cli/automation-and-json">
+    Use strict exits, stable keys, redacted CI logs, and deliberate cleanup.
+  </Card>
+</CardGroup>
+
 ## Installation
 
 Install the CLI globally to make the `praxa` binary available everywhere on your system, or run it on demand with `npx` if you prefer not to install it.
@@ -69,3 +83,16 @@ Gateway commands (`doctor` and `mission`), `version`, and memory planning write 
   Install the public release in a clean project, assert exact versions, run
   dry-run memory planning, and separate package proof from live Gateway proof.
 </Card>
+
+## Workflow handbook
+
+| Goal | Guide |
+|---|---|
+| Install and prove the public artifact | [Getting started](/cli/getting-started) |
+| Initialize host configuration | [Project setup](/cli/project-setup) |
+| Submit, inspect, replay, and cancel missions | [Mission workflows](/cli/mission-workflows) |
+| Plan read-only memory federation | [Memory workflows](/cli/memory-workflows) |
+| Script and run in CI | [Automation and JSON](/cli/automation-and-json) |
+| Apply safe operating defaults | [Best practices](/cli/best-practices) |
+| Look up every flag | [Command reference](/cli/commands) |
+| Diagnose a failure | [CLI troubleshooting](/cli/troubleshooting) |

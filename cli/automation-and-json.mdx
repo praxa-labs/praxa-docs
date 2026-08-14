@@ -1,0 +1,148 @@
+---
+title: "Automate the Praxa CLI with JSON"
+sidebarTitle: "Automation & JSON"
+description: "Use Praxa CLI output safely in shell scripts and CI with pinned versions, strict exits, stable idempotency, redaction, and cleanup."
+---
+
+The CLI is suitable for bounded automation when you pin the package version,
+check the process exit code, and preserve each command's output contract.
+
+## Output matrix
+
+| Command | JSON behavior |
+|---|---|
+| `praxa version` | Always JSON |
+| `praxa init` | JSON only with `--json`; otherwise human-readable text |
+| `praxa memory ...` | JSON plan |
+| `praxa doctor` | JSON on success |
+| `praxa mission ...` | JSON on success |
+| `praxa help` | Human-readable text |
+
+Do not assume all commands emit JSON. Check the exit status before sending
+stdout to `jq`.
+
+## Pin the binary in CI
+
+~~~bash
+npx --package=@praxa/cli@0.3.0 praxa version > praxa-version.json
+jq -e '.cliVersion == "0.3.0"' praxa-version.json
+jq -e '.openapiSha256 == "a9835faa4654246f83c452ae968a569c85be28f93017882e710ca35c10dbbecc"' \
+  praxa-version.json
+~~~
+
+The explicit package and binary avoid global-version drift and dual-bin
+ambiguity.
+
+## Use strict shell behavior
+
+~~~bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${PRAXA_BASE_URL:?PRAXA_BASE_URL is required}"
+: "${PRAXA_ACCESS_TOKEN:?PRAXA_ACCESS_TOKEN is required}"
+
+output_file="$(mktemp)"
+trap 'rm -f "$output_file"' EXIT
+
+if ! praxa doctor >"$output_file"; then
+  printf '%s\n' "Praxa doctor failed" >&2
+  exit 1
+fi
+
+jq -e '.ok == true' "$output_file" >/dev/null
+~~~
+
+Never enable shell tracing around secrets. `set -x` can print expanded token
+values and command arguments into CI logs.
+
+## Persist replay identity
+
+For a mission mutation, create the idempotency key once and store it next to
+the exact input artifact:
+
+~~~bash
+request_dir=".praxa-runs/release-check"
+mkdir -p "$request_dir"
+
+if [[ ! -f "$request_dir/idempotency-key" ]]; then
+  printf 'release:%s\n' "$(uuidgen | tr '[:upper:]' '[:lower:]')" \
+    > "$request_dir/idempotency-key"
+fi
+
+praxa mission create \
+  --input "$request_dir/mission.json" \
+  --idempotency-key "$(<"$request_dir/idempotency-key")" \
+  > "$request_dir/admission.json"
+~~~
+
+If the body changes, create a new request directory and key. Do not overwrite
+the old body under an existing key.
+
+## GitHub Actions example
+
+~~~yaml .github/workflows/praxa-diagnostic.yml
+name: Praxa diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Verify CLI contract
+        run: npx praxa version | tee praxa-version.json
+      - name: Run read-only diagnostic
+        env:
+          PRAXA_BASE_URL: ${{ secrets.PRAXA_BASE_URL }}
+          PRAXA_ACCESS_TOKEN: ${{ secrets.PRAXA_ACCESS_TOKEN }}
+        run: npx praxa doctor > praxa-doctor.json
+      - name: Keep redacted status only
+        if: always()
+        run: jq '{ok, coverage: (.coverage != null)}' praxa-doctor.json || true
+~~~
+
+Use a short-lived, read-only token for diagnostics. Do not upload the raw
+diagnostic file until you have reviewed its data policy.
+
+## Failure handling
+
+| Failure | Automation response |
+|---|---|
+| Package fingerprint mismatch | Stop and review the dependency update |
+| Missing base URL or token | Fail before invoking the command |
+| `401` or `403` | Stop; refresh or correct scope through the authority |
+| `409` | Restore the original body for the stored key; do not create a blind retry |
+| `429` | Respect retry guidance and cap total job time |
+| Network timeout after mutation | Reuse exact body/key, then read authoritative state |
+| Invalid JSON | Keep stdout/stderr separate and inspect the process exit |
+
+## Cleanup
+
+- Delete temporary stdout files in a `trap` or job finalizer.
+- Retain only the minimum run ID, idempotency digest, status, and redacted
+  correlation required for reconciliation.
+- Revoke temporary tokens after the test window.
+- Remove disposable missions according to your deployment's retention policy;
+  cancellation is not deletion.
+- Scan artifacts and logs for bearer tokens before upload.
+
+<CardGroup cols={2}>
+  <Card title="CLI CI/CD" icon="gears" href="/cli/ci-cd">
+    Apply the command in build, staging, and protected deployment jobs.
+  </Card>
+  <Card title="Mission workflows" icon="route" href="/cli/mission-workflows">
+    Submit, inspect, replay, and cancel disposable mission work.
+  </Card>
+</CardGroup>
