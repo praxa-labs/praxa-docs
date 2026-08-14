@@ -162,7 +162,8 @@ async function writeOrCheck(relativePath, content) {
     } catch {
       throw new Error(relativePath + " is missing; run npm run docs:generate");
     }
-    if (current !== normalized) {
+    const withoutSearchMetadata = (value) => value.replace(/^keywords: .*\n/m, "");
+    if (withoutSearchMetadata(current) !== withoutSearchMetadata(normalized)) {
       throw new Error(relativePath + " is stale; run npm run docs:generate");
     }
     return;

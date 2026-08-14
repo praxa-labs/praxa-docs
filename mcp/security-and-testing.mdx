@@ -2,7 +2,25 @@
 title: "MCP security and testing"
 sidebarTitle: "Security and testing"
 description: "Test Praxa MCP schemas, annotations, scopes, idempotency, OAuth handling, and host behavior before enabling agent calls."
+keywords: ["Praxa MCP security and testing","Praxa MCP","Model Context Protocol","AI agent tools"]
 ---
+
+MCP connects model-selected tool calls to external authority. Secure the host,
+transport, OAuth grant, Gateway policy, tool arguments, outputs, approvals, and
+readback independently; no prompt instruction substitutes for those controls.
+
+## Threat model
+
+| Threat | Required control |
+|---|---|
+| Prompt injection requests an unrelated tool | Tool allowlist, purpose policy, approval |
+| Model supplies tenant or credential | Server-derived tenant and host-owned token |
+| Tool annotation is wrong or untrusted | Gateway authorization and independent host policy |
+| OAuth token is replayed at another resource | Audience/resource binding and no token passthrough |
+| Mutation is retried after timeout | Stable key, exact input digest, reconciliation |
+| Tool output injects new instructions | Treat output as untrusted data; bound and label it |
+| Result leaks sensitive content | Purpose filtering, projection, redaction, output cap |
+| Destructive call is hidden in a chain | Exact approval presentation and post-call readback |
 
 ## Contract tests
 
@@ -28,7 +46,34 @@ Assert:
 7. Confirm destructive annotations reach the host UI.
 8. Confirm the host does not log the delegated token.
 
+## Transport and OAuth tests
+
+1. Require HTTPS and reject invalid `Origin` values at the remote server.
+2. Discover OAuth through Protected Resource Metadata.
+3. Verify PKCE, state, exact redirect URI, token audience, expiry, and revocation.
+4. Reject Fabric keys, provider tokens, and tokens issued for another resource.
+5. Confirm the server never passes the MCP token through to a downstream provider.
+6. If the server returns `MCP-Session-Id`, reject missing, foreign, fixed, or expired session identifiers and reinitialize after `404`.
+7. Resume only the originating SSE stream with `Last-Event-ID`; never replay messages from another stream.
+8. Bound sessions, reconnects, concurrent calls, output bytes, and total turn time.
+
+## Prompt-injection tests
+
+Put adversarial instructions inside a returned skill, memory result, trace, and
+capability description. The host must treat them as data, keep the original
+tool/purpose boundary, and require approval for any newly proposed mutation.
+
+## Observability without secret leakage
+
+Record host request ID, MCP request ID, tool name, input digest, approval state,
+Gateway request/run ID, latency, result type, error code, retry count, and
+redacted byte count. Never record authorization headers, provider credentials,
+webhook secrets, raw customer content, or unbounded model output.
+
 <Warning>
   The contracts package contains no execution engine. A successful import or
   host registration does not prove that an Integration Gateway is deployed.
 </Warning>
+
+Use the [production checklist](/mcp/production-checklist) before enabling the
+integration for customer data.

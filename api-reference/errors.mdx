@@ -2,6 +2,7 @@
 title: "Praxa API Error Codes, Status Codes, and Problem Details"
 sidebarTitle: "Errors"
 description: "Praxa API errors use RFC 9457 problem+json format. Learn what each HTTP status code means, how to read the problem detail, and how to recover from errors."
+keywords: ["Praxa API Error Codes, Status Codes, and Problem Details","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The Praxa API returns errors in RFC 9457 `application/problem+json` format, providing structured machine-readable details alongside the HTTP status code. Every error response carries a stable `type` URI you can use to distinguish error kinds programmatically, a human-readable `detail` field for logging, and a `requestId` UUID you can share with support to trace exactly what happened on the server.
@@ -84,7 +85,7 @@ You have two options to resolve it:
 
 When you receive a `429 Too Many Requests` response, the gateway includes a `Retry-After` header that tells you how many seconds to wait before retrying:
 
-```
+```http
 Retry-After: 30
 ```
 

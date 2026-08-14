@@ -2,6 +2,7 @@
 title: "GET /v8/traces/{traceId} — Inspect Mission Execution Trace"
 sidebarTitle: "Get Trace"
 description: "GET /v8/traces/{traceId} retrieves a detailed execution trace for a completed Praxa mission step, including timing, inputs, outputs, and tool calls made."
+keywords: ["Praxa GET /v8/traces/{traceId} — Inspect Mission Execution Trace","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The `GET /v8/traces/{traceId}` endpoint returns a detailed, redacted causal trace for a specific mission execution unit. Traces give you deep visibility into exactly what the agent did during a step: the inputs it received, the tool calls it made, the outputs it produced, and the wall-clock timing for each operation. This is your primary tool for debugging unexpected agent behaviour, auditing policy decisions, and optimising resource budgets. Sensitive fields are redacted before the trace leaves the gateway — credentials, tokens, and other secret values are never exposed in trace data.
@@ -12,7 +13,7 @@ The `GET /v8/traces/{traceId}` endpoint returns a detailed, redacted causal trac
 
 ## Endpoint
 
-```
+```http
 GET /v8/traces/{traceId}
 ```
 

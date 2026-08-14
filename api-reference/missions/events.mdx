@@ -2,13 +2,14 @@
 title: "GET /v8/missions/{runId}/events — Stream Mission Events"
 sidebarTitle: "Mission Events"
 description: "GET /v8/missions/{runId}/events streams Server-Sent Events for a Praxa mission. The stream closes automatically when the mission reaches a terminal state."
+keywords: ["Praxa GET /v8/missions/{runId}/events — Stream Mission Events","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The `GET /v8/missions/{runId}/events` endpoint opens a durable, resumable Server-Sent Events (SSE) stream for a mission. As the agent executes each step, the gateway emits a typed event that you can consume in real time. You can reconnect at any point in the stream's history by sending the `Last-Event-ID` header — the gateway maintains a bounded replay window so you never miss events across brief network interruptions. The stream closes automatically once the mission reaches a terminal state (`succeeded`, `failed`, or `cancelled`).
 
 ## Endpoint
 
-```
+```http
 GET /v8/missions/{runId}/events
 ```
 

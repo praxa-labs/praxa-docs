@@ -2,6 +2,7 @@
 title: "Praxa Execution Fabric: Concepts"
 sidebarTitle: "Concepts"
 description: "This page defines the vocabulary of the fabric: runs, events, approvals, policies, receipts, tenants, keys, and how billing works."
+keywords: ["Praxa Execution Fabric: Concepts","Praxa Execution Fabric","governed AI agents","durable AI tasks"]
 ---
 
 > **Status:** Production partner preview — minimal personal-tenant durable tasks,
@@ -62,7 +63,7 @@ After the source-ready browser-action refinement is activated, an exact stored
 browser step can pause and emit `approval.required` with its canonical summary
 and `action_digest`. Show the summary unchanged to a person, then call:
 
-```
+```http
 POST /v1/runs/:id/approve
 { "action_digest": "...", "decision": "approve" | "deny" }
 ```

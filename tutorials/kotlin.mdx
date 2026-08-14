@@ -2,12 +2,24 @@
 title: "Use Praxa from Kotlin and Android"
 sidebarTitle: "Kotlin & Android"
 description: "Call your authenticated Praxa backend with Ktor Client, preserve replay identity, test coroutine cancellation, and keep server credentials out of Android apps."
+keywords: ["Use Praxa from Kotlin and Android","Praxa tutorials","AI integration guide","developer tutorial"]
 ---
 
 Android and Kotlin Multiplatform apps should call your authenticated application backend,
 not `api.praxa.io` with a server key. App bundles, resources, BuildConfig, and
 native libraries are inspectable.
 
+{/* BEGIN GENERATED TUTORIAL PREREQUISITES */}
+## Prerequisites
+
+Before you begin, prepare:
+
+- an authenticated application backend that owns the Praxa credential;
+- a reviewed mobile session mechanism and an app-facing bounded API contract;
+- a simulator or emulator plus at least one physical-device test plan;
+- synthetic data and a persisted local request identifier for lifecycle recovery;
+- an acceptance assertion that proves the Kotlin client calls only its application backend and recovers one logical request across lifecycle changes.
+{/* END GENERATED TUTORIAL PREREQUISITES */}
 ## 1. Add Ktor Client
 
 ~~~kotlin build.gradle.kts
@@ -129,3 +141,42 @@ process death, background/foreground, and expired application sessions.
     Review current Android guidance for network and secret handling.
   </Card>
 </CardGroup>
+
+{/* BEGIN GENERATED TUTORIAL OPERATIONS */}
+## Optimize for production
+
+- Debounce repeated UI actions while preserving the same logical request ID.
+- Return small app-facing projections and paginate history instead of copying upstream payloads.
+- Reconcile on foreground with one bounded read rather than restarting the operation.
+- Measure device-to-backend latency, resume success, duplicate prevention, payload size, and energy impact.
+
+Optimize only after the correctness and isolation matrix passes. Lower latency or cost is not an improvement if verified outcomes, authority checks, or recovery rates regress.
+
+## Cleanup and next steps
+
+1. Revoke disposable backend credentials and test application sessions.
+2. Delete synthetic server records and clear test-only secure-storage entries.
+3. Remove captured screenshots, logs, and crash reports containing synthetic payloads.
+4. Record physical-device, background, and recovery checks separately from unit tests.
+
+After cleanup, run the [shared integration test matrix](/tutorials/test-your-integration) and record any environment-specific check that remains pending.
+
+## Frequently asked questions
+
+### What proves this tutorial works?
+
+The minimum observable result is that the Kotlin client calls only its application backend and recovers one logical request across lifecycle changes. A compile, package import, mocked response, or initial admission alone does not prove the complete workflow.
+
+### Can a browser, mobile app, or model prompt hold the credential?
+
+No. The application calls its own authenticated backend; the backend owns every Praxa and provider credential.
+
+### How should an ambiguous mutation be retried?
+
+Persist the exact logical input and idempotency key before the first attempt. Reconcile through authoritative readback or replay the exact request with that same key before creating new work.
+
+### What should we monitor after release?
+
+Monitor mobile request latency, background/resume recovery, duplicate suppression, app-facing errors, and terminal readback. Alert on authorization bypass, cross-tenant disclosure, repeated conflicts, or cleanup failure.
+
+{/* END GENERATED TUTORIAL OPERATIONS */}

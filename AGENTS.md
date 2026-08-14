@@ -45,6 +45,15 @@ as an engineering status ledger.
 - Interactive API pages use `api:` frontmatter, bearer authentication, and
   `playground: "interactive"`. Keep mutation examples disposable and
   least-privilege.
+- Give every public page a unique, descriptive `title`, a natural-language
+  `description`, and two to six route-specific `keywords`. Write for the
+  developer's question; never repeat phrases merely to influence ranking.
+- Keep headings, tables, code languages, success criteria, error recovery, and
+  internal links explicit so search engines and retrieval agents can parse the
+  same page a person reads.
+- Mintlify generates `/llms.txt`, `/llms-full.txt`, their `/.well-known/`
+  aliases, and one Markdown route per navigable page. Do not add divergent
+  hand-written copies of generated machine-readable content.
 
 ## Generated documentation
 
@@ -54,6 +63,11 @@ The following sources generate public pages and visuals:
 - `benchmarks/data/terminal-bench-summary.json`
 - `fabric/api/openapi.yaml`
 - `memory-federation/openapi.yaml`
+- `scripts/generate-api-playground.mjs`
+- `scripts/generate-benchmark-charts.mjs`
+- `scripts/generate-capability-docs.mjs`
+- `scripts/generate-search-metadata.mjs`
+- `scripts/generate-tutorial-guidance.mjs`
 
 Run `npm run docs:generate` after editing any of them. Do not hand-edit files
 that carry a generated-source notice.

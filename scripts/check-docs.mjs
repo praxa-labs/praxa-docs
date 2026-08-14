@@ -66,6 +66,13 @@ function kebabCase(value) {
 
 const docsConfig = JSON.parse(await readFile(path.join(root, "docs.json"), "utf8"));
 const navigationPages = new Set(collectNavigationPages(docsConfig.navigation));
+if (!docsConfig.description || docsConfig.description.length < 80) {
+  failures.push("docs.json needs a descriptive site summary for SEO and llms.txt");
+}
+if (docsConfig.seo?.indexing !== "navigable") {
+  failures.push("SEO indexing must remain scoped to navigable public pages");
+}
+if (!docsConfig.metadata?.timestamp) failures.push("Global last-modified timestamps must remain enabled");
 for (const page of navigationPages) {
   if (!(await routeExists(page))) failures.push("Navigation target is missing: " + page);
 }
@@ -91,6 +98,18 @@ for (const [specPath, outputDirectory] of playgroundSources) {
       const content = await readFile(path.join(root, page + ".mdx"), "utf8");
       if (!content.includes(`api: "${method.toUpperCase()} ${route}"`)) failures.push(page + " does not match its OpenAPI method and route");
       if (!content.includes('playground: "interactive"')) failures.push(page + " does not enable the interactive playground");
+      for (const marker of [
+        "## Authenticate safely",
+        "## Runnable request examples",
+        "~~~javascript Node.js",
+        "~~~python Python",
+        "## What success means",
+        "## Handle failures",
+        "## Verify the result",
+        "## Retry, cleanup, and production use",
+      ]) {
+        if (!content.includes(marker)) failures.push(page + " is missing generated playground guidance: " + marker);
+      }
     }
   }
 }
@@ -139,6 +158,9 @@ for (const service of catalog.developerServices) {
 const mdxFiles = await walk(".", ".mdx");
 let mermaidCount = 0;
 let imageCount = 0;
+const publicMdxRoutes = [];
+const titles = new Map();
+const descriptions = new Map();
 for (const file of mdxFiles) {
   const content = await readFile(path.join(root, file), "utf8");
   mermaidCount += (content.match(/(?:```|~~~)mermaid/g) || []).length;
@@ -166,6 +188,71 @@ for (const file of mdxFiles) {
   if (externalFirstDirectories.some((directory) => file.startsWith(directory)) && /\b(?:worktree|ledger\/|service[-_ ]role|security definer|exact deploy(?:ment)? (?:sha|revision)|202[0-9]{11})\b/i.test(content)) {
     failures.push(file + " exposes an internal implementation or receipt term");
   }
+
+  if (!file.startsWith("snippets/")) {
+    const route = file.replace(/\.mdx$/, "");
+    publicMdxRoutes.push(route);
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!frontmatterMatch) {
+      failures.push(file + " has no YAML frontmatter");
+      continue;
+    }
+    let frontmatter;
+    try {
+      frontmatter = parse(frontmatterMatch[1]);
+    } catch (error) {
+      failures.push(file + " has invalid YAML frontmatter: " + error.message);
+      continue;
+    }
+    if (!frontmatter.title || !frontmatter.description) failures.push(file + " needs a title and description");
+    if (frontmatter.description && (frontmatter.description.length < 70 || frontmatter.description.length > 180)) {
+      failures.push(file + " description must be 70-180 characters; found " + frontmatter.description.length);
+    }
+    if (!Array.isArray(frontmatter.keywords) || frontmatter.keywords.length < 2 || frontmatter.keywords.length > 6) {
+      failures.push(file + " needs 2-6 focused search keywords");
+    }
+    if (frontmatter.title) {
+      const entries = titles.get(frontmatter.title) || [];
+      entries.push(file);
+      titles.set(frontmatter.title, entries);
+    }
+    if (frontmatter.description) {
+      const entries = descriptions.get(frontmatter.description) || [];
+      entries.push(file);
+      descriptions.set(frontmatter.description, entries);
+    }
+    const body = content.slice(frontmatterMatch[0].length);
+    let openFence = null;
+    for (const [index, line] of body.split("\n").entries()) {
+      const match = line.match(/^(`{3,}|~{3,})(.*)$/);
+      if (!match) {
+        if (!openFence && /^#\s+/.test(line)) {
+          failures.push(file + " contains a manual H1; Mintlify creates the page H1 from title");
+        }
+        continue;
+      }
+      if (!openFence) {
+        if (!match[2].trim()) failures.push(file + ":" + (index + 1) + " has an unlabeled code fence");
+        openFence = match[1][0];
+      } else if (match[1][0] === openFence) {
+        openFence = null;
+      }
+    }
+    if (openFence) failures.push(file + " has an unclosed code fence");
+  }
+}
+
+for (const [title, files] of titles) {
+  if (files.length > 1) failures.push("Duplicate page title \"" + title + "\": " + files.join(", "));
+}
+for (const [description, files] of descriptions) {
+  if (files.length > 1) failures.push("Duplicate page description across: " + files.join(", "));
+}
+for (const route of publicMdxRoutes) {
+  if (!navigationPages.has(route)) failures.push("Public page is absent from navigation and LLM indexing: " + route);
+}
+for (const route of navigationPages) {
+  if (!publicMdxRoutes.includes(route)) failures.push("Navigation route has no public MDX page: " + route);
 }
 
 if (mermaidCount < 12) failures.push("Expected at least 12 Mermaid diagrams; found " + mermaidCount);
@@ -199,6 +286,23 @@ for (const file of frameworkTutorials) {
   }
   if (!/(?:^|\n)## .*?(?:test|verify)/iu.test(content)) {
     failures.push(file + " is missing an explicit test or verification section");
+  }
+}
+
+for (const file of tutorialFiles) {
+  const content = await readFile(path.join(root, file), "utf8");
+  for (const heading of [
+    "## Prerequisites",
+    "## Troubleshooting",
+    "## Best practices",
+    "## Optimize for production",
+    "## Cleanup and next steps",
+    "## Frequently asked questions",
+  ]) {
+    if (!content.includes(heading)) failures.push(file + " is missing " + heading);
+  }
+  if (!/(?:^|\n)## .*?(?:test|verify|verification|acceptance|qualification|prove)/iu.test(content)) {
+    failures.push(file + " is missing an explicit test, verification, or acceptance section");
   }
 }
 
@@ -251,6 +355,15 @@ const requiredRoutes = [
   "overview/capabilities",
   "overview/service-status",
   "overview/examples",
+  "overview/ai-and-llm-discovery",
+  "api-playground/authentication",
+  "api-playground/errors",
+  "api-playground/coverage-and-testing",
+  "mcp/quickstart",
+  "mcp/host-guides",
+  "mcp/use-cases",
+  "mcp/troubleshooting",
+  "mcp/production-checklist",
   "product-guides/overview",
   "operations/overview",
   "troubleshooting/overview",

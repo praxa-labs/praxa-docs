@@ -1,7 +1,8 @@
 ---
 title: "Create or replay a portable memory candidate"
 sidebarTitle: "Create or replay a portable memory candidate"
-description: "Requires a personal workspace key with memory:write and a stable Idempotency-Key. Identity and tenant are derived from the key. The candidate remains isolated from first-party Praxa memory planes."
+description: "Create or exactly replay one isolated, subject-scoped Praxa memory candidate with portable provenance and no first-party memory promotion."
+keywords: ["Praxa Create or replay a portable memory candidate","Praxa API Playground","Praxa API examples","API authentication"]
 api: "POST /v1/memory/records"
 authMethod: "bearer"
 playground: "interactive"
@@ -9,13 +10,17 @@ playground: "interactive"
 
 {/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
 
-Requires a personal workspace key with memory:write and a stable Idempotency-Key. Identity and tenant are derived from the key. The candidate remains isolated from first-party Praxa memory planes.
+Create or exactly replay one isolated, subject-scoped Praxa memory candidate with portable provenance and no first-party memory promotion.
 
 <Info>
   **Availability:** Qualification preview. **Required scope:** `memory:write`.
 </Info>
 
-Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+## Authenticate safely
+
+Create a disposable **personal workspace** API key with exactly `memory:write`. Send it as `Authorization: Bearer $PRAXA_API_KEY`. A Gateway OAuth token, Supabase JWT, provider credential, or organization memory key is not interchangeable with this key.
+
+The hosted playground sends the credential from your browser session to the documented API through the configured playground proxy. Use test data, never share the key, and revoke it when the check ends.
 
 ## Request fields
 
@@ -119,23 +124,9 @@ Use a disposable personal workspace key and verify the returned resource or rece
   originChain request field.
 </ParamField>
 
-## Successful response
+## Runnable request examples
 
-**201** — A new candidate was created.
-
-<ResponseField name="apiVersion" type="v1" required>
-  apiVersion response field.
-</ResponseField>
-
-<ResponseField name="replayed" type="boolean" required>
-  replayed response field.
-</ResponseField>
-
-<ResponseField name="candidate" type="object" required>
-  candidate response field.
-</ResponseField>
-
-<RequestExample>
+<CodeGroup>
 ~~~bash cURL
 curl --fail-with-body -X POST 'https://api.praxa.io/v1/memory/records' \
   -H "Authorization: Bearer $PRAXA_API_KEY" \
@@ -166,13 +157,117 @@ curl --fail-with-body -X POST 'https://api.praxa.io/v1/memory/records' \
   "originChain": []
 }'
 ~~~
-</RequestExample>
+~~~javascript Node.js
+const response = await fetch("https://api.praxa.io/v1/memory/records", {
+  "method": "POST",
+  "headers": {
+    "Authorization": `Bearer ${process.env.PRAXA_API_KEY}`,
+    "Idempotency-Key": "playground-create-memory-candidate-0001",
+    "Content-Type": "application/json"
+  },
+  "body": JSON.stringify({
+    "apiVersion": "v1",
+    "providerId": "custom",
+    "sourceId": "customer-profile",
+    "externalRecordId": "preference-42",
+    "revision": "revision-1",
+    "kind": "fact",
+    "subject": "customer-42",
+    "visibility": "subject",
+    "content": "Prefers concise weekly summaries.",
+    "metadata": {
+      "category": "communication-preference"
+    },
+    "provenance": {
+      "origin": "explicit",
+      "confidence": 1,
+      "capturedAt": "2026-08-13T12:00:00.000Z",
+      "evidenceIds": [],
+      "metadata": {}
+    },
+    "occurredAt": "2026-08-13T12:00:00.000Z",
+    "observedAt": "2026-08-13T12:00:00.000Z",
+    "originChain": []
+  })
+});
+const text = await response.text();
+if (!response.ok) throw new Error(`${response.status}: ${text}`);
+console.log(text ? JSON.parse(text) : { status: response.status });
+~~~
+~~~python Python
+import json
+import os
+from urllib import error, request
+
+payload = json.dumps({
+  "apiVersion": "v1",
+  "providerId": "custom",
+  "sourceId": "customer-profile",
+  "externalRecordId": "preference-42",
+  "revision": "revision-1",
+  "kind": "fact",
+  "subject": "customer-42",
+  "visibility": "subject",
+  "content": "Prefers concise weekly summaries.",
+  "metadata": {
+    "category": "communication-preference"
+  },
+  "provenance": {
+    "origin": "explicit",
+    "confidence": 1,
+    "capturedAt": "2026-08-13T12:00:00.000Z",
+    "evidenceIds": [],
+    "metadata": {}
+  },
+  "occurredAt": "2026-08-13T12:00:00.000Z",
+  "observedAt": "2026-08-13T12:00:00.000Z",
+  "originChain": []
+}).encode()
+
+req = request.Request(
+    "https://api.praxa.io/v1/memory/records",
+    method="POST",
+    headers={
+      "Authorization": f"Bearer {os.environ['PRAXA_API_KEY']}",
+      "Idempotency-Key": "playground-create-memory-candidate-0001",
+      "Content-Type": "application/json"
+    },
+    data=payload,
+)
+try:
+    with request.urlopen(req, timeout=30) as response:
+        text = response.read().decode()
+        print(json.loads(text) if text else {"status": response.status})
+except error.HTTPError as exc:
+    raise RuntimeError(f"{exc.code}: {exc.read().decode()}") from exc
+~~~
+</CodeGroup>
+
+## What success means
+
+A `201` response created a candidate; `200` means the same idempotent request was replayed. Neither promotes content into Praxa personal memory.
+
+## Successful response
+
+**201** — A new candidate was created.
+
+<ResponseField name="apiVersion" type="v1" required>
+  apiVersion response field.
+</ResponseField>
+
+<ResponseField name="replayed" type="boolean" required>
+  replayed response field.
+</ResponseField>
+
+<ResponseField name="candidate" type="object" required>
+  candidate response field.
+</ResponseField>
 
 <ResponseExample>
 ~~~json 201
 {
   "apiVersion": "v1",
-  "replayed": true,
+  "replayed": false,
   "candidate": {
     "id": "018f0000-0000-7000-8000-000000000001",
     "state": "candidate",
@@ -180,30 +275,67 @@ curl --fail-with-body -X POST 'https://api.praxa.io/v1/memory/records' \
     "createdAt": "2026-08-13T12:00:00.000Z",
     "record": {
       "apiVersion": "v1",
-      "providerId": "mem0",
-      "sourceId": "source-id-demo-0001",
-      "externalRecordId": "external-record-id-demo-0001",
-      "revision": "revision-demo-0001",
-      "kind": "message",
+      "providerId": "custom",
+      "sourceId": "customer-profile",
+      "externalRecordId": "preference-42",
+      "revision": "revision-1",
+      "kind": "fact",
       "subject": "customer-42",
       "visibility": "subject",
-      "content": "content-demo-0001",
+      "content": "Prefers concise weekly summaries.",
+      "metadata": {
+        "category": "communication-preference"
+      },
       "provenance": {
         "origin": "explicit",
-        "confidence": 0,
-        "capturedAt": "2026-08-13T12:00:00.000Z"
+        "confidence": 1,
+        "capturedAt": "2026-08-13T12:00:00.000Z",
+        "evidenceIds": [],
+        "metadata": {}
       },
       "occurredAt": "2026-08-13T12:00:00.000Z",
-      "observedAt": "2026-08-13T12:00:00.000Z"
+      "observedAt": "2026-08-13T12:00:00.000Z",
+      "originChain": []
     }
   }
 }
 ~~~
 </ResponseExample>
 
-## Verify and recover
+## Handle failures
+
+| Response | Meaning | Safe action |
+|---|---|---|
+| `400 invalid_request` | The method, path, headers, query, or body failed strict validation. | Correct the request; do not retry unchanged input. |
+| `401 authentication_failed` | The bearer key is missing, malformed, expired, or revoked. | Stop and replace the key through the authenticated console. |
+| `403 authorization_failed` | The authenticated key lacks scope or tenant authority. | Request only the missing least-privilege scope; never substitute another tenant ID. |
+| `409 conflict` | The same idempotency key was paired with different logical input or state. | Restore the original body or create a key for a genuinely new operation. |
+| `429 rate_limited` | The principal exceeded a bounded rate. | Honor `retryAfterMs` or `Retry-After`, add jitter, and cap attempts. |
+| retryable `5xx` | The server could not confirm a final response. | Reconcile reads or replay the exact keyed mutation before creating new work. |
+
+~~~json Example problem
+{
+  "type": "https://docs.praxa.io/problems/authorization-failed",
+  "title": "Authorization failed",
+  "status": 403,
+  "code": "authorization_failed",
+  "detail": "The API key does not grant the required scope.",
+  "retryable": false
+}
+~~~
+
+## Verify the result
+
+1. Save the candidate ID and require `replayed: false` on first create.
+2. Query the exact subject and require lexical retrieval only.
+3. Replay the exact body/key and require the same candidate with `replayed: true`.
+
+## Retry, cleanup, and production use
 
 - Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
 - Reuse the idempotency key only for an exact retry of the same logical mutation.
 - For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
-- Revoke the disposable key and remove test data after validation.
+- Move the request into a trusted application backend before production; never ship the Praxa key in browser or mobile code.
+- Revoke the disposable key, disable test webhooks, and erase disposable candidate data after validation.
+
+Continue with [API authentication](/api-playground/authentication), the [failure and retry guide](/api-playground/errors), and the [end-to-end coverage matrix](/api-playground/coverage-and-testing).

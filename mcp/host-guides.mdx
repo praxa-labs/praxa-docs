@@ -1,0 +1,139 @@
+---
+title: "Connect Praxa MCP to Claude, Cursor, VS Code, and OpenAI"
+sidebarTitle: "Host setup guides"
+description: "Configure a deployment-specific Praxa remote MCP server in common AI hosts, preserve OAuth and approval boundaries, and verify tool discovery safely."
+keywords: ["Connect Praxa MCP to Claude, Cursor, VS Code, and OpenAI","Praxa MCP","Model Context Protocol","AI agent tools"]
+---
+
+Connect hosts to the canonical Streamable HTTP `/mcp` URL supplied by your
+Praxa Integration Gateway deployment. The examples use
+`https://gateway.example.com/mcp` as a placeholder; replace it only with an
+approved deployment URL. A successful configuration entry does not prove OAuth,
+scope, tenant policy, or tool execution.
+
+## Before you configure a host
+
+1. Obtain the exact HTTPS endpoint and supported OAuth flow from the deployment owner.
+2. Inventory the `aura_*` tools the workflow actually needs.
+3. Separate safe reads from mutations and destructive cancellation.
+4. Decide which calls require human approval in the host.
+5. Use a disposable user and tenant for initial testing.
+
+## Claude Code
+
+~~~bash
+claude mcp add --transport http praxa https://gateway.example.com/mcp
+claude mcp list
+claude mcp get praxa
+~~~
+
+Open Claude Code and run `/mcp` to complete OAuth when the server requests it.
+Use project scope only when the shared configuration contains no credential.
+Review the server before accepting project trust.
+
+## Cursor
+
+Create `.cursor/mcp.json` for a project-scoped remote server:
+
+~~~json
+{
+  "mcpServers": {
+    "praxa": {
+      "url": "https://gateway.example.com/mcp"
+    }
+  }
+}
+~~~
+
+Use Cursor's MCP settings or `cursor-agent mcp login praxa` for OAuth, then run
+`cursor-agent mcp list-tools praxa`. Keep auto-run disabled for mutations until
+approval, replay, and negative authorization tests pass.
+
+## Visual Studio Code
+
+Create `.vscode/mcp.json`:
+
+~~~json
+{
+  "servers": {
+    "praxa": {
+      "type": "http",
+      "url": "https://gateway.example.com/mcp"
+    }
+  }
+}
+~~~
+
+Run **MCP: List Servers**, start `praxa`, review the trust prompt, and inspect
+the MCP output log. Do not hardcode OAuth tokens in a committed workspace file.
+Enterprise administrators should allowlist the exact server and preserve tool
+approval policy.
+
+## OpenAI Responses API
+
+Your trusted backend can provide a short-lived delegated token to the remote
+MCP tool. Keep approval required and allowlist only the tools needed for the
+request.
+
+~~~typescript
+import OpenAI from "openai";
+
+const openai = new OpenAI();
+const response = await openai.responses.create({
+  model: "gpt-5.6",
+  input: "Read the governed reference coverage and summarize only the evidence.",
+  tools: [{
+    type: "mcp",
+    server_label: "praxa",
+    server_description: "Governed Praxa Integration Gateway tools",
+    server_url: process.env.PRAXA_MCP_URL!,
+    authorization: process.env.PRAXA_DELEGATED_TOKEN!,
+    allowed_tools: ["aura_get_coverage"],
+    require_approval: "always",
+  }],
+});
+
+console.log(response.output_text);
+~~~
+
+The application owns the OAuth flow and token lifecycle. Data sent through a
+remote MCP tool is also subject to that server deployment's retention and
+residency policy.
+
+## Any other MCP 2025-11-25 host
+
+Configure one Streamable HTTP endpoint and negotiate the lifecycle before
+listing or calling tools. On JSON-RPC `POST` requests, advertise both
+`application/json` and `text/event-stream`; on a listening `GET`, advertise
+`text/event-stream`. Preserve the negotiated `MCP-Protocol-Version` on later
+requests. If initialization returns `MCP-Session-Id`, send it on every later
+request, start a new initialization after a session-scoped `404`, and terminate
+the session with `DELETE` when the server supports it. Use OAuth Protected
+Resource Metadata discovery instead of a static bearer header unless the
+deployment explicitly documents another mode.
+
+## Verify every host
+
+| Check | Expected result |
+|---|---|
+| Server identity | `aura-agent-os`, software version `0.3.0` |
+| Protocol | `2025-11-25` or negotiated `2025-03-26` |
+| Session | Returned `MCP-Session-Id` is preserved, rejected across clients, and reinitialized after `404` |
+| Tool list | 12 exact `aura_*` definitions |
+| Schema | Draft 2020-12 object schemas and original bounds |
+| Read-only call | Correct result with matching scope |
+| Wrong-scope call | Fail closed without data |
+| Mutation | Host approval plus stable idempotency key |
+| Destructive call | Explicit approval and post-call readback |
+| Revocation | Later call fails after token revocation |
+| Logging | No OAuth token or sensitive payload |
+
+For exact commands and UI paths, follow the host's current official MCP guide;
+host configuration formats can evolve independently of Praxa contracts.
+
+## Official host references
+
+- [Claude Code MCP guide](https://docs.anthropic.com/en/docs/claude-code/mcp)
+- [Cursor MCP guide](https://docs.cursor.com/context/model-context-protocol)
+- [Visual Studio Code MCP servers](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)
+- [OpenAI connectors and remote MCP tools](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)

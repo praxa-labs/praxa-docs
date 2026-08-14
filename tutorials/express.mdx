@@ -2,6 +2,7 @@
 title: "Build a Praxa backend with Express"
 sidebarTitle: "Express"
 description: "Create an authenticated Express 5 route for Praxa tasks with validation, deterministic retries, and integration tests."
+keywords: ["Build a Praxa backend with Express","Praxa tutorials","AI integration guide","developer tutorial"]
 ---
 
 This pattern keeps Praxa behind your existing Express authentication,
@@ -19,6 +20,17 @@ sequenceDiagram
   E-->>C: safe no-store response
 ~~~
 
+{/* BEGIN GENERATED TUTORIAL PREREQUISITES */}
+## Prerequisites
+
+Before you begin, prepare:
+
+- a trusted server runtime and application authentication boundary;
+- a disposable personal workspace Praxa key with only the tutorial's required scopes;
+- synthetic input plus a persisted application request ID for replay tests;
+- a fake upstream for unit tests and a non-production environment for canaries;
+- an acceptance assertion that proves the authenticated Express route rejects unsafe input before admitting and reading one task.
+{/* END GENERATED TUTORIAL PREREQUISITES */}
 ## 1. Install and configure
 
 ~~~bash
@@ -151,3 +163,42 @@ terminal state separately from the admission response.
 <Card title="Express 5 migration guide" icon="arrow-up-right-from-square" href="https://expressjs.com/en/guide/migrating-5/">
   Confirm the current async error and routing behavior in the official guide.
 </Card>
+
+{/* BEGIN GENERATED TUTORIAL OPERATIONS */}
+## Optimize for production
+
+- Reuse one configured HTTP or SDK client per process and bound concurrent upstream work.
+- Prefer durable admission plus asynchronous readback over holding application requests open.
+- Cache only non-sensitive, tenant-scoped reads within their documented freshness window.
+- Measure p50/p95 latency, admission-to-terminal time, retries, conflicts, and connection reuse before tuning.
+
+Optimize only after the correctness and isolation matrix passes. Lower latency or cost is not an improvement if verified outcomes, authority checks, or recovery rates regress.
+
+## Cleanup and next steps
+
+1. Revoke the disposable Praxa key and require a later request to fail.
+2. Remove synthetic application records and any temporary environment files.
+3. Cancel or archive unresolved test runs according to the application policy.
+4. Retain only redacted request, run, and verification identifiers needed for the test record.
+
+After cleanup, run the [shared integration test matrix](/tutorials/test-your-integration) and record any environment-specific check that remains pending.
+
+## Frequently asked questions
+
+### What proves this tutorial works?
+
+The minimum observable result is that the authenticated Express route rejects unsafe input before admitting and reading one task. A compile, package import, mocked response, or initial admission alone does not prove the complete workflow.
+
+### Can a browser, mobile app, or model prompt hold the credential?
+
+No. Browser and mobile bundles are inspectable. Keep the Praxa credential in the trusted application backend.
+
+### How should an ambiguous mutation be retried?
+
+Persist the exact logical input and idempotency key before the first attempt. Reconcile through authoritative readback or replay the exact request with that same key before creating new work.
+
+### What should we monitor after release?
+
+Monitor application auth failures, upstream status/code, latency, retries, replay conflicts, and terminal run outcomes. Alert on authorization bypass, cross-tenant disclosure, repeated conflicts, or cleanup failure.
+
+{/* END GENERATED TUTORIAL OPERATIONS */}

@@ -2,6 +2,7 @@
 title: "Stream Praxa Mission Events via Server-Sent Events (SSE)"
 sidebarTitle: "Mission Events"
 description: "missionEvents() returns an async generator streaming live SSE lifecycle events from a Praxa mission. Learn to consume, filter, cancel, and resume streams."
+keywords: ["Stream Praxa Mission Events via Server-Sent Events (SSE)","Praxa TypeScript SDK","AI agent SDK","Praxa SDK"]
 ---
 
 `client.missionEvents()` opens a persistent HTTP connection to the `/v8/missions/{runId}/events` endpoint and returns a native `AsyncGenerator<PraxaSseEvent>`. The gateway pushes Server-Sent Events over this stream as the mission progresses through its lifecycle — when steps start and complete, when the agent invokes tools, and when the mission reaches a terminal state. Because the generator is lazy, the connection is not opened until you enter the `for await` loop, and it is closed automatically when the generator finishes or when you break out of the loop.

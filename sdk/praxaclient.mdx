@@ -2,6 +2,7 @@
 title: "PraxaClient SDK Reference — Methods, Options, and Examples"
 sidebarTitle: "PraxaClient"
 description: "Full PraxaClient reference for @praxa/sdk. Covers constructor options, every method signature, and working examples for missions, capabilities, and memory."
+keywords: ["PraxaClient SDK Reference — Methods, Options, and Examples","Praxa TypeScript SDK","AI agent SDK","Praxa SDK"]
 ---
 
 `PraxaClient` is the single entry point for all Praxa Integration Gateway interactions. You construct one instance per application — passing the gateway origin and an access-token provider — and then call its methods to submit intent, create missions, stream their event lifecycles, search capabilities, query memory, and inspect skills, traces, and coverage. Every method returns a native `Promise` (or an `AsyncGenerator` for event streams), so you can use standard `async`/`await` patterns and `AbortSignal` cancellation throughout.

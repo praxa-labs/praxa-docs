@@ -1,10 +1,15 @@
 ---
-title: "Praxa MCP Contracts: Protocol Definitions for AI Agents"
+title: "Praxa MCP contracts for governed AI agent tools"
 sidebarTitle: "Overview"
 description: "@praxa/mcp-contracts exports MCP 2025-11-25 tool definitions for Praxa, with negotiated compatibility for 2025-03-26."
+keywords: ["Praxa MCP contracts for governed AI agent tools","Praxa MCP","Model Context Protocol","AI agent tools"]
 ---
 
-`@praxa/mcp-contracts` is a zero-dependency package containing the MCP (Model Context Protocol) 2025-11-25 tool definitions for the Praxa Integration Gateway, with negotiated compatibility for 2025-03-26. It gives you a stable, typed set of tool schemas and metadata that you can register with any MCP-compatible AI agent server, without coupling your server implementation to any specific Praxa SDK version.
+`@praxa/mcp-contracts` is a zero-dependency package containing 12 Model
+Context Protocol tool definitions for the Praxa Integration Gateway. It targets
+MCP `2025-11-25`, negotiates compatibility with `2025-03-26`, and gives agent
+hosts stable schemas, scopes, route metadata, idempotency rules, and tool
+annotations without embedding credentials or execution authority.
 
 ~~~mermaid
 flowchart LR
@@ -15,13 +20,22 @@ flowchart LR
   Contracts -. "contains no execution authority" .-> Policy
 ~~~
 
-## Installation
+## Choose how to integrate
+
+| Goal | Use | What it proves |
+|---|---|---|
+| Inspect or register stable tool definitions | `@praxa/mcp-contracts` | Package and host-adapter compatibility |
+| Let an MCP host execute Praxa tools | Deployment-specific remote `/mcp` | Transport, OAuth, Gateway, and runtime behavior after canaries |
+| Build directly with TypeScript mission helpers | `@praxa/sdk` | Typed Integration Gateway client behavior |
+| Submit a minimal public durable task | Execution Fabric `/v1` | Public API admission and run lifecycle |
+
+## Install the contracts
 
 ```bash
 npm install @praxa/mcp-contracts
 ```
 
-## What's Included
+## What the package includes
 
 The package exports everything you need to describe Praxa tools to an MCP host:
 
@@ -34,7 +48,7 @@ The package exports everything you need to describe Praxa tools to an MCP host:
 - **`MCP_SERVER_VERSION`** — The package/server software version, currently `"0.3.0"`; this is distinct from the negotiated protocol revision.
 - **JSON-RPC message types** — `JsonRpcRequest`, `JsonRpcResponse`, and `JsonRpcId` TypeScript types for building MCP server implementations on top of these contracts.
 
-## Protocol Details
+## Understand protocol and wire identity
 
 These contracts target **MCP protocol version `2025-11-25`** using **JSON-RPC 2.0** as the transport framing and can negotiate compatibility with `2025-03-26`:
 
@@ -56,7 +70,7 @@ The package and TypeScript aliases use Praxa branding, while the published wire 
 
 Connect an MCP 2025-11-25 Streamable HTTP client to the hosted `/mcp` endpoint and authenticate using a delegated Praxa OAuth token scoped to the specific operations your agent requires. Clients that only support 2025-03-26 can negotiate that compatibility revision.
 
-## Important Note
+## Understand the execution boundary
 
 `@praxa/mcp-contracts` contains **protocol contracts only**. The package defines tool schemas and metadata — it does not include server execution logic, OAuth authority, provider adapters, or action executors. To actually execute the tools described here, you need a running Praxa Integration Gateway. The contracts tell your MCP host *what* each tool accepts and returns; the gateway is what carries out the work.
 
@@ -65,8 +79,18 @@ Connect an MCP 2025-11-25 Streamable HTTP client to the hosted `/mcp` endpoint a
 </Info>
 
 <CardGroup cols={2}>
+  <Card title="MCP quickstart" icon="rocket" href="/mcp/quickstart">
+    Install the package, run a contract test, choose an execution path, and
+    complete a safe-read canary.
+  </Card>
   <Card title="MCP Tools Reference" icon="wrench" href="/mcp/tools">
     Full table of all 12 tool definitions with scopes, paths, and usage examples
+  </Card>
+  <Card title="Host setup guides" icon="plug" href="/mcp/host-guides">
+    Configure Claude Code, Cursor, VS Code, OpenAI, or another MCP host.
+  </Card>
+  <Card title="Business and developer use cases" icon="briefcase" href="/mcp/use-cases">
+    Choose the right tools and completion evidence for common workflows.
   </Card>
 </CardGroup>
 
@@ -74,3 +98,26 @@ Connect an MCP 2025-11-25 Streamable HTTP client to the hosted `/mcp` endpoint a
   Register the stable Aura-compatible wire identifiers in an agent host and
   verify schemas, annotations, scopes, and protocol versions.
 </Card>
+
+## Frequently asked questions
+
+### Is `@praxa/mcp-contracts` an MCP server?
+
+No. It is the exact package of tool definitions and protocol constants. Use a
+configured Praxa Integration Gateway for remote execution or implement a host
+adapter and executor in trusted server code.
+
+### Why do the wire names begin with `aura_`?
+
+They are compatibility identifiers retained across the Praxa rebrand. Keep
+them byte-identical even when the host displays Praxa branding.
+
+### Can I use a Praxa Execution Fabric key with remote MCP?
+
+No. Remote MCP uses the deployment's delegated OAuth authority. Fabric keys,
+Gateway tokens, and provider credentials are intentionally not interchangeable.
+
+### Should all 12 tools be enabled?
+
+Usually not. Start with the smallest safe-read allowlist, add mutations only
+for a defined use case, and require approval plus authoritative readback.

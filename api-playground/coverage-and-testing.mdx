@@ -1,0 +1,69 @@
+---
+title: "Praxa API Playground endpoint coverage and test plan"
+sidebarTitle: "Coverage and testing"
+description: "See every active Praxa API Playground operation, required scopes, success proof, negative tests, and the endpoint intentionally excluded from testing."
+keywords: ["Praxa API Playground endpoint coverage and test plan","Praxa API Playground","Praxa API examples","API authentication"]
+---
+
+The API Playground covers all 15 active operations in the checked public
+Execution Fabric and memory-candidate OpenAPI documents. It intentionally
+excludes the pending public approval operation and the deployment-specific
+Integration Gateway `/v8` surface.
+
+## Active endpoint coverage
+
+| Operation | Scope | First success | Verify before claiming success |
+|---|---|---|---|
+| `POST /v1/execute` | `execute:write` | `202` | Read or stream the returned run to terminal. |
+| `GET /v1/runs/{id}` | `runs:read` | `200` | Match run ID, status, and tenant-owned projection. |
+| `GET /v1/runs/{id}/events` | `runs:read` | `200` SSE | Persist sequence, resume, and observe terminal state. |
+| `POST /v1/runs/{id}/cancel` | `runs:write` | `200` | Reconcile until terminal; request acceptance is not rollback. |
+| `GET /v1/usage` | `usage:read` | `200` | Check range, UTC buckets, totals, and tenant isolation. |
+| `GET /v1/webhooks` | `runs:read` | `200` | Require tenant-owned metadata and no signing secret. |
+| `POST /v1/webhooks` | `runs:read`, `runs:write` | `201` | Store the one-time secret and verify a signed delivery. |
+| `PATCH /v1/webhooks/{endpointId}` | `runs:read`, `runs:write` | `200` | Read back fields and exercise the new filter. |
+| `DELETE /v1/webhooks/{endpointId}` | `runs:read`, `runs:write` | `204` | Confirm disabled state and remove the stored secret. |
+| `GET /v1/webhook-deliveries` | `runs:read` | `200` | Correlate endpoint, run, event, status, and cursor. |
+| `POST /v1/webhook-deliveries/{deliveryId}/replay` | `runs:read`, `runs:write` | `202` | Follow replay delivery to its final status. |
+| `POST /v1/memory/records` | `memory:write` | `201` or replay `200` | Query exact subject and prove replay identity. |
+| `POST /v1/memory/query` | `memory:read` | `200` | Require lexical mode, filters, and subject isolation. |
+| `GET /v1/memory/export` | `memory:read` | `200` NDJSON | Parse all lines and follow the opaque cursor. |
+| `DELETE /v1/memory/records/{recordId}` | `memory:write` | `200` | Confirm erasure, content-free receipt, and replay identity. |
+
+## Intentionally excluded endpoints
+
+`POST /v1/runs/{id}/approve` remains hidden and pending in the checked
+Execution Fabric specification. The playground does not expose a button for a
+route that is not activated. Use the [approvals status guide](/fabric/api/approvals)
+to understand the contract without sending a request.
+
+The Integration Gateway `/v8` and remote MCP endpoint are deployment-specific.
+Use that deployment's origin and delegated OAuth authority through the
+[API Reference](/api-reference/overview) or [MCP setup guide](/mcp/quickstart).
+
+## Run the minimum acceptance matrix
+
+For every operation you adopt, save a test record containing the environment,
+operation, synthetic tenant/subject, credential fingerprint—not the credential
+itself—request ID, idempotency key fingerprint, response status, request ID,
+readback result, cleanup result, and timestamp.
+
+| Lane | Required checks |
+|---|---|
+| Contract | Method, path, required fields, unknown-field rejection, response schema |
+| Authentication | Missing, malformed, revoked credential |
+| Authorization | Correct scope, wrong scope, foreign resource, tenant and subject isolation |
+| Replay | Exact retry, changed input under old key, timeout reconciliation |
+| Availability | `429`, retryable and non-retryable 5xx, bounded timeout |
+| Lifecycle | Run terminal state, event resume, webhook final delivery, or memory deletion receipt |
+| Cleanup | Revoke key, disable endpoint, erase test candidate, remove provider fixture |
+
+<CardGroup cols={2}>
+  <Card title="Test your integration" icon="flask" href="/tutorials/test-your-integration">
+    Build the complete positive, denial, replay, isolation, degraded-state,
+    and cleanup harness.
+  </Card>
+  <Card title="Troubleshoot failures" icon="triangle-exclamation" href="/api-playground/errors">
+    Map each typed problem to a safe retry, recovery, or stop decision.
+  </Card>
+</CardGroup>
