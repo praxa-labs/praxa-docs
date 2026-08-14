@@ -16,6 +16,10 @@ function collectPages(value, output = []) {
   return output;
 }
 
+function canonicalPagePath(page) {
+  return page.endsWith("/index") ? page.slice(0, -"/index".length) : page;
+}
+
 async function get(pathname, expectedType) {
   const response = await fetch(`${origin}${pathname}`, {
     headers: { "user-agent": "praxa-docs-release-verifier/1.0" },
@@ -48,7 +52,9 @@ const pages = [...new Set(collectPages(docs.navigation))].sort();
 for (const page of pages) {
   const markdownUrl = `${origin}/${page}.md`;
   if (!index.body.includes(markdownUrl)) throw new Error(`/llms.txt is missing ${markdownUrl}`);
-  if (!sitemap.body.includes(`${origin}/${page}`)) throw new Error(`/sitemap.xml is missing ${page}`);
+  if (!full.body.includes(`Source: ${origin}/${page}`)) throw new Error(`/llms-full.txt is missing ${page}`);
+  const sitemapUrl = `${origin}/${canonicalPagePath(page)}`;
+  if (!sitemap.body.includes(`<loc>${sitemapUrl}</loc>`)) throw new Error(`/sitemap.xml is missing ${sitemapUrl}`);
 }
 
 const queue = [...pages];
