@@ -254,8 +254,12 @@ const pageDetails = {
   "webhooks.mdx": ["lifecycle", "raw-body signature, persistence, deduplication, replay, and delivery readback pass"],
 };
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function removeGenerated(content, start, end) {
-  const pattern = new RegExp(`\\n?${start.replace(/[{}/*]/g, "\\$&")}[\\s\\S]*?${end.replace(/[{}/*]/g, "\\$&")}\\n?`, "g");
+  const pattern = new RegExp(`\\n?${escapeRegExp(start)}[\\s\\S]*?${escapeRegExp(end)}\\n?`, "g");
   return content.replace(pattern, "\n").replace(/\n{3,}/g, "\n\n");
 }
 
