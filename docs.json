@@ -106,24 +106,60 @@
             "group": "Tutorials",
             "root": "tutorials/overview",
             "pages": [
-              "tutorials/durable-tasks",
-              "tutorials/mission-lifecycle",
-              "tutorials/memory-federation",
-              "tutorials/hosted-memory-candidates",
-              "tutorials/mcp-tools",
-              "tutorials/webhooks",
-              "tutorials/observability",
-              "tutorials/framework-backends",
-              "tutorials/nextjs",
-              "tutorials/express",
-              "tutorials/cloudflare-workers",
-              "tutorials/fastapi",
-              "tutorials/vercel-ai-sdk",
-              "tutorials/openai-agents",
-              "tutorials/langgraph",
-              "tutorials/agent-frameworks",
-              "tutorials/resilient-events",
-              "tutorials/test-your-integration"
+              "tutorials/framework-matrix",
+              {
+                "group": "Core workflows",
+                "pages": [
+                  "tutorials/durable-tasks",
+                  "tutorials/mission-lifecycle",
+                  "tutorials/memory-federation",
+                  "tutorials/hosted-memory-candidates",
+                  "tutorials/mcp-tools",
+                  "tutorials/webhooks",
+                  "tutorials/observability"
+                ]
+              },
+              {
+                "group": "Web and server frameworks",
+                "pages": [
+                  "tutorials/framework-backends",
+                  "tutorials/typescript",
+                  "tutorials/nextjs",
+                  "tutorials/nuxt",
+                  "tutorials/express",
+                  "tutorials/cloudflare-workers",
+                  "tutorials/python",
+                  "tutorials/fastapi",
+                  "tutorials/rust",
+                  "tutorials/go",
+                  "tutorials/java-spring",
+                  "tutorials/dotnet"
+                ]
+              },
+              {
+                "group": "Mobile frameworks",
+                "pages": [
+                  "tutorials/react-native",
+                  "tutorials/swiftui",
+                  "tutorials/kotlin"
+                ]
+              },
+              {
+                "group": "Agent frameworks",
+                "pages": [
+                  "tutorials/vercel-ai-sdk",
+                  "tutorials/openai-agents",
+                  "tutorials/langgraph",
+                  "tutorials/agent-frameworks"
+                ]
+              },
+              {
+                "group": "Reliability and testing",
+                "pages": [
+                  "tutorials/resilient-events",
+                  "tutorials/test-your-integration"
+                ]
+              }
             ]
           },
           {
@@ -276,16 +312,32 @@
         "tab": "SDK",
         "groups": [
           {
-            "group": "TypeScript SDK",
+            "group": "Start",
             "root": "sdk/overview",
             "pages": [
-              "sdk/framework-integrations",
+              "sdk/quickstart",
+              "sdk/configuration-and-auth",
+              "sdk/compatibility"
+            ]
+          },
+          {
+            "group": "Build",
+            "pages": [
               "sdk/praxaclient",
               "sdk/mission-events",
+              "sdk/agent-tools",
+              "sdk/framework-integrations",
+              "sdk/memory"
+            ]
+          },
+          {
+            "group": "Test and operate",
+            "pages": [
               "sdk/error-handling",
-              "sdk/memory",
               "sdk/testing",
-              "sdk/compatibility"
+              "sdk/best-practices",
+              "sdk/production-checklist",
+              "sdk/troubleshooting"
             ]
           }
         ]
@@ -294,11 +346,27 @@
         "tab": "CLI",
         "groups": [
           {
-            "group": "Praxa CLI",
+            "group": "Start",
             "root": "cli/overview",
             "pages": [
-              "cli/commands",
-              "cli/recipes",
+              "cli/getting-started",
+              "cli/project-setup",
+              "cli/commands"
+            ]
+          },
+          {
+            "group": "Workflows",
+            "pages": [
+              "cli/mission-workflows",
+              "cli/memory-workflows",
+              "cli/recipes"
+            ]
+          },
+          {
+            "group": "Automate and operate",
+            "pages": [
+              "cli/automation-and-json",
+              "cli/best-practices",
               "cli/ci-cd",
               "cli/troubleshooting"
             ]
@@ -324,12 +392,30 @@
         "tab": "Benchmarks & Research",
         "groups": [
           {
-            "group": "Benchmarks & research",
+            "group": "Understand the evidence",
             "root": "benchmarks/overview",
             "pages": [
-              "benchmarks/performance",
+              "benchmarks/catalog",
+              "benchmarks/interpreting-results",
+              "benchmarks/evaluation-examples"
+            ]
+          },
+          {
+            "group": "Methods",
+            "pages": [
               "benchmarks/methodology",
-              "benchmarks/data-and-reproduction"
+              "benchmarks/designing-evaluations",
+              "benchmarks/metrics-glossary",
+              "benchmarks/best-practices"
+            ]
+          },
+          {
+            "group": "Performance and reproduction",
+            "pages": [
+              "benchmarks/performance",
+              "benchmarks/data-and-reproduction",
+              "benchmarks/reproduction-workflow",
+              "benchmarks/troubleshooting"
             ]
           }
         ]

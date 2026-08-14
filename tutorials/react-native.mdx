@@ -1,0 +1,154 @@
+---
+title: "Use Praxa from React Native and Expo"
+sidebarTitle: "React Native & Expo"
+description: "Call a trusted Praxa backend from React Native or Expo without embedding API keys, and test loading, retry, offline, cancellation, and secure-session behavior."
+---
+
+React Native provides `fetch`, but a mobile bundle cannot safely hold a Praxa
+API key or backend OAuth token. Your app calls your authenticated application
+backend; that backend validates the user and calls Praxa.
+
+~~~mermaid
+flowchart LR
+  App["React Native or Expo app"] -->|"app session"| BFF["Your HTTPS backend"]
+  BFF -->|"server-only Praxa credential"| Praxa["Praxa API"]
+  Praxa --> Run["Run or mission projection"]
+  BFF -->|"bounded app response"| App
+~~~
+
+## 1. Define the app contract
+
+Your backend should expose a product-specific route such as:
+
+~~~json
+POST /api/tasks
+{
+  "task": "Summarize the incident and propose a safe next action.",
+  "requestId": "mobile-request-0001"
+}
+~~~
+
+The backend derives user, tenant, scopes, Praxa credential, and upstream
+idempotency key. The app never sends them.
+
+## 2. Implement the mobile client
+
+~~~ts src/api/praxa.ts
+export type TaskRun = {
+  runId: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+};
+
+export async function startTask(input: {
+  apiOrigin: string;
+  applicationToken: string;
+  task: string;
+  requestId: string;
+  signal?: AbortSignal;
+}): Promise<TaskRun> {
+  const response = await fetch(`${input.apiOrigin}/api/tasks`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${input.applicationToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ task: input.task, requestId: input.requestId }),
+    signal: input.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Task request failed with HTTP ${response.status}`);
+  }
+  return response.json();
+}
+~~~
+
+`applicationToken` belongs to your app, not Praxa. Store user-session material
+with your reviewed secure-storage approach, not Async Storage.
+
+## 3. Preserve the logical request across retries
+
+Create and persist `requestId` when the user commits the action. Reuse it while
+that exact task is unresolved:
+
+~~~ts
+const requestId = pendingDraft.requestId ?? newApplicationRequestId();
+await savePendingDraft({ task, requestId });
+
+const run = await startTask({
+  apiOrigin: config.apiOrigin,
+  applicationToken: session.accessToken,
+  task,
+  requestId,
+  signal: controller.signal,
+});
+
+await markDraftAdmitted(requestId, run.runId);
+~~~
+
+Implement `newApplicationRequestId()` with the secure UUID facility or reviewed
+UUID library already used by your app; do not derive it from timestamps or
+user identifiers.
+
+If the user edits the task after a failed attempt, create a new request ID.
+
+## 4. Design reachable states
+
+| State | UI behavior |
+|---|---|
+| Offline before submit | Keep the draft and explain that no request was sent |
+| Sending | Disable duplicate submit while preserving the label and draft |
+| Timeout/unknown | Offer “Check status” or exact retry with the same request ID |
+| Admitted | Show run ID/status; do not call it complete |
+| Running | Poll or subscribe through your backend |
+| Failed | Show a customer-safe cause and a deliberate retry path |
+| Completed | Show the verified projection supplied by your backend |
+| Signed out/revoked | Return to application authentication; never fall back to a bundled key |
+
+## 5. Test the app
+
+With Jest, React Native Testing Library, or your network mock:
+
+1. Assert the app calls only your application origin.
+2. Assert no `praxa_sk_`, Gateway token, or provider key exists in the bundle.
+3. Assert repeated taps do not create a second logical request.
+4. Assert an ambiguous failure retains the draft and request ID.
+5. Assert cancellation aborts the local request but does not claim the run was
+   cancelled.
+6. Assert `401` clears or refreshes only the application session.
+7. Test offline, slow, `429`, malformed response, and app-background recovery.
+
+Then run one staging task on both iOS and Android, background and restore the
+app, and reconcile the run through your backend.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Works on web but not device | Verify HTTPS, device-reachable app origin, ATS, and Android cleartext policy |
+| CORS assumption is wrong | Native networking does not use the browser CORS model; still enforce auth on the backend |
+| Token visible in bundle | It is not safe; revoke it and move the Praxa call server-side |
+| Retry creates duplicate work | Persist request ID before the first request |
+| Cookies behave inconsistently | Use your reviewed mobile auth library and explicit application bearer/session design |
+| Backgrounding loses status | Persist request/run IDs and reconcile on foreground |
+
+## Best practices
+
+- Keep Praxa credentials and provider clients on the backend.
+- Use HTTPS and platform network-security defaults.
+- Store only application session material in secure storage.
+- Persist unresolved request identity, not full sensitive payloads, when
+  possible.
+- Redact task content from crash and analytics products.
+- Test physical-device network, background, and resume behavior separately
+  from unit tests.
+
+<CardGroup cols={2}>
+  <Card title="React Native networking" icon="arrow-up-right-from-square" href="https://reactnative.dev/docs/network">
+    Review current Fetch behavior and native platform networking constraints.
+  </Card>
+  <Card title="React Native security" icon="shield" href="https://reactnative.dev/docs/security">
+    Review why secrets do not belong in app code and how an orchestration layer
+    protects server API keys.
+  </Card>
+</CardGroup>

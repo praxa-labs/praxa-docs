@@ -1,0 +1,143 @@
+---
+title: "Troubleshoot @praxa/sdk"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose SDK imports, Gateway origins, OAuth tokens, scope failures, idempotency conflicts, retries, SSE reconnects, and memory adapter behavior."
+---
+
+Start with the failing layer. A package import problem, application validation
+error, Gateway denial, and provider outage require different fixes.
+
+## Fast diagnostic path
+
+<Steps>
+  <Step title="Prove the package">
+    Run a clean install and import the exact package version without making a
+    network request.
+  </Step>
+  <Step title="Prove configuration">
+    Validate the HTTPS origin and confirm the token provider returns a current,
+    non-empty delegated token.
+  </Step>
+  <Step title="Prove authorization">
+    Use a read-only method whose required scope is granted. Do not diagnose a
+    write failure by broadening to an administrator token.
+  </Step>
+  <Step title="Prove the operation">
+    Reproduce with a disposable resource, stable idempotency key, bounded
+    timeout, and redacted request metadata.
+  </Step>
+</Steps>
+
+## Symptom guide
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| `ERR_MODULE_NOT_FOUND` | Package absent or unsupported import path | Install `@praxa/sdk@0.3.0`; use `.`, `/tools`, `/contracts`, or `/memory` exports only |
+| CommonJS `require()` fails | Package is ESM | Use ESM imports, NodeNext/ESNext, or dynamic `import()` |
+| Constructor rejects `baseUrl` | URL is not an exact HTTPS origin | Remove path, query, fragment, or embedded credentials |
+| `401` | Missing, expired, wrong-audience, or revoked OAuth token | Refresh through the issuing authority and verify audience/expiry |
+| `403` | Scope, tenant, purpose, consent, or policy denial | Compare the operation's required scope and resolved principal; do not retry with broader authority automatically |
+| `404` for a known ID | Wrong tenant, wrong resource, or unavailable route | Confirm the API plane and owner; avoid disclosing foreign-resource existence |
+| `409` | Idempotency key reused with different normalized input | Restore the original body or create a new key for genuinely new work |
+| `429` | Rate or quota limit | Respect retry guidance, add jitter, and reduce concurrency |
+| Repeated network retries | Deadline shorter than retry budget or unstable network | Set an overall deadline, inspect attempt telemetry, reconcile keyed mutations |
+| SSE duplicates | Expected reconnect/replay behavior | Deduplicate by event ID after durable processing |
+| SSE appears to stop early | Local abort, proxy timeout, or stream closure before terminal state | Read the mission projection and reconnect from the saved event ID |
+| Memory result is `partial` | At least one source failed while another succeeded | Inspect `sources[]`; use available items and surface degraded state |
+| Memory result is `failed` | No source succeeded | Inspect every source status; the federation call returns this state normally |
+
+## Inspect `PraxaClientError`
+
+~~~ts
+import { PraxaClientError } from "@praxa/sdk";
+
+try {
+  await client.getMission(runId);
+} catch (error) {
+  if (error instanceof PraxaClientError) {
+    console.error({
+      status: error.status,
+      code: error.problem?.code,
+      retryable: error.problem?.retryable,
+      requestId: error.problem?.requestId,
+    });
+  }
+  throw error;
+}
+~~~
+
+Do not log the token, request body, memory text, or full upstream response.
+
+## Diagnose idempotency conflicts
+
+Store these fields together:
+
+~~~ts
+type MutationRecord = {
+  operation: string;
+  idempotencyKey: string;
+  normalizedBodyDigest: string;
+  createdAt: string;
+  runId?: string;
+};
+~~~
+
+When a request times out, look up that record. Retry the exact normalized body
+with its existing key, then read back the resulting resource. Do not generate a
+fresh key merely because the first response was lost.
+
+## Diagnose SSE reconnects
+
+1. Confirm intermediaries allow `text/event-stream` and do not buffer the body.
+2. Persist the cursor after processing, not before.
+3. Pass the cursor as `lastEventId`.
+4. Deduplicate any replay by event ID.
+5. Reconcile the final state with `getMission`.
+6. Treat a local abort as local cancellation only; it does not cancel the
+   mission.
+
+## Prove the exact installed contract
+
+~~~bash
+node --input-type=module -e '
+  import {
+    PRAXA_CONTRACT_VERSION,
+    PRAXA_OPENAPI_VERSION,
+    PRAXA_OPENAPI_SHA256
+  } from "@praxa/sdk";
+  console.log({
+    PRAXA_CONTRACT_VERSION,
+    PRAXA_OPENAPI_VERSION,
+    PRAXA_OPENAPI_SHA256
+  });
+'
+~~~
+
+For `0.3.0`, the OpenAPI version is `8.1.0` and the fingerprint begins with
+`a9835faa`. If your runtime reports something else, inspect the lockfile and
+deployment artifact rather than the local global package cache.
+
+## Escalation bundle
+
+Provide support with customer-safe evidence only:
+
+- package version and OpenAPI fingerprint;
+- UTC timestamp and sanitized Gateway origin;
+- operation name and HTTP status;
+- problem code, retryable flag, and request correlation ID;
+- whether the request was a first attempt or exact replay;
+- whether the issue reproduces with a disposable principal;
+- redacted event IDs and mission state transitions.
+
+Do not include access tokens, provider credentials, raw prompts, memory text,
+customer documents, or unredacted traces.
+
+<CardGroup cols={2}>
+  <Card title="Error handling" icon="triangle-exclamation" href="/sdk/error-handling">
+    Review typed errors, automatic retries, and non-retryable status handling.
+  </Card>
+  <Card title="Authentication troubleshooting" icon="key" href="/troubleshooting/authentication-and-scopes">
+    Compare Integration Gateway OAuth, Execution Fabric API keys, application
+    sessions, and webhook secrets.
+  </Card>
+</CardGroup>

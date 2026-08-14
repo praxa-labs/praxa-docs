@@ -5,6 +5,12 @@ It documents the Praxa TypeScript SDK, CLI, MCP contracts, and governed agent
 harness concepts. The public packages are maintained in
 [`praxa-labs/praxa`](https://github.com/praxa-labs/praxa).
 
+The integration handbook covers TypeScript and Node.js, Next.js, Nuxt,
+Express, Cloudflare Workers, Python and FastAPI, Rust, Go, Java and Spring,
+.NET, React Native, SwiftUI, Kotlin, and supported agent-framework patterns.
+Each framework guide includes a credential boundary, a runnable integration
+shape, end-to-end verification, troubleshooting, and production practices.
+
 ## Research and evidence
 
 The preprint [_From Proposal to Verified Effect: Praxa, an Evidence-Bound
@@ -44,8 +50,9 @@ live in `docs.json`; documentation pages use MDX. The local command pins the
 Mint CLI version so a global installation cannot silently change validation.
 
 The quality gate verifies generated capability, benchmark, and API Playground
-pages; executable examples; navigation and internal links; both OpenAPI
-documents; Mermaid and accessible visual coverage; and Mintlify broken links.
+pages; executable examples; framework-guide completeness and mobile credential
+boundaries; navigation and internal links; both OpenAPI documents; Mermaid and
+accessible visual coverage; and Mintlify broken links.
 
 ## Publishing changes
 

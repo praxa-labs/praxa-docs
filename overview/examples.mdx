@@ -19,6 +19,7 @@ npm run examples:test
 
 The suite verifies:
 
+- exact <code>@praxa/sdk</code> mission request, path, and idempotency behavior;
 - stable Execution Fabric idempotency and terminal polling;
 - exact <code>@praxa/sdk/memory</code> import and partial-source behavior;
 - exact <code>@praxa/mcp-contracts</code> protocol, version, annotation, and
@@ -29,6 +30,10 @@ The suite verifies:
 ## Example inventory
 
 <CardGroup cols={2}>
+  <Card title="TypeScript SDK quickstart" icon="code" href="https://github.com/praxa-labs/praxa-docs/tree/main/examples/sdk">
+    Run the same fake-transport contract test used by the SDK quickstart before
+    connecting a deployment-specific Gateway.
+  </Card>
   <Card title="Durable task client" icon="play" href="https://github.com/praxa-labs/praxa-docs/tree/main/examples/execution-fabric">
     Submit and poll a v1 task with stable idempotency and injectable transport
     tests.
@@ -45,8 +50,8 @@ The suite verifies:
     write-free.
   </Card>
   <Card title="Framework tutorials" icon="code" href="/tutorials/overview">
-    Add the same trust boundary to Next.js, Express, Workers, FastAPI, Vercel
-    AI SDK, OpenAI Agents, or LangGraph.
+    Add the same trust boundary to TypeScript, Next.js, Nuxt, Express,
+    Workers, Python, FastAPI, Rust, Go, Spring, .NET, mobile, or agent hosts.
   </Card>
 </CardGroup>
 

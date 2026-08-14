@@ -172,8 +172,78 @@ if (mermaidCount < 12) failures.push("Expected at least 12 Mermaid diagrams; fou
 if (imageCount < 3) failures.push("Expected at least 3 accessible visual assets; found " + imageCount);
 
 const tutorialFiles = mdxFiles.filter((file) => file.startsWith("tutorials/") && file !== "tutorials/overview.mdx");
-if (tutorialFiles.length < 16) {
-  failures.push("Expected at least 16 end-to-end tutorial pages; found " + tutorialFiles.length);
+if (tutorialFiles.length < 29) {
+  failures.push("Expected at least 29 end-to-end tutorial pages; found " + tutorialFiles.length);
+}
+
+const frameworkTutorials = [
+  "tutorials/typescript.mdx",
+  "tutorials/nextjs.mdx",
+  "tutorials/nuxt.mdx",
+  "tutorials/express.mdx",
+  "tutorials/cloudflare-workers.mdx",
+  "tutorials/python.mdx",
+  "tutorials/fastapi.mdx",
+  "tutorials/rust.mdx",
+  "tutorials/go.mdx",
+  "tutorials/java-spring.mdx",
+  "tutorials/dotnet.mdx",
+  "tutorials/react-native.mdx",
+  "tutorials/swiftui.mdx",
+  "tutorials/kotlin.mdx",
+];
+for (const file of frameworkTutorials) {
+  const content = await readFile(path.join(root, file), "utf8");
+  for (const heading of ["## Troubleshooting", "## Best practices"]) {
+    if (!content.includes(heading)) failures.push(file + " is missing " + heading);
+  }
+  if (!/(?:^|\n)## .*?(?:test|verify)/iu.test(content)) {
+    failures.push(file + " is missing an explicit test or verification section");
+  }
+}
+
+for (const file of [
+  "tutorials/react-native.mdx",
+  "tutorials/swiftui.mdx",
+  "tutorials/kotlin.mdx",
+]) {
+  const content = await readFile(path.join(root, file), "utf8");
+  if (!/application\s+backend/iu.test(content)) {
+    failures.push(file + " does not state the required application-backend boundary");
+  }
+  if (/https:\/\/api\.praxa\.io/iu.test(content)) {
+    failures.push(file + " must not instruct a mobile application to call api.praxa.io directly");
+  }
+  if (/PRAXA_(?:API_KEY|ACCESS_TOKEN)/u.test(content)) {
+    failures.push(file + " must not place a Praxa server credential in mobile application code");
+  }
+}
+
+const handbookRoutes = [
+  "sdk/quickstart",
+  "sdk/configuration-and-auth",
+  "sdk/agent-tools",
+  "sdk/production-checklist",
+  "sdk/troubleshooting",
+  "sdk/best-practices",
+  "cli/getting-started",
+  "cli/project-setup",
+  "cli/mission-workflows",
+  "cli/memory-workflows",
+  "cli/automation-and-json",
+  "cli/best-practices",
+  "benchmarks/catalog",
+  "benchmarks/interpreting-results",
+  "benchmarks/designing-evaluations",
+  "benchmarks/reproduction-workflow",
+  "benchmarks/metrics-glossary",
+  "benchmarks/evaluation-examples",
+  "benchmarks/best-practices",
+  "benchmarks/troubleshooting",
+  "tutorials/framework-matrix",
+];
+for (const route of handbookRoutes) {
+  if (!navigationPages.has(route)) failures.push("Handbook route is absent from navigation: " + route);
 }
 
 const requiredRoutes = [
@@ -189,7 +259,38 @@ const requiredRoutes = [
   "tutorials/express",
   "tutorials/cloudflare-workers",
   "tutorials/fastapi",
+  "tutorials/framework-matrix",
+  "tutorials/typescript",
+  "tutorials/nuxt",
+  "tutorials/python",
+  "tutorials/rust",
+  "tutorials/go",
+  "tutorials/java-spring",
+  "tutorials/dotnet",
+  "tutorials/react-native",
+  "tutorials/swiftui",
+  "tutorials/kotlin",
   "tutorials/agent-frameworks",
+  "sdk/quickstart",
+  "sdk/configuration-and-auth",
+  "sdk/agent-tools",
+  "sdk/production-checklist",
+  "sdk/troubleshooting",
+  "sdk/best-practices",
+  "cli/getting-started",
+  "cli/project-setup",
+  "cli/mission-workflows",
+  "cli/memory-workflows",
+  "cli/automation-and-json",
+  "cli/best-practices",
+  "benchmarks/catalog",
+  "benchmarks/interpreting-results",
+  "benchmarks/designing-evaluations",
+  "benchmarks/reproduction-workflow",
+  "benchmarks/metrics-glossary",
+  "benchmarks/evaluation-examples",
+  "benchmarks/best-practices",
+  "benchmarks/troubleshooting",
   "benchmarks/methodology",
   "benchmarks/data-and-reproduction",
 ];

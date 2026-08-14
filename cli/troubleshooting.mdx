@@ -1,18 +1,131 @@
 ---
-title: "CLI troubleshooting"
+title: "Troubleshoot the Praxa CLI"
 sidebarTitle: "Troubleshooting"
-description: "Diagnose Praxa CLI package, configuration, HTTPS, token, scope, JSON output, and memory-plan failures."
+description: "Diagnose Praxa CLI installation, binary selection, Gateway configuration, OAuth, scopes, JSON, idempotency, project setup, and memory-plan failures."
 ---
 
-| Symptom | Check |
-|---|---|
-| <code>npx</code> cannot choose a binary | Use <code>npx --package=@praxa/cli@0.3.0 praxa …</code>. The package exposes both Praxa and legacy Aura bins. |
-| Gateway URL missing | Supply <code>--base-url</code>, <code>PRAXA_BASE_URL</code>, or project config. |
-| URL rejected | Use HTTPS and remove embedded credentials. |
-| Authentication failure | Confirm the short-lived Gateway token and required scope. |
-| Command output is text | Help is text; init needs <code>--json</code>; check the command's output contract. |
-| Memory plan does not contact a provider | Expected behavior: memory commands are local planning only. |
-| Retry creates new work | Reuse the stable key for the same logical mutation. |
+Use the narrowest command that proves the failing layer. `version` proves the
+package, `init --dry-run` proves local planning, `doctor` proves an
+authenticated Gateway read, and mission commands prove their own scopes.
 
-See [Authentication and scopes](/troubleshooting/authentication-and-scopes) for
-cross-surface credential boundaries.
+## Diagnostic sequence
+
+~~~bash
+# 1. Exact package and contract; no network
+npx --package=@praxa/cli@0.3.0 praxa version
+
+# 2. Local project plan; no network or write
+npx --package=@praxa/cli@0.3.0 praxa init --dry-run --json
+
+# 3. Local memory plan; no provider call
+npx --package=@praxa/cli@0.3.0 praxa memory sync plan --dry-run --json
+
+# 4. Authenticated Gateway read
+PRAXA_BASE_URL="https://your-gateway.example" \
+PRAXA_ACCESS_TOKEN="<short-lived token>" \
+npx --package=@praxa/cli@0.3.0 praxa doctor
+~~~
+
+## Installation and binary problems
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `npx` cannot determine executable | Package exposes `praxa` and legacy `aura` bins | Use `npx --package=@praxa/cli@0.3.0 praxa ...` |
+| `praxa: command not found` | Global bin is not installed or not on `PATH` | Use the explicit npx form or fix the package-manager bin path |
+| Wrong version | Global or lockfile drift | Run explicit `@0.3.0`; inspect `npm ls @praxa/cli @praxa/sdk` |
+| ESM error | Unsupported Node runtime | Use Node.js 20 or newer |
+| `version` fingerprint differs | Different installed artifact | Stop and review the lockfile/package source before running mutations |
+
+## Gateway configuration problems
+
+| Error | Meaning | Fix |
+|---|---|---|
+| `Missing --base-url or PRAXA_BASE_URL` | No flag, environment value, or project config was found | Supply the exact deployment Gateway origin |
+| URL rejected | It is not an exact HTTPS origin | Remove path, query, fragment, embedded credentials, or `http:` |
+| DNS or connection failure | Origin unavailable from this environment | Verify deployment, DNS, firewall, and proxy outside the CLI |
+| Project config ignored | A flag or environment URL has higher precedence | Inspect `--base-url`, `PRAXA_BASE_URL`, and legacy `AURA_BASE_URL` |
+
+The public package does not provision a Gateway. Do not substitute
+`https://api.praxa.io/v1` as the SDK/CLI Gateway origin.
+
+## Authentication and authorization
+
+| Status or symptom | Check |
+|---|---|
+| Missing `PRAXA_ACCESS_TOKEN` | Set a short-lived delegated Gateway OAuth token |
+| `401` | Token expiry, audience, issuer, signature, or revocation |
+| `403` | Required operation scope, tenant, purpose, consent, or policy |
+| Read works, mutation fails | Read scope does not imply mission write scope |
+| Token works in another tool only | Confirm that tool uses the same Gateway and audience |
+
+Never resolve a denial by silently switching to a broader or long-lived token.
+Correct the issuing policy and rerun the negative test.
+
+## JSON and shell problems
+
+| Symptom | Fix |
+|---|---|
+| `jq` fails on `praxa init` | Add `--json`; default init output is text |
+| Help cannot be parsed as JSON | Help is intentionally text |
+| Empty JSON file after failure | Check the process exit and stderr before parsing stdout |
+| Secret printed in CI | Disable shell tracing, rotate the token, scrub artifacts, and add redaction |
+| Command substitution changes newlines | Write stdout to a temporary file, then parse it |
+
+Gateway commands, `version`, and memory plans emit JSON on success. Do not
+assume a failing command returns a JSON problem on stdout.
+
+## Idempotency and mission problems
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Key rejected | It is outside the 16–128 supported-character grammar | Use `^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$` |
+| Run ID rejected | `mission get` and `cancel` require a UUID | Pass the exact `runId` returned by the Gateway |
+| `409` | Same key used with changed input | Restore the original body or create a new key for new work |
+| Timeout after create | Outcome is uncertain | Replay exact body/key, then read the run |
+| Cancel returned but run is still active | Cancellation is a durable request | Continue authoritative readback until terminal |
+| `--input` fails | File missing or invalid JSON | Validate with `jq -e . mission.json` before create |
+
+## Project setup problems
+
+| Symptom | Fix |
+|---|---|
+| Existing files block init | Run `--dry-run --json`, inspect ownership, merge deliberately |
+| Wrong client target | Repeat `--target`; use `all` only by itself |
+| Generated config contains a token | Stop, revoke it, remove it from source/history, and report the defect |
+| Agent host sees no tools | Restart the host, inspect generated config, then list tools before invocation |
+| `--force` would overwrite work | Do not use it until the exact diff is reviewed |
+
+## Memory planning problems
+
+| Symptom | Meaning |
+|---|---|
+| Provider rejected | Use exactly `mem0`, `zep`, `graphiti`, `langgraph`, `letta`, or `openai_agents` |
+| `--mode federated is required` | Mirror and cutover are unsupported |
+| `sync plan` requires `--dry-run` | Planning is intentionally non-executable |
+| Plan does not call provider | Expected local-only behavior |
+| `memory sync run` refused | No execution command exists in `0.3.0` |
+
+## Safe escalation bundle
+
+Include:
+
+- `praxa version` output;
+- sanitized Gateway hostname;
+- UTC time and command family;
+- exit code;
+- HTTP status and customer-safe problem code when available;
+- whether the operation was a first attempt or exact replay;
+- redacted project-plan actions;
+- Node.js, operating system, and package-manager versions.
+
+Exclude access tokens, authorization headers, provider credentials, customer
+task input, memory content, mission input files, and unredacted traces.
+
+<CardGroup cols={2}>
+  <Card title="Getting started" icon="download" href="/cli/getting-started">
+    Rebuild the package, configuration, and diagnostic path from a clean state.
+  </Card>
+  <Card title="Authentication and scopes" icon="key" href="/troubleshooting/authentication-and-scopes">
+    Compare every Praxa credential plane and its failure behavior.
+  </Card>
+</CardGroup>

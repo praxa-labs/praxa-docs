@@ -1,0 +1,146 @@
+---
+title: "Build a Praxa backend with Java and Spring"
+sidebarTitle: "Java & Spring"
+description: "Use Spring RestClient to call the Praxa Execution Fabric with server-owned credentials, deterministic idempotency, typed projections, and MockRestServiceServer tests."
+---
+
+Spring Framework's `RestClient` is a synchronous fluent HTTP client. Use it in
+a trusted service and expose your own authenticated application route to
+frontends.
+
+## 1. Configure the client
+
+~~~java src/main/java/example/PraxaClient.java
+package example;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Map;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
+
+public final class PraxaClient {
+  public record Run(String run_id, String status) {}
+
+  private final RestClient client;
+
+  public PraxaClient(RestClient.Builder builder, String apiKey) {
+    this.client = builder
+        .baseUrl("https://api.praxa.io")
+        .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+        .build();
+  }
+
+  public Run submitTask(String userId, String logicalRequestId, String input) {
+    if (input == null || input.isBlank() || input.length() > 16_000) {
+      throw new IllegalArgumentException("Invalid task input");
+    }
+
+    String key = "spring:" + sha256(userId + "\0" + logicalRequestId);
+    Map<String, Object> body = Map.of(
+        "apiVersion", "v1",
+        "requestId", key,
+        "mode", "task",
+        "task", Map.of("input", input),
+        "idempotencyKey", key
+    );
+
+    return client.post()
+        .uri("/v1/execute")
+        .contentType(MediaType.APPLICATION_JSON)
+        .header("Idempotency-Key", key)
+        .body(body)
+        .retrieve()
+        .body(Run.class);
+  }
+
+  private static String sha256(String value) {
+    try {
+      byte[] digest = MessageDigest.getInstance("SHA-256")
+          .digest(value.getBytes(StandardCharsets.UTF_8));
+      return HexFormat.of().formatHex(digest);
+    } catch (NoSuchAlgorithmException error) {
+      throw new IllegalStateException("SHA-256 unavailable", error);
+    }
+  }
+}
+~~~
+
+Inject the key from your secret manager or server environment. Do not store it
+in `application.yml` committed to source control.
+
+## 2. Add an application controller
+
+Your controller should authenticate the application principal, validate a
+bounded request DTO, derive `userId`, and invoke `submitTask`. It should never
+accept a Praxa key, tenant, owner, or scope from the request.
+
+Map upstream failures to customer-safe errors:
+
+~~~java
+try {
+  return ResponseEntity.accepted()
+      .cacheControl(CacheControl.noStore())
+      .body(praxa.submitTask(principal.getName(), body.requestId(), body.task()));
+} catch (RestClientResponseException error) {
+  return ResponseEntity.status(error.getStatusCode())
+      .cacheControl(CacheControl.noStore())
+      .body(Map.of("error", "Praxa request failed"));
+}
+~~~
+
+Do not return `error.getResponseBodyAsString()` to the browser unless a
+reviewed redactor has projected it.
+
+## 3. Test the outbound contract
+
+Use `MockRestServiceServer` with the `RestClient.Builder` and assert:
+
+- exact `/v1/execute` POST;
+- bearer and idempotency headers;
+- stable key for the same principal/request pair;
+- different key for a different principal;
+- no upstream call for invalid input;
+- safe mapping for `401`, `403`, `409`, and `429`;
+- no authorization value in controller responses or logs.
+
+~~~bash
+./mvnw test
+# or
+./gradlew test
+~~~
+
+## 4. Verify live behavior
+
+Use a disposable personal key. Submit one task, poll the returned run through
+a separate server-owned `GET /v1/runs/{id}` client, verify terminal state,
+replay the exact request, and revoke the key.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `RestClient` unavailable | Use Spring Framework 6.1+ or the supported client for your framework version |
+| Blocking client exhausts request threads | Bound concurrency or use `WebClient` for a reviewed reactive design |
+| `403` | Verify personal tenant and scopes |
+| `409` | Restore the body stored with the key |
+| Raw upstream body leaks | Return a safe problem projection |
+| Secret printed by request logging | Redact `Authorization` and request bodies in interceptors |
+
+## Best practices
+
+- Reuse the thread-safe `RestClient`.
+- Configure connect and read timeouts on the underlying request factory.
+- Keep authentication and tenant derivation in the controller/service boundary.
+- Use records or DTOs instead of unbounded maps in production.
+- Preserve key/body digests for reconciliation.
+- Prefer `RestClient` over deprecated `RestTemplate` on current Spring.
+
+<Card title="Spring REST clients" icon="arrow-up-right-from-square" href="https://docs.spring.io/spring-framework/reference/integration/rest-clients.html">
+  Review current `RestClient`, `WebClient`, and HTTP service client guidance in
+  the official Spring Framework reference.
+</Card>

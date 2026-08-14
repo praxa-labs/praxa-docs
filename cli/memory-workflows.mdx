@@ -1,0 +1,125 @@
+---
+title: "Plan memory federation with the Praxa CLI"
+sidebarTitle: "Memory workflows"
+description: "Configure read-only provider source metadata and inspect a non-executable memory federation plan without importing, mirroring, or moving data."
+---
+
+The `0.3.0` memory commands are local configuration tools. They do not connect
+to a provider, read memory, write memory, synchronize records, import data,
+mirror data, or execute a cutover.
+
+## Supported providers
+
+| CLI value | Backend client you supply later |
+|---|---|
+| `mem0` | Mem0 client |
+| `zep` | Zep client |
+| `graphiti` | Graphiti transport |
+| `langgraph` | LangGraph store |
+| `letta` | Letta blocks/messages client |
+| `openai_agents` | OpenAI Agents session resolver |
+
+The SDK adapters remain credential-blind. Your backend creates and owns the
+provider clients.
+
+## Preview a source
+
+~~~bash
+praxa memory source add mem0 \
+  --mode federated \
+  --project-dir . \
+  --dry-run \
+  --json
+~~~
+
+The response identifies the provider, a generated source ID, `read_only`
+access, and `local_configuration_only` execution. Because this is a dry run,
+the project remains unchanged.
+
+## Write local source metadata
+
+After reviewing the dry run:
+
+~~~bash
+praxa memory source add mem0 \
+  --mode federated \
+  --project-dir . \
+  --json
+~~~
+
+Review the resulting `.praxa` files. They must not contain an endpoint,
+provider credential, secret reference value, tenant token, or memory content.
+
+## Inspect the sync plan
+
+~~~bash
+praxa memory sync plan \
+  --project-dir . \
+  --dry-run \
+  --json
+~~~
+
+The plan is intentionally non-executable. It describes configured sources and
+reports `executable: false`.
+
+<Warning>
+  There is no `memory sync run`, `memory mirror`, or `memory cutover` operation
+  in `0.3.0`. The CLI refuses those commands instead of implying data moved.
+</Warning>
+
+## Connect the source in code
+
+The CLI metadata is not a provider client. Implement the corresponding
+server-side adapter explicitly:
+
+~~~ts
+import {
+  MemoryFederation,
+  createMem0MemorySource,
+} from "@praxa/sdk/memory";
+
+const source = createMem0MemorySource({
+  id: "mem0-primary",
+  client: backendOwnedMem0Client,
+  mapNamespace: ({ tenantId, subjectId }) => ({
+    userId: `${tenantId}:${subjectId}`,
+  }),
+});
+
+const federation = new MemoryFederation({ sources: [source] });
+~~~
+
+Use explicit tenant and subject namespace resolution. Never accept a provider
+namespace directly from an untrusted frontend.
+
+## Verify the boundary
+
+1. Run `source add --dry-run` in an empty temporary directory.
+2. Require JSON output and zero files written.
+3. Apply the source and inspect every generated file.
+4. Search for credential-shaped strings; require zero matches.
+5. Run `sync plan --dry-run` and require `executable: false`.
+6. Attempt `memory sync run`, `mirror`, and `cutover`; require refusal.
+7. Unit-test the SDK adapter with a fake provider client.
+8. Run a disposable provider canary and prove tenant/subject isolation,
+   provenance, partial degradation, and no provider writes.
+
+## Troubleshooting
+
+| Symptom | Meaning | Fix |
+|---|---|---|
+| `--mode federated is required` | Mirror/cutover is unsupported | Use the read-only federated mode |
+| Provider rejected | Value is outside the six exact identifiers | Use the CLI spelling from the table |
+| Plan contacts no provider | Expected | Build and test the SDK adapter separately |
+| `executable: false` | Expected safety boundary | There is no sync execution in this release |
+| Source returns no recall later | Provider client or namespace resolver issue | Test provider access and mapped tenant/subject values in the backend |
+
+<CardGroup cols={2}>
+  <Card title="Memory federation SDK" icon="database" href="/memory-federation/sdk">
+    Build the backend adapter and inspect portable kinds, provenance, limits,
+    and failure states.
+  </Card>
+  <Card title="End-to-end memory tutorial" icon="graduation-cap" href="/tutorials/memory-federation">
+    Configure real provider clients and test partial degradation and isolation.
+  </Card>
+</CardGroup>

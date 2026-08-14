@@ -1,0 +1,120 @@
+---
+title: "Benchmarking best practices"
+sidebarTitle: "Best practices"
+description: "Design, run, review, and publish Praxa evaluations without overstating task, reliability, latency, cost, or production evidence."
+---
+
+Good evaluation practice starts with the decision the evidence must support.
+The benchmark name, chart, or aggregate score cannot repair an unfrozen sample,
+unequal treatment, missing trials, or an ambiguous success definition.
+
+## Before the run
+
+- Write the decision, primary metric, threshold, and stop rules first.
+- Give every task and attempt a stable identity.
+- Freeze prompts, model and provider settings, tool surface, budgets, timeout,
+  environment, and evaluator version.
+- Use the same base conditions for comparative arms unless the changed condition
+  is the treatment being tested.
+- Separate pilot debugging from confirmatory trials.
+- Review the evidence schema for credentials, customer data, and proprietary
+  payloads before collection.
+
+## During the run
+
+- Append raw trial records; do not overwrite failures with retries.
+- Record missing, timed-out, refused, and parse-failed attempts explicitly.
+- Preserve admission, terminal outcome, and verified effect as separate fields.
+- Capture resource use beside outcomes, not in a disconnected report.
+- Stop on a declared safety condition rather than continuing for a cleaner
+  aggregate.
+- Keep clocks, model identifiers, package versions, and source revisions in the
+  environment receipt.
+
+## After the run
+
+- Reconcile expected trial IDs against observed trial IDs.
+- Derive every chart and table from one checked machine-readable summary.
+- Publish numerators and denominators beside percentages.
+- Keep task-level results visible when aggregates hide regressions.
+- Explain exclusions and missing data; never silently shrink the denominator.
+- Distinguish descriptive differences from causal conclusions.
+- State which deployment, time window, and evidence class the result covers.
+
+## Comparative evaluation
+
+Use paired tasks and attempts when practical. Confirm that each arm shares:
+
+| Control | Check |
+|---|---|
+| Model and provider | Exact identifiers and settings match |
+| Base prompt | Byte-identical except declared treatment |
+| Tool and data access | Same capabilities and fixtures |
+| Resource budget | Same step, token, time, and parallelism limits |
+| Sample | Same task IDs and attempt policy |
+| Evaluator | Same version, rubric, and blind-review policy |
+| Environment | Same region, runtime class, and relevant dependencies |
+
+When a control cannot match, label the comparison observational and explain the
+confounder.
+
+## Reliability and effect evidence
+
+Measure the boundary you actually care about:
+
+- admission evidence answers whether the request was accepted;
+- terminal evidence answers whether Praxa settled the run;
+- effect evidence answers whether the external system reached the intended
+  state; and
+- reconciliation evidence answers whether uncertain outcomes were resolved.
+
+Do not collapse these into one success field unless the protocol defines and
+verifies every transition.
+
+## Performance and cost
+
+- Warm and cold paths should be separate distributions.
+- Report p50, p95, p99, sample count, and observation window when available.
+- Include failures and timeouts in the latency policy.
+- Report input tokens, output tokens, tool calls, steps, and retries with task
+  outcomes.
+- Treat client microbenchmarks as client evidence, not deployed service
+  throughput.
+- Treat one provider or region as one measured configuration.
+
+## Reproducible publication
+
+Publish or retain, as policy permits:
+
+1. source revision and package lock;
+2. protocol and task manifest;
+3. redacted raw trial records;
+4. aggregation and chart generation code;
+5. generated summary with checksums;
+6. reviewer decisions and exclusions; and
+7. a concise claim boundary and limitations section.
+
+<Warning>
+  Never publish live credentials, provider payloads, customer prompts, tenant
+  identifiers, or unreviewed traces in the name of reproducibility. Publish a
+  redacted fixture or controlled-access manifest instead.
+</Warning>
+
+## Review checklist
+
+- Can another reviewer reconstruct every denominator?
+- Can they distinguish missing data from failure?
+- Can they identify exactly what changed between arms?
+- Can they regenerate every public chart from the pinned summary?
+- Can they tell what the result does **not** establish?
+- Can they map the claimed product boundary to the collected evidence?
+
+<CardGroup cols={2}>
+  <Card title="Design an evaluation" icon="flask-vial" href="/benchmarks/designing-evaluations">
+    Turn these practices into a frozen protocol and acceptance rule.
+  </Card>
+  <Card title="Troubleshoot a run" icon="wrench" href="/benchmarks/troubleshooting">
+    Diagnose missing trials, mismatched artifacts, chart drift, and unsafe
+    evidence bundles.
+  </Card>
+</CardGroup>

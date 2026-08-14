@@ -1,0 +1,178 @@
+---
+title: "Build a Praxa backend with Rust"
+sidebarTitle: "Rust"
+description: "Call the Praxa Execution Fabric from a Rust server with reqwest, deterministic idempotency, typed projections, bounded timeouts, and integration tests."
+---
+
+Rust integrates through the Execution Fabric REST API. Keep the API key in
+your server process and expose an application-specific authenticated endpoint
+to browsers or mobile clients.
+
+## 1. Add dependencies
+
+~~~toml Cargo.toml
+[dependencies]
+reqwest = { version = "0.13", features = ["json", "rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+~~~
+
+## 2. Create a reusable client
+
+~~~rust src/praxa.rs
+use reqwest::{Client, StatusCode};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::time::Duration;
+use thiserror::Error;
+
+#[derive(Clone)]
+pub struct Praxa {
+    client: Client,
+    api_key: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExecuteTaskRequest<'a> {
+    api_version: &'static str,
+    request_id: &'a str,
+    mode: &'static str,
+    task: Task<'a>,
+    idempotency_key: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct Task<'a> {
+    input: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Run {
+    pub run_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Error)]
+pub enum PraxaError {
+    #[error("invalid task")]
+    InvalidTask,
+    #[error("Praxa returned HTTP {0}")]
+    Http(StatusCode),
+    #[error(transparent)]
+    Transport(#[from] reqwest::Error),
+}
+
+impl Praxa {
+    pub fn new(api_key: String) -> Result<Self, reqwest::Error> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(30))
+            .user_agent("your-service/1.0")
+            .build()?;
+        Ok(Self { client, api_key })
+    }
+
+    pub async fn submit_task(
+        &self,
+        user_id: &str,
+        logical_request_id: &str,
+        input: &str,
+    ) -> Result<Run, PraxaError> {
+        if input.is_empty() || input.chars().count() > 16_000 {
+            return Err(PraxaError::InvalidTask);
+        }
+
+        let digest = Sha256::digest(format!("{user_id}\0{logical_request_id}"));
+        let idempotency_key = format!("rust:{digest:x}");
+        let body = ExecuteTaskRequest {
+            api_version: "v1",
+            request_id: &idempotency_key,
+            mode: "task",
+            task: Task { input },
+            idempotency_key: &idempotency_key,
+        };
+
+        let response = self.client
+            .post("https://api.praxa.io/v1/execute")
+            .bearer_auth(&self.api_key)
+            .header("idempotency-key", &idempotency_key)
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(PraxaError::Http(response.status()));
+        }
+
+        Ok(response.json().await?)
+    }
+}
+~~~
+
+Reuse the `reqwest::Client` so requests share connection pooling. Do not create
+a new client inside every handler.
+
+## 3. Call it from your server handler
+
+Your Axum, Actix Web, or Rocket handler should:
+
+1. authenticate the application caller;
+2. derive `user_id` from that principal;
+3. validate `logical_request_id` and `input`;
+4. call `submit_task`;
+5. return a customer-safe projection with `Cache-Control: no-store`.
+
+Do not accept the Praxa key, tenant, owner, or scope from the JSON body.
+
+## 4. Test with a mock server
+
+Point a test-only client at an injected origin, then assert:
+
+- authorization and idempotency headers are present upstream;
+- the same user and request ID produce the same key;
+- different users produce different keys;
+- invalid input makes zero upstream calls;
+- `401`, `403`, `409`, and `429` stay distinguishable;
+- error bodies are not reflected to untrusted callers.
+
+Run Rust's standard gates:
+
+~~~bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+~~~
+
+## 5. Verify live behavior
+
+Use a disposable key with `execute:write` and `runs:read`. Submit one task,
+read `/v1/runs/{id}` until terminal, then revoke the key. Repeat an exact
+request with the same logical ID and require the same logical run.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| TLS initialization fails | Use a supported reqwest TLS feature and keep certificate validation enabled |
+| Request times out after admission | Reuse the same body/key, then read the run |
+| `403` | Verify personal-tenant key and required scopes |
+| `409` | Restore the original body for that idempotency key |
+| Too many connections | Reuse one `Client`; bound handler concurrency |
+| Secret appears in `Debug` logs | Never derive `Debug` for credential wrappers; mark authorization sensitive |
+
+## Best practices
+
+- Reuse the HTTP client.
+- Bound connect, request, and overall operation time.
+- Make authority types distinct from request-body types.
+- Redact response bodies before logging.
+- Preserve the body digest and key for reconciliation.
+- Use `rustls` or your reviewed TLS backend; never disable certificate checks.
+
+<Card title="reqwest client" icon="arrow-up-right-from-square" href="https://docs.rs/reqwest/latest/reqwest/struct.ClientBuilder.html">
+  Review current timeout, TLS, header, and connection-pooling options in the
+  reqwest reference.
+</Card>

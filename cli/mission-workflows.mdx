@@ -1,0 +1,144 @@
+---
+title: "Run mission workflows with the Praxa CLI"
+sidebarTitle: "Mission workflows"
+description: "Submit intent, create a budgeted mission from JSON, read state, request cancellation, and preserve idempotency from the terminal."
+---
+
+Mission commands call your Integration Gateway through `@praxa/sdk`. Configure
+the Gateway origin and delegated OAuth token before starting.
+
+~~~bash
+export PRAXA_BASE_URL="https://your-gateway.example"
+export PRAXA_ACCESS_TOKEN="<short-lived delegated OAuth token>"
+~~~
+
+## Choose intent or mission intake
+
+| Goal | Command | Result |
+|---|---|---|
+| Record natural-language intent for deterministic compilation | `mission submit` | Pending intent submission |
+| Submit an explicit goal and resource budget | `mission create` | Initial mission projection |
+
+Neither admission response proves completion.
+
+## Submit intent
+
+Generate one stable key for this logical submission and keep it for retries:
+
+~~~bash
+IDEMPOTENCY_KEY="intent:$(uuidgen | tr '[:upper:]' '[:lower:]')"
+
+praxa mission submit \
+  --intent "Prepare a governed release checklist" \
+  --idempotency-key "$IDEMPOTENCY_KEY" \
+  > intent.json
+~~~
+
+The intent is limited to 4,000 characters. If the command loses its response,
+rerun the exact text with the same key.
+
+## Create a budgeted mission
+
+~~~json mission.json
+{
+  "goalSpec": {
+    "task": "Prepare the weekly engineering review"
+  },
+  "resourceBudget": {
+    "maximumSteps": 12,
+    "maximumToolCalls": 8,
+    "maximumElapsedMs": 120000,
+    "maximumParallelism": 2
+  }
+}
+~~~
+
+~~~bash
+IDEMPOTENCY_KEY="mission:$(uuidgen | tr '[:upper:]' '[:lower:]')"
+
+praxa mission create \
+  --input mission.json \
+  --idempotency-key "$IDEMPOTENCY_KEY" \
+  > mission-admission.json
+~~~
+
+Validate `mission.json` before the command. The CLI reads and parses the file,
+then the SDK and Gateway validate the contract.
+
+## Read authoritative state
+
+`--run-id` must be a UUID:
+
+~~~bash
+RUN_ID="$(jq -r '.runId' mission-admission.json)"
+praxa mission get --run-id "$RUN_ID" > mission-current.json
+jq '{runId, status, sequence, steps}' mission-current.json
+~~~
+
+Poll conservatively or use the SDK event stream for a real-time application.
+Do not run an unbounded tight loop from CI.
+
+~~~bash
+for attempt in 1 2 3 4 5; do
+  praxa mission get --run-id "$RUN_ID" > mission-current.json
+  STATUS="$(jq -r '.status' mission-current.json)"
+  case "$STATUS" in
+    succeeded|failed|cancelled) break ;;
+  esac
+  sleep 2
+done
+~~~
+
+## Request cancellation
+
+~~~bash
+CANCEL_KEY="cancel:$(uuidgen | tr '[:upper:]' '[:lower:]')"
+
+praxa mission cancel \
+  --run-id "$RUN_ID" \
+  --reason "Operator ended the disposable acceptance test" \
+  --idempotency-key "$CANCEL_KEY" \
+  > cancellation.json
+~~~
+
+Cancellation is a request. Read the mission again until its authoritative
+status is terminal. Do not treat the command's successful HTTP response as
+proof that an in-flight provider operation was rolled back.
+
+## Automate safely
+
+~~~bash
+set -euo pipefail
+
+result="$(praxa mission create \
+  --input mission.json \
+  --idempotency-key "$IDEMPOTENCY_KEY")"
+
+run_id="$(jq -er '.runId' <<<"$result")"
+status="$(jq -er '.status' <<<"$result")"
+printf 'admitted run=%s status=%s\n' "$run_id" "$status"
+~~~
+
+Check the process exit before parsing stdout. Send diagnostics to stderr and
+avoid printing environment variables.
+
+## End-to-end test
+
+1. Use a disposable principal with only the required mission scopes.
+2. Create one mission and persist its key, body digest, and run ID.
+3. Replay the exact request and require the same logical mission.
+4. Change the body under the old key and require a conflict.
+5. Read the run to a terminal state or request cancellation.
+6. Repeat with an under-scoped token and require denial.
+7. Revoke the token and require the next command to fail.
+8. Remove disposable files and revoke temporary credentials.
+
+<CardGroup cols={2}>
+  <Card title="Command reference" icon="terminal" href="/cli/commands">
+    Review every mission flag, bound, output, and required environment value.
+  </Card>
+  <Card title="Mission lifecycle tutorial" icon="route" href="/tutorials/mission-lifecycle">
+    Add resumable SSE, signals, abort handling, and terminal reconciliation in
+    TypeScript.
+  </Card>
+</CardGroup>

@@ -1,0 +1,154 @@
+---
+title: "Build a Praxa backend with Go"
+sidebarTitle: "Go"
+description: "Call the Praxa Execution Fabric from a Go server with net/http, stable idempotency, bounded clients, typed JSON, and httptest coverage."
+---
+
+Use Go's standard `net/http` client from a trusted backend. Reuse the client,
+set a timeout, and keep the Praxa key out of browser or mobile code.
+
+## 1. Implement the client
+
+~~~go praxa/client.go
+package praxa
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+type Client struct {
+	HTTPClient *http.Client
+	APIKey     string
+	Origin     string
+}
+
+type Run struct {
+	RunID  string `json:"run_id"`
+	Status string `json:"status"`
+}
+
+func New(apiKey string) *Client {
+	return &Client{
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		APIKey:     apiKey,
+		Origin:     "https://api.praxa.io",
+	}
+}
+
+func (c *Client) SubmitTask(
+	ctx context.Context,
+	userID string,
+	logicalRequestID string,
+	input string,
+) (Run, error) {
+	if len(input) < 1 || len(input) > 16_000 {
+		return Run{}, fmt.Errorf("invalid task input")
+	}
+
+	digest := sha256.Sum256([]byte(userID + "\x00" + logicalRequestID))
+	key := "go:" + hex.EncodeToString(digest[:])
+	body := map[string]any{
+		"apiVersion":    "v1",
+		"requestId":     key,
+		"mode":          "task",
+		"task":          map[string]string{"input": input},
+		"idempotencyKey": key,
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return Run{}, err
+	}
+
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.Origin+"/v1/execute",
+		bytes.NewReader(encoded),
+	)
+	if err != nil {
+		return Run{}, err
+	}
+	request.Header.Set("Authorization", "Bearer "+c.APIKey)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", key)
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return Run{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return Run{}, fmt.Errorf("Praxa returned HTTP %d", response.StatusCode)
+	}
+
+	var run Run
+	if err := json.NewDecoder(response.Body).Decode(&run); err != nil {
+		return Run{}, err
+	}
+	return run, nil
+}
+~~~
+
+For Unicode-aware character limits, validate runes rather than bytes according
+to your product contract before calling this helper.
+
+## 2. Add the application handler
+
+Your Gin, Chi, Echo, Fiber, or standard-library handler should authenticate the
+caller, bound the JSON body, derive `userID`, and call `SubmitTask`. Return a
+safe projection and `Cache-Control: no-store`.
+
+Never accept a Praxa key, tenant, owner, or upstream scope from the caller.
+
+## 3. Test with `httptest`
+
+Create an `httptest.Server`, point `Client.Origin` to its URL, and assert:
+
+- the handler receives exactly one POST;
+- authorization never appears in application output;
+- repeated user/request pairs produce the same key;
+- changed users produce different keys;
+- invalid input makes no request;
+- non-2xx responses remain errors;
+- context cancellation stops the local HTTP request.
+
+~~~bash
+go test ./...
+go vet ./...
+~~~
+
+## 4. Verify end to end
+
+Use a disposable key with `execute:write` and `runs:read`. Submit a task, read
+the run to terminal, replay the exact request, then revoke the key.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Requests never time out | Configure `http.Client.Timeout` and caller context deadlines |
+| Connection churn | Reuse one `http.Client`; do not create it per request |
+| `403` | Verify key tenant and scopes |
+| Duplicate work after timeout | Reuse the stored logical request ID and exact body |
+| Response decode error | Log status and safe problem code, not raw sensitive body |
+| Goroutine leak | Ensure bodies close and contexts cancel |
+
+## Best practices
+
+- Reuse `http.Client` and its transport.
+- Pass request contexts through every layer.
+- Use typed request/response structures in production.
+- Bound body size before decoding.
+- Rate-limit per authenticated principal.
+- Keep idempotency records until the operation is reconciled.
+
+<Card title="Go REST service tutorial" icon="arrow-up-right-from-square" href="https://go.dev/doc/tutorial/web-service-gin">
+  Review the official Go guide for structuring and testing REST handlers.
+</Card>

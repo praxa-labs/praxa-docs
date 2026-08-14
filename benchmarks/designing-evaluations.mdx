@@ -1,0 +1,164 @@
+---
+title: "Design a Praxa evaluation"
+sidebarTitle: "Design an evaluation"
+description: "Plan an evidence-bounded evaluation with a decision, task sample, controls, metrics, independent effect checks, stop rules, and reproducible artifacts."
+---
+
+Design the evaluation before running the agent. A good protocol makes one
+decision easier; a large collection of unplanned metrics usually does not.
+
+## 1. Name the decision
+
+Examples:
+
+- Should we enable resumable event consumption for this workflow?
+- Does the new retry policy reduce unresolved tasks without unacceptable cost?
+- Can the integration meet a p95 latency target in our staging topology?
+- Does the provider effect match the approved action in every trial?
+
+Write the action you will take for pass, fail, and inconclusive results.
+
+## 2. Define the evidence class
+
+| Decision | Minimum evidence |
+|---|---|
+| Ship a package adapter | Contract tests plus integration canary |
+| Change an agent loop | Controlled task evaluation plus regression suite |
+| Claim provider-effect reliability | Independent provider readback |
+| Set a production SLO | Production-like load in the identified topology |
+| Claim broad superiority | Representative sampling, repeated study, and independent review |
+
+## 3. Build a task matrix
+
+Sample across the real risk dimensions instead of selecting only happy paths:
+
+| Dimension | Example strata |
+|---|---|
+| Complexity | one-step, multi-step, long-horizon |
+| Tools | read-only, mutation, approval-gated |
+| Data | empty, sparse, typical, large, adversarial |
+| Failure | timeout, rate limit, revoked credential, partial provider outage |
+| Tenancy | owner, under-scoped, foreign tenant |
+| Recovery | exact retry, stream reconnect, cancellation, reconciliation |
+
+Keep private customer data out of the benchmark. Use synthetic or consented,
+redacted fixtures with documented provenance.
+
+## 4. Freeze the treatment
+
+Record before execution:
+
+- source revision and dependency lock;
+- model, provider, reasoning settings, and prompts;
+- tool registry and capability policy;
+- environment image and deployment topology;
+- token, step, elapsed-time, and concurrency budgets;
+- task order, randomization, warmup, and cache policy;
+- grader version and success rubric;
+- exclusions, retries, and stop rules.
+
+## 5. Choose metrics
+
+Use a small hierarchy:
+
+1. **Safety vetoes** — cross-tenant disclosure, unapproved effect, secret leak,
+   false success, or failed cleanup.
+2. **Primary outcome** — task success or independently verified effect.
+3. **Reliability outcomes** — unresolved rate, parse errors, exact replay,
+   reconciliation success.
+4. **Resource outcomes** — latency, tokens, steps, requests, and cost.
+5. **Diagnostic outcomes** — failure class, tool choice, retry count, and event
+   reconnects.
+
+Do not average away a safety veto.
+
+## 6. Define evidence records
+
+~~~json
+{
+  "trialId": "trial-001",
+  "taskId": "approval-browser-01",
+  "arm": "candidate",
+  "sourceRevision": "<commit>",
+  "modelBinding": "<provider/model/settings>",
+  "startedAt": "<UTC timestamp>",
+  "terminalStatus": "completed",
+  "graderOutcome": "passed",
+  "providerEffect": {
+    "expectedDigest": "<redacted digest>",
+    "observed": true,
+    "verifier": "provider-readback"
+  },
+  "resources": {
+    "elapsedMs": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "steps": 0
+  },
+  "exclusion": null
+}
+~~~
+
+Use opaque identifiers and redacted digests. Keep secret inputs in the secure
+evaluation system, not the public artifact.
+
+## 7. Run a pilot, then freeze the confirmatory protocol
+
+Use the pilot to find broken fixtures, ambiguous grading, missing telemetry,
+and unrealistic budgets. Do not repeatedly tune on the confirmatory task set.
+
+After the pilot:
+
+1. correct the protocol;
+2. freeze the task set or sampling procedure;
+3. freeze analysis code and thresholds;
+4. run the confirmatory study once;
+5. publish missing and excluded trials;
+6. retain raw redacted records for review.
+
+## 8. Report all outcomes
+
+Publish:
+
+- counts before rates;
+- per-task outcomes and aggregates;
+- unresolved and invalid trials;
+- safety vetoes;
+- resource use;
+- confidence or uncertainty appropriate to the design;
+- deviations from the protocol;
+- limitations and unsupported claims.
+
+## Acceptance template
+
+~~~md
+Decision: Enable the candidate for 10% of staging traffic.
+
+Safety vetoes:
+- zero cross-tenant disclosure
+- zero unapproved provider effects
+- zero secret leakage
+- zero false terminal success
+
+Primary threshold:
+- at least 90% independently verified effect success across the frozen sample
+
+Resource threshold:
+- p95 terminal latency under the stated budget in the named topology
+
+Inconclusive rule:
+- any missing verifier record or environment drift blocks the decision
+
+Rollback:
+- restore the previous artifact and preserve run IDs, cursors, and idempotency records
+~~~
+
+<CardGroup cols={2}>
+  <Card title="Metrics glossary" icon="book-open" href="/benchmarks/metrics-glossary">
+    Define each outcome and denominator before collecting it.
+  </Card>
+  <Card title="Reproduction workflow" icon="rotate" href="/benchmarks/reproduction-workflow">
+    Package the protocol, environment, raw records, analysis, and claim boundary
+    so another team can inspect the result.
+  </Card>
+</CardGroup>

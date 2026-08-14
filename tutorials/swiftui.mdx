@@ -1,0 +1,152 @@
+---
+title: "Use Praxa from SwiftUI"
+sidebarTitle: "SwiftUI"
+description: "Call your authenticated Praxa backend with URLSession, model replay-safe requests, handle app lifecycle recovery, and keep server credentials out of iOS builds."
+---
+
+SwiftUI apps call your authenticated application backend. The backend owns the
+Praxa credential and tenant authority. Do not embed a Fabric key or Gateway
+OAuth token in the app, Keychain, Info.plist, asset catalog, or build setting.
+
+## 1. Define app-facing models
+
+~~~swift TaskModels.swift
+import Foundation
+
+struct TaskSubmission: Encodable {
+    let task: String
+    let requestId: String
+}
+
+struct TaskRun: Decodable {
+    let runId: String
+    let status: String
+}
+~~~
+
+Your backend should return app-oriented camel-case fields rather than exposing
+every upstream property.
+
+## 2. Implement the client
+
+~~~swift PraxaBackendClient.swift
+import Foundation
+
+enum TaskClientError: Error {
+    case invalidResponse
+    case http(Int)
+}
+
+struct PraxaBackendClient {
+    let applicationOrigin: URL
+    let session: URLSession
+    let applicationToken: @Sendable () async throws -> String
+
+    func submitTask(
+        text: String,
+        requestId: UUID
+    ) async throws -> TaskRun {
+        let url = applicationOrigin.appending(path: "api/tasks")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(
+            "Bearer \(try await applicationToken())",
+            forHTTPHeaderField: "Authorization"
+        )
+        request.httpBody = try JSONEncoder().encode(
+            TaskSubmission(task: text, requestId: requestId.uuidString.lowercased())
+        )
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw TaskClientError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw TaskClientError.http(http.statusCode)
+        }
+        return try JSONDecoder().decode(TaskRun.self, from: data)
+    }
+}
+~~~
+
+The token here is your application session. The backend exchanges or uses its
+own server credentials to call Praxa.
+
+## 3. Preserve retry identity in the view model
+
+~~~swift
+@MainActor
+final class TaskViewModel: ObservableObject {
+    @Published var state: State = .idle
+    private var pendingRequestId: UUID?
+
+    func submit(text: String, client: PraxaBackendClient) async {
+        let requestId = pendingRequestId ?? UUID()
+        pendingRequestId = requestId
+        state = .sending
+        do {
+            let run = try await client.submitTask(text: text, requestId: requestId)
+            state = .admitted(run)
+        } catch is CancellationError {
+            state = .unknown(requestId)
+        } catch {
+            state = .failed(customerSafeMessage(for: error), requestId)
+        }
+    }
+}
+~~~
+
+Local task cancellation stops the `URLSession` request. It does not prove the
+server did not admit work. Keep the request ID and ask the backend to reconcile.
+
+## 4. Test with `URLProtocol`
+
+Create an ephemeral `URLSessionConfiguration`, register a test `URLProtocol`,
+and assert:
+
+- requests target only your application origin;
+- application auth is present and Praxa credentials are absent;
+- JSON contains only task and request ID;
+- retry reuses the same UUID;
+- `401`, `409`, `429`, timeout, and invalid JSON map to distinct states;
+- cancellation preserves an unknown/reconciliation state.
+
+Run UI tests for VoiceOver labels, Dynamic Type, long tasks, offline mode,
+background/foreground, and a double-tap on Submit.
+
+## 5. Verify on a device
+
+1. Sign into a staging application account.
+2. Submit disposable work.
+3. Background the app during admission or polling.
+4. Restore the app and reconcile using saved request/run identity.
+5. Confirm the Praxa key is absent from the archived app and network logs.
+6. Revoke the backend test key after the test.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| ATS blocks the request | Use HTTPS; do not add a broad ATS exception for production |
+| App reports canceled but server ran | Treat local cancellation as unknown and reconcile |
+| Key found in archive | Revoke it and move all Praxa calls to the backend |
+| Decode failure | Version and bound your app-facing response; do not expose arbitrary upstream JSON |
+| Duplicate submit | Disable repeated action and persist the pending UUID |
+| Background loses state | Persist minimal request/run identity and reconcile on activation |
+
+## Best practices
+
+- Use `URLSession` with HTTPS and explicit timeout/cancellation.
+- Keep only application session material in Keychain when required.
+- Never log task text or tokens through `print`, OSLog, crash, or analytics
+  defaults.
+- Make loading, unknown, admitted, running, failed, and completed states
+  explicit.
+- Test App Transport Security and real-device lifecycle behavior.
+
+<Card title="URLSession" icon="arrow-up-right-from-square" href="https://developer.apple.com/documentation/foundation/urlsession">
+  Review Apple's current async HTTP API, App Transport Security, cancellation,
+  and session lifecycle reference.
+</Card>

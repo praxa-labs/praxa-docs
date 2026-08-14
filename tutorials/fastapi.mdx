@@ -106,6 +106,26 @@ Against staging, submit one disposable task twice with the same
 <code>requestId</code>. Require the same logical run, then poll that run to a
 terminal state. Revoke the test key after cleanup.
 
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Validation returns `422` | Inspect Pydantic field names, aliases, and bounds |
+| Event loop stalls | Use `httpx.AsyncClient` and reuse it across requests |
+| `401` from your route | Fix application authentication before inspecting Praxa |
+| `403` from Praxa | Verify personal key ownership and exact scopes |
+| Timeout after submission | Retry the exact body/key and read the run |
+| Upstream text reaches clients | Map `HTTPStatusError` to a safe application problem |
+
+## Best practices
+
+- Create one `AsyncClient` at application startup and close it at shutdown.
+- Resolve the user with a dependency before calling Praxa.
+- Bound Pydantic models and request-body size.
+- Do not include tenant, owner, scope, or Praxa key in the request model.
+- Keep error details redacted and responses `no-store`.
+- Use HTTPX `MockTransport` for unit tests and disposable keys for canaries.
+
 <Card title="FastAPI testing" icon="arrow-up-right-from-square" href="https://fastapi.tiangolo.com/tutorial/testing/">
   Use the official TestClient and pytest guidance for the application boundary.
 </Card>

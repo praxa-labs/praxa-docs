@@ -1,0 +1,126 @@
+---
+title: "Install and verify the Praxa CLI"
+sidebarTitle: "Getting started"
+description: "Install @praxa/cli 0.3.0, verify its contract, configure a Gateway safely, and run the first read-only diagnostic."
+---
+
+The Praxa CLI is a thin terminal adapter over `@praxa/sdk`. Use it to configure
+an agent project, inspect the package contract, diagnose an Integration
+Gateway, manage missions, and plan read-only memory federation.
+
+## 1. Choose an installation
+
+<CodeGroup>
+~~~bash global install
+npm install --global @praxa/cli@0.3.0
+praxa version
+~~~
+
+~~~bash project install
+npm install --save-dev @praxa/cli@0.3.0
+npx praxa version
+~~~
+
+~~~bash one-off
+npx --package=@praxa/cli@0.3.0 praxa version
+~~~
+</CodeGroup>
+
+Use the explicit `praxa` executable in one-off commands. The package also
+ships the legacy `aura` compatibility bin, so `npx @praxa/cli` cannot reliably
+choose a binary.
+
+## 2. Verify the installed contract
+
+~~~bash
+praxa version
+~~~
+
+Expected `0.3.0` fields:
+
+~~~json
+{
+  "cliVersion": "0.3.0",
+  "openapiVersion": "8.1.0",
+  "contractVersion": "aura-integration-gateway-v8.1",
+  "openapiSha256": "a9835faa4654246f83c452ae968a569c85be28f93017882e710ca35c10dbbecc"
+}
+~~~
+
+The Aura-compatible contract value is intentional. Do not rewrite it in CI or
+Gateway proxies.
+
+## 3. Inspect before writing project files
+
+~~~bash
+praxa init \
+  --project-dir . \
+  --target codex \
+  --target cursor \
+  --auth environment \
+  --dry-run \
+  --json
+~~~
+
+Review every planned file and next step. Remove `--dry-run` only after the
+paths and auth mode match your project.
+
+## 4. Configure Gateway commands
+
+`doctor` and `mission` commands need a deployment-specific Integration Gateway
+and delegated OAuth token:
+
+~~~bash
+export PRAXA_BASE_URL="https://your-gateway.example"
+export PRAXA_ACCESS_TOKEN="<short-lived delegated OAuth token>"
+praxa doctor
+~~~
+
+The URL resolves in this order:
+
+1. `--base-url`
+2. `PRAXA_BASE_URL` or legacy `AURA_BASE_URL`
+3. `.praxa/config.json` in the current project
+
+The token is read from `PRAXA_ACCESS_TOKEN` or legacy
+`AURA_ACCESS_TOKEN`. The CLI does not persist the token.
+
+<Warning>
+  Do not put an Execution Fabric API key, provider key, or webhook secret in
+  `PRAXA_ACCESS_TOKEN`. Gateway OAuth and `api.praxa.io/v1` API keys are
+  separate credential planes.
+</Warning>
+
+## 5. Read the exit and output contract
+
+| Command family | Standard output | Network |
+|---|---|---|
+| `version` | JSON | No |
+| `init` | Human text, or JSON with `--json` | No |
+| `memory ...` | JSON plan | No provider call |
+| `doctor` | JSON | Authenticated Gateway read |
+| `mission ...` | JSON | Authenticated Gateway operation |
+| help | Human text | No |
+
+A nonzero exit means the command did not complete its advertised operation.
+Parse stdout only after checking the exit code. Capture stderr separately and
+redact it before attaching it to CI artifacts.
+
+## First acceptance test
+
+1. Run `praxa version` in a clean directory.
+2. Run `praxa init --dry-run --json` and assert it writes nothing.
+3. Run `praxa doctor` with no token and require a nonzero exit.
+4. Run `praxa doctor` with a short-lived read token and inspect the JSON.
+5. Revoke the token and require the diagnostic to fail.
+6. Search project files and CI logs for the token; require zero matches.
+
+<CardGroup cols={2}>
+  <Card title="Project setup" icon="folder-tree" href="/cli/project-setup">
+    Configure Codex, Claude Code, Cursor, VS Code, or environment-only clients
+    without writing credentials.
+  </Card>
+  <Card title="CLI troubleshooting" icon="wrench" href="/cli/troubleshooting">
+    Resolve installation, origin, token, scope, output, and replay failures.
+  </Card>
+</CardGroup>

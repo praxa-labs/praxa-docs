@@ -1,0 +1,161 @@
+---
+title: "Production checklist for @praxa/sdk"
+sidebarTitle: "Production checklist"
+description: "Harden an SDK integration with least privilege, idempotency, bounded retries, resumable events, telemetry, upgrade checks, and acceptance tests."
+---
+
+Use this checklist after the quickstart works locally. It separates package
+correctness, application behavior, Gateway authorization, and production
+observation so one green lane is not mistaken for all four.
+
+## Reference architecture
+
+~~~mermaid
+flowchart TB
+  UI["Browser, mobile app, or internal caller"] --> Auth["Application authentication"]
+  Auth --> API["Your bounded backend API"]
+  API --> Policy["Tenant, scope, quota, approval"]
+  Policy --> SDK["@praxa/sdk"]
+  SDK --> Gateway["Integration Gateway"]
+  Gateway --> Events["Mission projection and events"]
+  Events --> Store["Your cursor, audit, and reconciliation store"]
+  Store --> API
+~~~
+
+## Before deployment
+
+### Package and contract
+
+- Pin `@praxa/sdk` to an reviewed version.
+- Run a clean install and import `@praxa/sdk`, `@praxa/sdk/tools`, and any used
+  subpath.
+- Assert `PRAXA_OPENAPI_VERSION` and `PRAXA_OPENAPI_SHA256` in CI.
+- Review changed route contracts before upgrading.
+- Keep Aura-compatible wire names unchanged.
+
+### Authentication and tenancy
+
+- Keep OAuth tokens in the trusted backend.
+- Derive tenant, subject, and purpose from the authenticated principal.
+- Request only scopes used by that route.
+- Set token expiry and revocation behavior.
+- Deny organization or shared scopes unless your deployment explicitly
+  supports and tests them.
+- Prove a foreign identifier cannot disclose another tenant's resource.
+
+### Mutations and retries
+
+- Generate one stable idempotency key per logical mutation.
+- Store the key and normalized request body together before sending.
+- Reuse both after a timeout or ambiguous network failure.
+- Never reuse a key for changed input.
+- Reconcile uncertain outcomes through authoritative readback.
+- Bound total attempts and elapsed time.
+
+### Events and lifecycle
+
+- Persist the latest processed event ID per run.
+- Resume SSE with `lastEventId` after reconnect.
+- Tolerate duplicate delivery by event ID.
+- Separate stream closure from terminal mission success.
+- Read the mission projection after reconnect or terminal events.
+- Cancel the local stream when the application request ends.
+
+### Observability
+
+Record:
+
+| Signal | Recommended fields |
+|---|---|
+| SDK request | route family, method, status, duration, attempt count |
+| Mission | run ID, terminal status, sequence, elapsed time |
+| SSE | reconnect count, last event ID, duplicate count, terminal event |
+| Policy | decision code and required scope, without raw customer content |
+| Error | problem code, retryable flag, correlation ID, redacted cause |
+
+Never record bearer tokens, authorization headers, provider secrets, raw
+memory content, arbitrary goal payloads, or unredacted traces.
+
+## Required automated tests
+
+| Test | Expected result |
+|---|---|
+| Missing application session | Your backend returns `401` before SDK execution |
+| Invalid input | Your backend returns `400` before SDK execution |
+| Exact retry | Same body and idempotency key resolve to the same logical work |
+| Key conflict | Changed body with the same key is rejected |
+| Expired token | Authentication error, no success projection |
+| Missing scope | Authorization error, no fallback to broader authority |
+| Foreign run | No cross-tenant projection |
+| SSE reconnect | No unprocessed event gap after saved cursor |
+| Local timeout | Request aborts and uncertain mutation is reconciled |
+| Log capture | No credential or sensitive payload appears |
+
+Use injected `fetch` for unit and contract tests. Use disposable principals and
+least-privilege tokens for staging authorization tests.
+
+## Deployment sequence
+
+<Steps>
+  <Step title="Deploy the backend with calls disabled">
+    Verify package imports, configuration, and health without accepting user
+    work.
+  </Step>
+  <Step title="Run negative canaries">
+    Test missing, expired, under-scoped, revoked, and cross-tenant requests.
+    Negative tests should fail before the positive lane is opened.
+  </Step>
+  <Step title="Run one disposable positive mission">
+    Admit it, consume events, read the terminal projection, and preserve the
+    correlation receipt.
+  </Step>
+  <Step title="Increase traffic gradually">
+    Watch authorization failures, retry exhaustion, SSE reconnects, terminal
+    status distribution, latency, and resource use.
+  </Step>
+  <Step title="Exercise rollback">
+    Restore the previous package and configuration without invalidating
+    persisted idempotency keys or event cursors.
+  </Step>
+</Steps>
+
+## Operational alerts
+
+Alert separately on:
+
+- sustained `401` increases, which often indicate token issuance or audience
+  problems;
+- `403` increases, which indicate scope, tenant, or policy denial;
+- `409` increases, which can reveal idempotency-body drift;
+- `429` responses and retry exhaustion;
+- SSE reconnect storms or stale cursors;
+- missions remaining non-terminal beyond your product deadline;
+- terminal failures grouped by problem code;
+- unexpected contract fingerprint at startup.
+
+## Upgrade procedure
+
+1. Install the new version in an isolated branch.
+2. Compare exported declarations and route contracts.
+3. Update the pinned contract fingerprint deliberately.
+4. Run unit, negative authorization, idempotency, SSE, and staging canaries.
+5. Deploy gradually and retain the previous artifact for rollback.
+6. Do not delete historical cursors or idempotency records during the package
+   upgrade.
+
+## Completion evidence
+
+An integration is production-qualified only when you can point to:
+
+- a reviewed source revision and locked package version;
+- passing application and SDK contract tests;
+- authenticated least-privilege positive and negative canaries;
+- a terminal mission readback for disposable work;
+- redacted production observability;
+- a tested rollback path;
+- user acceptance for the actual product workflow.
+
+<Card title="Test your integration" icon="flask" href="/tutorials/test-your-integration">
+  Run the shared success, isolation, idempotency, outage, stream, and cleanup
+  matrix before production traffic.
+</Card>

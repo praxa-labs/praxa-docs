@@ -1,0 +1,161 @@
+---
+title: "Build a Praxa backend with Nuxt"
+sidebarTitle: "Nuxt"
+description: "Create a Nuxt Nitro server route that keeps the Praxa key private, derives replay identity from the authenticated user, and tests the boundary end to end."
+---
+
+Nuxt automatically registers files in `server/api` as server endpoints. Use
+that boundary so Vue components never receive the Praxa API key.
+
+~~~mermaid
+flowchart LR
+  Vue["Vue component"] -->|"same-origin app request"| Nitro["Nuxt server/api route"]
+  Nitro -->|"server-only key"| Praxa["Execution Fabric"]
+  Praxa --> Run["Tenant-owned run"]
+  Nitro -->|"safe projection"| Vue
+~~~
+
+## 1. Add private runtime config
+
+~~~ts nuxt.config.ts
+export default defineNuxtConfig({
+  runtimeConfig: {
+    praxaApiKey: "",
+    public: {
+      apiBase: "/api",
+    },
+  },
+});
+~~~
+
+Set `NUXT_PRAXA_API_KEY` in the deployment environment. Do not put it under
+`runtimeConfig.public`.
+
+## 2. Add the Nitro route
+
+~~~ts server/api/tasks.post.ts
+import { createHash } from "node:crypto";
+
+export default defineEventHandler(async (event) => {
+  const user = await requireApplicationUser(event);
+  const body = await readBody<{ task?: unknown; requestId?: unknown }>(event);
+
+  if (
+    typeof body.task !== "string" ||
+    body.task.length < 1 ||
+    body.task.length > 16_000 ||
+    typeof body.requestId !== "string" ||
+    body.requestId.length < 16 ||
+    body.requestId.length > 128
+  ) {
+    throw createError({ statusCode: 400, statusMessage: "Invalid request" });
+  }
+
+  const config = useRuntimeConfig(event);
+  if (!config.praxaApiKey) {
+    throw createError({ statusCode: 503, statusMessage: "Praxa unavailable" });
+  }
+
+  const idempotencyKey =
+    "nuxt:" +
+    createHash("sha256")
+      .update(`${user.id}\0${body.requestId}`)
+      .digest("hex");
+
+  const response = await $fetch.raw("https://api.praxa.io/v1/execute", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${config.praxaApiKey}`,
+      "idempotency-key": idempotencyKey,
+    },
+    body: {
+      apiVersion: "v1",
+      requestId: idempotencyKey,
+      mode: "task",
+      task: { input: body.task },
+      idempotencyKey,
+    },
+    ignoreResponseError: true,
+  });
+
+  setResponseHeader(event, "cache-control", "no-store");
+  setResponseStatus(event, response.status);
+  return response._data;
+});
+~~~
+
+`requireApplicationUser()` is your session authority. Derive the Praxa tenant
+from the server-owned key; never accept a tenant, owner, scope, or key in the
+request body.
+
+## 3. Call the route from Vue
+
+~~~vue app/components/StartPraxaTask.vue
+<script setup lang="ts">
+const task = ref("");
+const pending = ref(false);
+const result = ref<unknown>();
+
+async function submit() {
+  pending.value = true;
+  try {
+    result.value = await $fetch("/api/tasks", {
+      method: "POST",
+      body: { task: task.value, requestId: crypto.randomUUID() },
+    });
+  } finally {
+    pending.value = false;
+  }
+}
+</script>
+
+<template>
+  <form @submit.prevent="submit">
+    <textarea v-model="task" maxlength="16000" required />
+    <button :disabled="pending">Submit task</button>
+  </form>
+</template>
+~~~
+
+Persist the `requestId` while the same logical submission is unresolved. The
+compact sample generates it in `submit()`; a production form should store it
+with the draft before the first request and reuse it after a timeout.
+
+## 4. Test the boundary
+
+With `@nuxt/test-utils` or a Nitro test harness, prove:
+
+1. No application session returns `401` before `$fetch` is called.
+2. Invalid input returns `400` before `$fetch` is called.
+3. Missing private runtime config returns a safe `503`.
+4. A valid request uses the private key and ignores caller ownership fields.
+5. Same user and request ID produce the same idempotency key.
+6. Different users produce different keys.
+7. The response is `no-store` and contains no authorization value.
+
+Then deploy to staging, run one disposable task, and read it to a terminal
+state. A successful route call is admission evidence only.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `config.praxaApiKey` empty | Set `NUXT_PRAXA_API_KEY` in the runtime, not the public config |
+| Secret appears in client payload | Remove it from `runtimeConfig.public` and rebuild |
+| Route is not registered | Place it under `server/api` and use the `.post.ts` suffix |
+| Upstream errors become generic throws | Use `$fetch.raw` with explicit error handling and a customer-safe projection |
+| Retries create duplicate work | Persist the application request ID and exact body together |
+
+## Best practices
+
+- Pass `event` to `useRuntimeConfig` in server routes.
+- Authenticate before reading or forwarding work.
+- Bound request bodies and rate-limit per principal.
+- Do not forward browser headers wholesale to Praxa.
+- Reconcile admitted runs through a server-side read route.
+- Scan the generated client bundle for credential-shaped values.
+
+<Card title="Nuxt server routes" icon="arrow-up-right-from-square" href="https://nuxt.com/docs/4.x/directory-structure/server">
+  Review current Nitro route and server-only code conventions in the official
+  Nuxt documentation.
+</Card>

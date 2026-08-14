@@ -128,6 +128,26 @@ Use your normal HTTP test client and an intercepted upstream:
 In staging, submit one disposable task, poll the returned run, and record the
 terminal state separately from the admission response.
 
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `request.body` is undefined | Register bounded JSON parsing before the route |
+| Auth middleware runs after Praxa | Put authentication before validation and execution in route order |
+| Error handler exposes upstream text | Map to a customer-safe problem and log only redacted metadata |
+| Timeout creates new work | Preserve and reuse the original request ID/body |
+| Too many open connections | Reuse the process-level Fetch/HTTP client and bound concurrency |
+| Proxy changes streaming behavior | Disable buffering and test SSE through the deployed proxy |
+
+## Best practices
+
+- Set a strict JSON body limit.
+- Use one error-mapping middleware for Praxa status and problem codes.
+- Derive identity from `request.user`, never `request.body`.
+- Set `Cache-Control: no-store` on run and mutation projections.
+- Forward request abort through an `AbortSignal` where supported.
+- Test with a fake upstream, then run a disposable staging canary.
+
 <Card title="Express 5 migration guide" icon="arrow-up-right-from-square" href="https://expressjs.com/en/guide/migrating-5/">
   Confirm the current async error and routing behavior in the official guide.
 </Card>

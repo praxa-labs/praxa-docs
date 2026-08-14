@@ -1,0 +1,126 @@
+---
+title: "Configure a project with praxa init"
+sidebarTitle: "Project setup"
+description: "Use praxa init safely with Codex, Claude Code, Cursor, VS Code, or environment-only targets and verify every generated file."
+---
+
+`praxa init` creates project-scoped client configuration and setup guidance. It
+does not write an access token or provider credential.
+
+## Choose targets
+
+| Target | Use it when | Generated purpose |
+|---|---|---|
+| `codex` | Codex should discover the project's Praxa setup | Project-specific setup guidance |
+| `claude` | Claude Code should discover the setup | Client configuration guidance |
+| `cursor` | Cursor is the agent host | Editor integration guidance |
+| `vscode` | VS Code is the host | Editor integration guidance |
+| `env` | You only need environment configuration | `.praxa` setup metadata without an editor target |
+| `all` | You deliberately support every host | All target files; cannot be combined with another target |
+
+## Preview the exact plan
+
+~~~bash
+praxa init \
+  --project-dir . \
+  --base-url "https://your-gateway.example" \
+  --target codex \
+  --target vscode \
+  --auth environment \
+  --dry-run \
+  --json > praxa-init-plan.json
+~~~
+
+Inspect:
+
+- the canonical project directory;
+- the exact HTTPS origin;
+- every requested target;
+- whether each file is `create`, `update`, or `unchanged`;
+- the next steps;
+- `dryRun: true`.
+
+Delete the temporary plan after review if it contains local path details you do
+not want in the repository.
+
+## Apply the configuration
+
+~~~bash
+praxa init \
+  --project-dir . \
+  --base-url "https://your-gateway.example" \
+  --target codex \
+  --target vscode \
+  --auth environment \
+  --json
+~~~
+
+Review `git diff` immediately. Use `--force` only when you have inspected the
+existing files and intend to replace the CLI-owned portions. Do not use it to
+silence an unexplained conflict.
+
+## Environment auth mode
+
+Set the token in the runtime that launches the CLI or host:
+
+~~~bash
+export PRAXA_ACCESS_TOKEN="<short-lived delegated OAuth token>"
+praxa doctor
+~~~
+
+Keep `.env` and shell-secret files out of version control. CI should inject the
+token from its protected secret store.
+
+## OAuth auth mode
+
+~~~bash
+praxa init \
+  --project-dir . \
+  --target codex \
+  --auth oauth \
+  --dry-run \
+  --json
+~~~
+
+OAuth mode records setup guidance only. The CLI does not invent a client ID,
+redirect URI, token issuer, or tenant policy. Use the values supplied for your
+deployment and keep refresh tokens in the approved credential store for the
+host.
+
+## Verify the result
+
+~~~bash
+git diff -- .praxa .vscode .cursor AGENTS.md CLAUDE.md
+rg -n "PRAXA_ACCESS_TOKEN|AURA_ACCESS_TOKEN|provider.*key" \
+  .praxa .vscode .cursor AGENTS.md CLAUDE.md
+praxa doctor
+~~~
+
+The secret search must show configuration variable names only, never a token
+value. `doctor` proves an authenticated read against the configured Gateway;
+it does not prove mutation scopes or external provider effects.
+
+## Recovery
+
+| Problem | Recovery |
+|---|---|
+| Wrong Gateway | Rerun with the exact origin and review the diff |
+| Unwanted target | Revert only the generated target file after inspecting ownership |
+| Existing file conflict | Run `--dry-run --json`, merge deliberately, avoid blind `--force` |
+| Token accidentally written | Revoke it immediately, remove it from history and logs, then rotate dependent credentials |
+| Host cannot discover tools | Restart the host, inspect its generated config, then list tools before invoking one |
+
+## Best practices
+
+- Pin the CLI version in team and CI instructions.
+- Commit non-secret project configuration so every developer gets the same
+  Gateway origin and target behavior.
+- Keep credentials in the process or approved secret manager.
+- Use one initialized project per reviewed Gateway environment.
+- Run `praxa version` after dependency updates.
+- Treat generated setup guidance as code: review it and test it in each host.
+
+<Card title="Use Praxa from agent hosts" icon="plug" href="/mcp/host-integration">
+  Continue with tool discovery, protocol negotiation, approval behavior, and
+  negative host tests.
+</Card>
