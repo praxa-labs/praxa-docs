@@ -1,0 +1,132 @@
+---
+title: "Set up Praxa MCP contracts and test your first tool"
+sidebarTitle: "Quickstart"
+description: "Install @praxa/mcp-contracts, inspect all 12 Praxa MCP tools, choose local contracts or remote execution, and run contract and authorization tests."
+keywords: ["Set up Praxa MCP contracts and test your first tool","Praxa MCP","Model Context Protocol","AI agent tools"]
+---
+
+Praxa MCP integration has two separate deliverables: the published
+`@praxa/mcp-contracts` package describes 12 stable tools, while a configured
+Integration Gateway executes those tools through a deployment-specific remote
+MCP endpoint. Choose the package-only path to build a host adapter; choose the
+remote path only when you have that deployment's URL and OAuth authority.
+
+## Prerequisites
+
+- Node.js 20 or later for the package examples;
+- an MCP host that supports JSON Schema draft 2020-12 or a reviewed schema adapter;
+- for remote execution, a deployment-specific HTTPS `/mcp` URL and delegated OAuth flow;
+- a disposable tenant, token, and input for the first canary.
+
+## 1. Install and inspect the package
+
+~~~bash
+npm install @praxa/mcp-contracts@0.3.0
+~~~
+
+~~~typescript
+import {
+  MCP_PROTOCOL_VERSION,
+  MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
+  PRAXA_MCP_TOOLS,
+} from "@praxa/mcp-contracts";
+
+console.table(PRAXA_MCP_TOOLS.map((tool) => ({
+  name: tool.name,
+  method: tool.method,
+  path: tool.path,
+  scope: tool.requiredScope,
+  readOnly: tool.annotations.readOnlyHint,
+  destructive: tool.annotations.destructiveHint,
+})));
+
+console.log({
+  protocol: MCP_PROTOCOL_VERSION, // 2025-11-25
+  server: MCP_SERVER_NAME,        // aura-agent-os
+  version: MCP_SERVER_VERSION,    // 0.3.0
+});
+~~~
+
+The Praxa-named exports intentionally preserve `aura_*` wire tool names and
+`aura-agent-os`. Do not rename those identifiers in your host.
+
+## 2. Prove the contract locally
+
+~~~javascript
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  MCP_PROTOCOL_VERSION,
+  MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
+  PRAXA_MCP_TOOLS,
+} from "@praxa/mcp-contracts";
+
+test("Praxa MCP release contract", () => {
+  assert.equal(PRAXA_MCP_TOOLS.length, 12);
+  assert.equal(MCP_PROTOCOL_VERSION, "2025-11-25");
+  assert.equal(MCP_SERVER_NAME, "aura-agent-os");
+  assert.equal(MCP_SERVER_VERSION, "0.3.0");
+  assert.ok(PRAXA_MCP_TOOLS.every((tool) =>
+    tool.name.startsWith("aura_") &&
+    tool.inputSchema.$schema === "https://json-schema.org/draft/2020-12/schema" &&
+    tool.annotations
+  ));
+});
+~~~
+
+Save that as `praxa-mcp.test.mjs` and run `node --test praxa-mcp.test.mjs`.
+This proves the package bytes and your module loader, not remote execution.
+
+## 3. Choose an execution path
+
+<Tabs>
+  <Tab title="Remote MCP server">
+    Obtain the canonical `/mcp` URL from your Praxa deployment. Configure it as
+    a Streamable HTTP server in the host and complete the host's OAuth flow.
+    Do not guess the URL from `api.praxa.io`; the Integration Gateway is
+    deployment-specific.
+
+    Start by allowing one safe-read tool such as `aura_get_coverage`. Keep
+    mutation tools disabled or approval-required until the negative tests pass.
+  </Tab>
+  <Tab title="Build a host adapter">
+    Import `PRAXA_MCP_TOOLS`, adapt each raw JSON Schema to your host library,
+    preserve `annotations`, and implement a server-side executor that exchanges
+    a delegated token for the matching Gateway route. The contracts package
+    does not provide this executor.
+  </Tab>
+</Tabs>
+
+## 4. Run the first remote canary
+
+1. List tools and require the 12 exact `aura_*` identifiers.
+2. Confirm the negotiated protocol is `2025-11-25` or supported compatibility revision `2025-03-26`.
+3. Call one safe-read tool with its required scope.
+4. Repeat without that scope and require a fail-closed authorization result.
+5. Revoke the disposable token and require the next call to fail.
+6. Check host and gateway logs for zero token or sensitive-payload leakage.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Package imports, but no tools execute | Contracts package was mistaken for a server | Configure a remote Gateway or implement an executor. |
+| Host reports schema unsupported | Host expects its own schema wrapper | Adapt draft 2020-12 without changing field bounds or `additionalProperties`. |
+| Tool lookup returns `undefined` | Praxa display name was used as wire ID | Use the exact `aura_*` name. |
+| `401` during discovery or call | OAuth is absent, expired, or for the wrong audience | Repeat the deployment's OAuth flow; never paste a Fabric key. |
+| `403` on one tool | Delegated token lacks the tool's `requiredScope` | Request only that scope and repeat the negative test. |
+| Host asks approval for a read | Host policy is stricter than annotations | Keep the stricter policy or configure a reviewed read-only allowlist. |
+
+## Best practices
+
+- Allowlist only the tools needed for the workflow.
+- Require human approval for mutations and always for destructive tools.
+- Treat annotations as hints from a trusted contract, not as authorization.
+- Persist one idempotency key per logical mutation and reuse it for exact retries.
+- Bound tool output before adding it to model context.
+- Verify run, trace, event, or receipt independently of the model's final answer.
+
+Next, follow the [host setup guide](/mcp/host-guides), inspect all
+[tool contracts](/mcp/tools), and run the [production checklist](/mcp/production-checklist).

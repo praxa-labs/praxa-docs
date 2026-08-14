@@ -1,0 +1,78 @@
+---
+title: "Troubleshoot Praxa MCP discovery, OAuth, schemas, and tools"
+sidebarTitle: "Troubleshooting"
+description: "Diagnose Praxa MCP connection, protocol negotiation, OAuth scope, schema adaptation, tool approval, timeout, replay, and output problems."
+keywords: ["Troubleshoot Praxa MCP discovery, OAuth, schemas, and tools","Praxa MCP","Model Context Protocol","AI agent tools"]
+---
+
+Troubleshoot Praxa MCP in layers: package, host configuration, transport,
+OAuth, tool discovery, schema adaptation, Gateway authorization, execution,
+and readback. A green check at one layer does not prove the next.
+
+## Fast diagnosis table
+
+| Symptom | Check first | Resolution |
+|---|---|---|
+| `ERR_MODULE_NOT_FOUND` | Installed package and Node module mode | Install exact `@praxa/mcp-contracts@0.3.0`; use ESM or compatible import tooling. |
+| Zero tools after import | Which export is iterated | Use `PRAXA_MCP_TOOLS`; require length 12. |
+| Lookup returns `undefined` | Wire name | Use `aura_*`, not a renamed `praxa_*` identifier. |
+| Host rejects input schema | Draft support and adapter | Preserve draft 2020-12 constraints through the host's schema adapter. |
+| Remote server cannot connect | Canonical deployment URL and transport | Use the supplied HTTPS `/mcp` endpoint with Streamable HTTP. |
+| Protocol negotiation fails | Client versions | Offer `2025-11-25`; support negotiation with `2025-03-26`. |
+| Later requests return `400` | Missing server-issued session or protocol header | Preserve `MCP-Session-Id` and negotiated `MCP-Protocol-Version` after initialization. |
+| Session-scoped request returns `404` | Session expired or was terminated | Discard the old session ID and send a fresh `InitializeRequest` without it. |
+| `401` | OAuth discovery, expiry, audience | Reauthenticate through the host; never substitute a Fabric key. |
+| `403` | `requiredScope`, tenant, purpose | Request only the required delegated scope and verify tenant authority. |
+| Mutation duplicates | Key generation inside retry | Persist the original input and idempotency key before the first call. |
+| Tool call times out | Host and Gateway budgets | Treat outcome as unknown; reconcile by exact replay or mission readback. |
+| Host skips approval | Host policy and annotations | Require approval independently for mutations and destructive tools. |
+| Context becomes huge | Unbounded tool result | Project, paginate, summarize with citations, or refuse oversized output. |
+
+## Inspect the package without secrets
+
+~~~bash
+node --input-type=module - <<'NODE'
+import {
+  MCP_SUPPORTED_PROTOCOL_VERSIONS,
+  MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
+  PRAXA_MCP_TOOLS,
+} from "@praxa/mcp-contracts";
+
+console.log({
+  server: MCP_SERVER_NAME,
+  version: MCP_SERVER_VERSION,
+  protocols: MCP_SUPPORTED_PROTOCOL_VERSIONS,
+  tools: PRAXA_MCP_TOOLS.map(({ name, requiredScope }) => ({ name, requiredScope })),
+});
+NODE
+~~~
+
+## Diagnose remote authorization
+
+1. Confirm the URL is the deployment's MCP resource, not a guessed REST origin.
+2. Inspect the initial `401` and `WWW-Authenticate` challenge.
+3. Resolve Protected Resource Metadata and authorization-server metadata.
+4. Require HTTPS, PKCE `S256`, state validation, exact redirect URI, and resource audience.
+5. Request only the challenged or required scopes.
+6. Revoke the disposable grant and require the next call to fail.
+
+Do not copy tokens into project configuration to bypass a failed OAuth flow.
+
+## Diagnose a tool result
+
+Record the host request ID, MCP request ID, tool name, input digest, approval
+decision, Gateway request/run ID, status, and redacted result type. Then verify
+the mission, trace, event, or receipt outside the model response.
+
+If `isError: true`, expose the bounded corrective message to the model so it can
+repair valid input. Do not turn authorization or tenant failures into model-
+repair loops.
+
+## Escalate with a safe support bundle
+
+Include package version, server URL hostname, negotiated protocol, exact tool
+name, required scope, HTTP or MCP status, safe error code, request ID,
+timestamp, host/version, and whether the negative tests pass. Exclude tokens,
+cookies, provider credentials, customer payloads, webhook secrets, and raw
+memory content.

@@ -1,0 +1,73 @@
+---
+title: "Praxa MCP use cases for developers and businesses"
+sidebarTitle: "Use cases"
+description: "Apply Praxa MCP tools to governed missions, capability discovery, memory recall, traces, goals, skills, and evidence workflows with safe boundaries."
+keywords: ["Praxa MCP use cases for developers and businesses","Praxa MCP","Model Context Protocol","AI agent tools"]
+---
+
+Praxa MCP tools let an MCP-compatible agent host discover governed
+capabilities, create and inspect durable missions, query purpose-filtered
+memory, and read evidence surfaces. The contracts add a standard tool boundary;
+they do not grant provider authority or make model prose an execution receipt.
+
+## Choose a use case
+
+| Outcome | Tools | Audience | Completion evidence |
+|---|---|---|---|
+| Turn a request into a durable governed mission | `aura_submit_intent`, `aura_create_mission`, `aura_get_mission` | Product teams, operations | Mission projection and terminal events |
+| Interrupt or stop a mission safely | `aura_signal_mission`, `aura_cancel_mission` | Operators, support | Accepted signal/cancel request plus final mission readback |
+| Discover eligible capabilities before planning | `aura_search_capabilities` | Agent builders | Policy-eligible capability results, not model guesses |
+| Recall approved context for one purpose | `aura_query_memory` | Personalization and support | Purpose/compartment-filtered results with provenance |
+| Load a governed reusable procedure | `aura_get_skill` | Developer platforms | Exact skill version and evidence state |
+| Explain what happened | `aura_get_trace` | SRE, compliance, support | Redacted causal trace correlated to the run |
+| Align work with current goals | `aura_list_goals` | Assistants and planning tools | Purpose-filtered goal list |
+| Inspect model and reference evidence | `aura_list_world_certificates`, `aura_get_coverage` | Evaluation and governance teams | Signed certificate or bounded coverage evidence |
+
+## Example: governed support escalation
+
+1. Search capabilities for the escalation action family.
+2. Query only the support compartment and incident-resolution purpose.
+3. Submit the user intent with one stable idempotency key.
+4. Create a bounded mission after the application validates the goal and budget.
+5. Require host approval before any mutation.
+6. Read the mission and trace until the required terminal evidence exists.
+7. Store only redacted identifiers and receipts in the support case.
+
+~~~mermaid
+flowchart LR
+  Request["Support request"] --> Search["Search eligible capabilities"]
+  Search --> Recall["Recall purpose-filtered context"]
+  Recall --> Approval["Host and Praxa policy checks"]
+  Approval --> Mission["Durable mission"]
+  Mission --> Evidence["Projection, events, trace, receipt"]
+  Evidence --> Review["Human-verifiable outcome"]
+~~~
+
+## Example: engineering incident assistant
+
+Give the host read-only access to `aura_get_mission`, `aura_get_trace`,
+`aura_get_skill`, and `aura_get_coverage`. Ask it to summarize an incident run,
+cite the exact trace and skill version, and identify missing evidence. Do not
+enable mission mutation tools until the read-only workflow passes isolation,
+redaction, and prompt-injection tests.
+
+## Example: enterprise capability catalog
+
+Use `aura_search_capabilities` to populate a reviewed catalog of actions that
+are policy eligible for a purpose and target type. Cache only within the
+deployment's freshness rules. A search result is eligibility evidence, not
+entitlement, provider availability, approval, or proof that an action ran.
+
+## When MCP is not the best interface
+
+- Use `@praxa/sdk` when your TypeScript service needs the complete mission client and event helpers.
+- Use Execution Fabric `/v1` when a backend needs the minimal public durable-task contract.
+- Use `@praxa/sdk/memory` when you are federating existing provider memory read-only.
+- Use direct API reference calls for deterministic service-to-service flows that do not need a model to choose tools.
+
+## Production acceptance
+
+Test tool selection, correct and wrong scopes, revocation, tenant isolation,
+prompt injection in returned content, schema rejection, approval visibility,
+exact mutation replay, changed-body conflict, timeout reconciliation, output
+bounds, audit correlation, and cleanup. See [security and testing](/mcp/security-and-testing).

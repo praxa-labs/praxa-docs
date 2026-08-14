@@ -2,12 +2,24 @@
 title: "Federate and test existing memory"
 sidebarTitle: "Memory federation"
 description: "Connect Mem0, LangGraph, Zep, Graphiti, Letta, OpenAI Agents sessions, or a custom store to Praxa and test namespace isolation, provenance, and provider outages."
+keywords: ["Praxa Federate and test existing memory","Praxa tutorials","AI integration guide","developer tutorial"]
 ---
 
 This tutorial uses the public, dependency-free `@praxa/sdk/memory` entrypoint.
 The SDK is read-only. It receives provider clients your backend already owns,
 and it requires explicit tenant and subject namespace resolution.
 
+{/* BEGIN GENERATED TUTORIAL PREREQUISITES */}
+## Prerequisites
+
+Before you begin, prepare:
+
+- a backend-owned provider client and explicit tenant-subject namespace resolver;
+- synthetic records for at least two tenants and two subjects per tenant;
+- the exact @praxa/sdk memory package version and supported provider contract;
+- a provider cleanup procedure plus degraded-state and timeout fixtures;
+- an acceptance assertion that proves federated recall preserves source status, provenance, contradictions, bounds, and isolation.
+{/* END GENERATED TUTORIAL PREREQUISITES */}
 ## 1. Install the package
 
 ```bash
@@ -288,3 +300,59 @@ then assert:
 
 The SDK test proves federation behavior. Provider canaries prove that your
 namespace mapper, client permissions, and provider data layout are correct.
+
+{/* BEGIN GENERATED TUTORIAL OPERATIONS */}
+## Troubleshooting
+
+| Symptom | Resolution |
+|---|---|
+| Expected record is absent | Verify provider-native data shape, namespace mapping, filters, and source status. |
+| Another subject sees a record | Stop the rollout and repair server-owned tenant-subject resolution before further tests. |
+| Provider outage looks like no memory | Expose the source status and keep unavailable distinct from an empty successful recall. |
+| Delete did not remove provider data | Use the provider's lifecycle; read-only federation and hosted-candidate deletion do not erase provider sources. |
+
+## Best practices
+
+- Keep provider writes and lifecycle under the provider's documented API.
+- Resolve tenant and subject in trusted backend code and test 2x2 isolation.
+- Preserve provenance, source matches, contradictions, and per-source status.
+- Bound concurrency, result count, context bytes, and source timeout.
+- Never promote checkpoint, hidden, or unverified content into portable recall.
+
+## Optimize for production
+
+- Query only providers and record kinds relevant to the current purpose.
+- Use bounded parallel recall and give each source an explicit timeout budget.
+- Deduplicate normalized content while retaining every source match and contradiction.
+- Measure source p50/p95 latency, partial/failed recalls, result precision, context bytes, and isolation failures.
+
+Optimize only after the correctness and isolation matrix passes. Lower latency or cost is not an improvement if verified outcomes, authority checks, or recovery rates regress.
+
+## Cleanup and next steps
+
+1. Delete synthetic provider records using the provider's normal API.
+2. Hard-erase disposable hosted candidates and verify content-free receipts when used.
+3. Revoke test credentials and remove namespace fixtures for every tenant and subject.
+4. Retain only non-content source statuses, identifiers, and test results required for audit.
+
+After cleanup, run the [shared integration test matrix](/tutorials/test-your-integration) and record any environment-specific check that remains pending.
+
+## Frequently asked questions
+
+### What proves this tutorial works?
+
+The minimum observable result is that federated recall preserves source status, provenance, contradictions, bounds, and isolation. A compile, package import, mocked response, or initial admission alone does not prove the complete workflow.
+
+### Can a browser, mobile app, or model prompt hold the credential?
+
+No. Provider clients and Praxa credentials stay in the backend; adapters receive clients, not raw credentials.
+
+### How should an ambiguous mutation be retried?
+
+Persist the exact logical input and idempotency key before the first attempt. Reconcile through authoritative readback or replay the exact request with that same key before creating new work.
+
+### What should we monitor after release?
+
+Monitor per-source latency/status, partial and failed recall rates, result precision, context bytes, provenance coverage, and isolation failures. Alert on authorization bypass, cross-tenant disclosure, repeated conflicts, or cleanup failure.
+
+{/* END GENERATED TUTORIAL OPERATIONS */}

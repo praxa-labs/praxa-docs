@@ -2,6 +2,7 @@
 title: "POST /v8/capabilities/search — Search Available Capabilities"
 sidebarTitle: "Search Capabilities"
 description: "POST /v8/capabilities/search returns capabilities matching your requirement string. Discover available gateway actions before committing to a mission."
+keywords: ["Praxa POST /v8/capabilities/search — Search Available Capabilities","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The `POST /v8/capabilities/search` endpoint lets you discover which capabilities are available on your Praxa Integration Gateway before committing to a mission. You describe what you need using three structured fields — the action family, the purpose, and the target type — and the gateway returns a ranked list of policy-eligible `CapabilityManifest` objects. Each manifest tells you the capability's identifier, kind, version, a verifiable contract hash, and its current health state. Use this endpoint to validate that your gateway deployment has the right capabilities before building a mission goal specification around them.
@@ -12,7 +13,7 @@ The `POST /v8/capabilities/search` endpoint lets you discover which capabilities
 
 ## Endpoint
 
-```
+```http
 POST /v8/capabilities/search
 ```
 

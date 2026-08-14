@@ -2,6 +2,7 @@
 title: "Run a governed mission lifecycle"
 sidebarTitle: "Mission lifecycle"
 description: "Use @praxa/sdk to submit intent, create a budgeted mission, stream events, send signals, cancel safely, and test a deployment-specific Integration Gateway."
+keywords: ["Praxa Run a governed mission lifecycle","Praxa tutorials","AI integration guide","developer tutorial"]
 ---
 
 This tutorial targets the versioned Integration Gateway in `@praxa/sdk@0.3.0`.
@@ -182,3 +183,59 @@ new value inside a retrying server action. `validateMissionInput` and
   additionally requires your deployment's OAuth authority, Gateway, private
   policy plane, and runtime to be configured and reachable.
 </Warning>
+
+{/* BEGIN GENERATED TUTORIAL OPERATIONS */}
+## Troubleshooting
+
+| Symptom | Resolution |
+|---|---|
+| Admission is reported as completion | Follow the run, stream, delivery, or receipt to authoritative completion evidence. |
+| Reconnect duplicates events | Commit the cursor only after durable processing and deduplicate by event identity. |
+| Retry creates duplicate work | Reuse the original idempotency key and exact request body. |
+| Failure is ambiguous | Record unknown state and reconcile instead of starting new work. |
+
+## Best practices
+
+- Persist identity before I/O and state transitions after durable processing.
+- Treat admission, delivery attempt, and cancellation request as non-terminal acknowledgements.
+- Verify signatures against the raw body before parsing webhook JSON.
+- Deduplicate streams and webhooks using stable event or delivery identity.
+- Test disconnect, duplicate, out-of-order, timeout, revocation, and cleanup paths.
+
+## Optimize for production
+
+- Prefer event-driven updates while retaining bounded polling or readback reconciliation.
+- Commit cursors in batches only when that cannot lose acknowledged application work.
+- Keep webhook handlers short: verify, persist, acknowledge, then process asynchronously.
+- Measure admission-to-terminal time, reconnect rate, duplicate rate, delivery latency, and reconciliation backlog.
+
+Optimize only after the correctness and isolation matrix passes. Lower latency or cost is not an improvement if verified outcomes, authority checks, or recovery rates regress.
+
+## Cleanup and next steps
+
+1. Cancel or terminally reconcile disposable runs.
+2. Disable test webhook endpoints and remove their signing secrets.
+3. Delete synthetic inbox, cursor, and delivery records after assertions.
+4. Revoke disposable credentials and keep only redacted lifecycle evidence.
+
+After cleanup, run the [shared integration test matrix](/tutorials/test-your-integration) and record any environment-specific check that remains pending.
+
+## Frequently asked questions
+
+### What proves this tutorial works?
+
+The minimum observable result is that a mission can be created, streamed, read, signaled or cancelled, and reconciled safely. A compile, package import, mocked response, or initial admission alone does not prove the complete workflow.
+
+### Can a browser, mobile app, or model prompt hold the credential?
+
+No. The trusted runtime owns Praxa keys, OAuth tokens, and webhook secrets; clients receive only bounded application projections.
+
+### How should an ambiguous mutation be retried?
+
+Persist the exact logical input and idempotency key before the first attempt. Reconcile through authoritative readback or replay the exact request with that same key before creating new work.
+
+### What should we monitor after release?
+
+Monitor admission-to-terminal time, stream reconnects, duplicate events, webhook delivery latency, retries, and reconciliation backlog. Alert on authorization bypass, cross-tenant disclosure, repeated conflicts, or cleanup failure.
+
+{/* END GENERATED TUTORIAL OPERATIONS */}

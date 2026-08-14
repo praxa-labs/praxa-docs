@@ -2,13 +2,14 @@
 title: "GET /v8/context-twin/goals — List Active Context Goals"
 sidebarTitle: "List Goals"
 description: "GET /v8/context-twin/goals returns the current goal list from the context twin associated with your deployment. Requires context:read scope."
+keywords: ["Praxa GET /v8/context-twin/goals — List Active Context Goals","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The `GET /v8/context-twin/goals` endpoint returns the active goals registered in the context twin associated with your Praxa deployment. The context twin is a persistent, stateful representation of your deployment's current operating context — it tracks long-horizon goals, standing objectives, and organisational constraints that missions can consult to align their behaviour without requiring you to re-specify them in every mission's goal specification. Retrieving the goal list lets you audit what standing objectives are currently active and verify that they reflect your intent before launching a new mission.
 
 ## Endpoint
 
-```
+```http
 GET /v8/context-twin/goals
 ```
 

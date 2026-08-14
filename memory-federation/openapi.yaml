@@ -213,6 +213,52 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+          examples:
+            authentication_failed:
+              summary: Missing, malformed, expired, or revoked personal key
+              value:
+                type: https://docs.praxa.io/problems/authentication-failed
+                title: Authentication failed
+                status: 401
+                code: authentication_failed
+                detail: A valid personal workspace API key is required.
+                retryable: false
+            authorization_failed:
+              summary: The key lacks the required memory scope or authority
+              value:
+                type: https://docs.praxa.io/problems/authorization-failed
+                title: Authorization failed
+                status: 403
+                code: authorization_failed
+                detail: The API key does not grant the required memory scope.
+                retryable: false
+            invalid_request:
+              summary: The portable envelope or query is invalid
+              value:
+                type: https://docs.praxa.io/problems/invalid-request
+                title: Invalid request
+                status: 400
+                code: invalid_request
+                detail: The request did not match the portable memory contract.
+                retryable: false
+            conflict:
+              summary: The idempotency key was reused with different input
+              value:
+                type: https://docs.praxa.io/problems/conflict
+                title: Conflict
+                status: 409
+                code: conflict
+                detail: Reuse an idempotency key only with the exact original request.
+                retryable: false
+            rate_limited:
+              summary: Bounded request rate exceeded
+              value:
+                type: https://docs.praxa.io/problems/rate-limited
+                title: Rate limited
+                status: 429
+                code: rate_limited
+                detail: Retry after the server-provided delay.
+                retryable: true
   schemas:
     Identifier:
       type: string

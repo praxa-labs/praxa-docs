@@ -1,6 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "name": "Praxa",
+  "description": "Build governed AI agents with Praxa APIs, SDKs, CLI tools, MCP contracts, durable missions, webhooks, memory federation, tutorials, and benchmarks.",
   "theme": "mint",
   "logo": {
     "light": "/logo-light.svg",
@@ -8,6 +9,19 @@
     "href": "https://praxa.io"
   },
   "favicon": "/app-icon.png",
+  "seo": {
+    "indexing": "navigable",
+    "metatags": {
+      "og:site_name": "Praxa Developer Documentation",
+      "twitter:card": "summary_large_image"
+    }
+  },
+  "search": {
+    "prompt": "Search Praxa APIs, SDK, CLI, MCP, memory, tutorials, and benchmarks"
+  },
+  "metadata": {
+    "timestamp": true
+  },
   "colors": {
     "primary": "#909090",
     "light": "#dddddd",
@@ -57,6 +71,7 @@
               "overview/capabilities",
               "overview/service-status",
               "overview/examples",
+              "overview/ai-and-llm-discovery",
               "quickstart",
               "authentication"
             ]
@@ -377,13 +392,28 @@
         "tab": "MCP Contracts",
         "groups": [
           {
-            "group": "MCP contracts",
+            "group": "Start",
             "root": "mcp/overview",
             "pages": [
-              "mcp/tools",
+              "mcp/quickstart",
+              "mcp/tools"
+            ]
+          },
+          {
+            "group": "Integrate",
+            "pages": [
               "mcp/host-integration",
+              "mcp/host-guides",
+              "mcp/use-cases"
+            ]
+          },
+          {
+            "group": "Secure and operate",
+            "pages": [
               "mcp/security-and-testing",
-              "mcp/compatibility"
+              "mcp/compatibility",
+              "mcp/troubleshooting",
+              "mcp/production-checklist"
             ]
           }
         ]
@@ -472,7 +502,10 @@
           {
             "group": "Start here",
             "pages": [
-              "api-playground/overview"
+              "api-playground/overview",
+              "api-playground/authentication",
+              "api-playground/errors",
+              "api-playground/coverage-and-testing"
             ]
           },
           {

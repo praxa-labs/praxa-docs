@@ -2,13 +2,14 @@
 title: "GET /v8/world-model/certificates — List World Certificates"
 sidebarTitle: "World Model Certs"
 description: "GET /v8/world-model/certificates returns certified facts from the world model associated with your Praxa deployment. Requires world:read scope."
+keywords: ["Praxa GET /v8/world-model/certificates — List World Certificates","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The `GET /v8/world-model/certificates` endpoint returns the signed capability certificates from the world model associated with your Praxa deployment. The world model is Praxa's authoritative representation of facts about the external systems, data sources, and services your agent operates on — it encodes what the platform knows to be true about your environment at a given point in time. Certificates are signed per-domain, per-head, and per-horizon, giving you a cryptographically verifiable record of the world state that underpins each mission's planning and execution. Use this endpoint to audit what the platform believes about your environment and to verify that its knowledge is current before launching a mission that depends on specific external conditions.
 
 ## Endpoint
 
-```
+```http
 GET /v8/world-model/certificates
 ```
 

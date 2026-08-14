@@ -2,6 +2,7 @@
 title: "Praxa API Playground"
 sidebarTitle: "Playground overview"
 description: "Send scoped requests to the concrete Praxa Execution Fabric and memory-candidate APIs with generated cURL, JavaScript, and Python examples."
+keywords: ["Praxa API Playground","Praxa API examples","API authentication"]
 ---
 
 The API Playground is generated from the same checked OpenAPI documents used by
@@ -41,6 +42,19 @@ requests against `api.praxa.io` would teach the wrong contract.
   </Card>
   <Card title="Create a memory candidate" icon="database" href="/api-playground/memory/create-memory-candidate">
     Open the subject-scoped candidate builder for `POST /v1/memory/records`.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={3}>
+  <Card title="Authenticate safely" icon="key" href="/api-playground/authentication">
+    Create a disposable personal key, choose exact scopes, test revocation, and
+    move the request into a trusted backend.
+  </Card>
+  <Card title="Handle failures" icon="triangle-exclamation" href="/api-playground/errors">
+    Distinguish validation, auth, conflict, rate-limit, server, and unknown-outcome recovery.
+  </Card>
+  <Card title="Review endpoint coverage" icon="list-check" href="/api-playground/coverage-and-testing">
+    Map all 15 active operations to scopes, success evidence, negative tests, and cleanup.
   </Card>
 </CardGroup>
 
@@ -86,6 +100,11 @@ Deleting a candidate does not delete the original provider record.
 - `409` means a state or idempotency conflict; never retry it blindly.
 - `429` and retryable 5xx responses may include retry guidance.
 - Every credential-bearing request should be treated as `no-store` by your application.
+
+Every generated endpoint page now includes cURL, Node.js, and Python requests,
+representative success and problem responses, endpoint-specific verification,
+retry rules, production boundaries, and cleanup. The interactive form remains
+generated from the checked OpenAPI schema.
 
 <CardGroup cols={2}>
   <Card title="Durable task tutorial" icon="play" href="/tutorials/durable-tasks">

@@ -1,0 +1,94 @@
+---
+title: "Handle Praxa API errors, retries, and unknown outcomes"
+sidebarTitle: "Failures and retries"
+description: "Diagnose Praxa API authentication, authorization, validation, conflict, rate-limit, and server failures without duplicating durable work."
+keywords: ["Handle Praxa API errors, retries, and unknown outcomes","Praxa API Playground","Praxa API examples","API authentication"]
+---
+
+Praxa API failures are typed authority, validation, state, or availability
+signals. Read the HTTP status, `code`, `retryable`, and retry guidance together.
+Never turn every non-2xx response into the same automatic retry.
+
+## Understand the problem response
+
+~~~json
+{
+  "type": "https://docs.praxa.io/problems/invalid-request",
+  "title": "Invalid request",
+  "status": 400,
+  "detail": "The request did not match the operation contract.",
+  "code": "invalid_request",
+  "requestId": "request-demo-0001",
+  "retryable": false,
+  "fieldErrors": [
+    {
+      "path": "task.input",
+      "code": "too_small",
+      "message": "Input must not be empty."
+    }
+  ]
+}
+~~~
+
+The response may omit optional fields. Record `requestId`, status, code, and a
+redacted operation label. Do not log bearer tokens, webhook secrets, task
+content, memory content, or arbitrary upstream bodies.
+
+## Decide what to do next
+
+| Status and code | Retry? | Required response |
+|---|---|---|
+| `400 invalid_request` | No, not unchanged | Fix the named field, method, path, or header. |
+| `401 authentication_failed` | No | Stop work, replace or refresh the correct credential, and retest. |
+| `403 authorization_failed` | No | Confirm personal tenant and request only the missing scope. |
+| `403 entitlement_failed` | No | Route the user through the documented entitlement flow; do not retry. |
+| `404` or tenant-safe absence | No | Recheck the identifier and authenticated tenant without probing other tenants. |
+| `409 conflict` | No, not changed input | Restore the original body for that idempotency key or use a new key for new work. |
+| `429 rate_limited` | Yes, bounded | Honor `retryAfterMs` or `Retry-After`, add jitter, and cap attempts. |
+| retryable `5xx` | Maybe | Reconcile a keyed mutation or read status before sending new work. |
+| non-retryable `5xx` | No automatic retry | Surface a safe failure and retain the request ID for support. |
+
+## Distinguish failure from an unknown outcome
+
+A client timeout, interrupted connection, or retryable 5xx does not prove that
+a mutation failed. For a keyed mutation:
+
+1. Keep the exact serialized input and original idempotency key.
+2. Read the returned resource when an identifier is known.
+3. Otherwise replay the exact request with the same key.
+4. Accept a matching replay as reconciliation.
+5. Treat a changed-body `409` as evidence that the stored input and retry no longer match.
+
+For an unkeyed read, use bounded exponential backoff with jitter only when the
+problem says it is retryable.
+
+## Inspect headers and body with cURL
+
+~~~bash
+curl --silent --show-error \
+  --dump-header /tmp/praxa-response-headers.txt \
+  --output /tmp/praxa-response-body.json \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  'https://api.praxa.io/v1/runs/018f0000-0000-7000-8000-000000000001'
+
+sed -n '1,20p' /tmp/praxa-response-headers.txt
+jq '{status, code, retryable, retryAfterMs, requestId, fieldErrors}' \
+  /tmp/praxa-response-body.json
+~~~
+
+Use temporary files containing synthetic data and remove them after the test.
+
+## Test failure behavior before production
+
+- missing, malformed, under-scoped, and revoked credentials;
+- invalid body and over-limit input;
+- foreign run, endpoint, delivery, candidate, tenant, and subject identifiers;
+- exact mutation replay and changed-body conflict;
+- `429` with a bounded retry budget;
+- client timeout after admission;
+- SSE disconnect before terminal state;
+- webhook duplicate, invalid signature, and expired timestamp;
+- memory provider outage and candidate deletion.
+
+The [end-to-end testing tutorial](/tutorials/test-your-integration) turns these
+cases into a reusable release gate.

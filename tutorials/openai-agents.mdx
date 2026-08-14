@@ -2,6 +2,7 @@
 title: "Use Praxa with OpenAI Agents"
 sidebarTitle: "OpenAI Agents"
 description: "Connect OpenAI Agents to Praxa through remote MCP and federate an existing Agents session without restarting memory."
+keywords: ["Use Praxa with OpenAI Agents","Praxa tutorials","AI integration guide","developer tutorial"]
 ---
 
 OpenAI Agents and Praxa integrate at two separate boundaries:
@@ -12,6 +13,17 @@ OpenAI Agents and Praxa integrate at two separate boundaries:
 Do not merge these authorities. MCP execution does not grant memory access, and
 session recall does not grant tool execution.
 
+{/* BEGIN GENERATED TUTORIAL PREREQUISITES */}
+## Prerequisites
+
+Before you begin, prepare:
+
+- the exact published Praxa package versions used by the tutorial;
+- a trusted agent host with explicit tool, approval, timeout, and output policies;
+- deployment-specific OAuth or backend-owned provider clients where the selected lane requires them;
+- synthetic tenant, subject, prompt, and tool fixtures for positive and adversarial tests;
+- an acceptance assertion that proves remote MCP and read-only session memory remain separate and both pass negative-boundary tests.
+{/* END GENERATED TUTORIAL PREREQUISITES */}
 ## 1. Connect remote MCP
 
 ~~~bash
@@ -85,3 +97,59 @@ with two session subjects. Require both to fail closed without cross-lane data.
 <Card title="OpenAI Agents MCP" icon="arrow-up-right-from-square" href="https://openai.github.io/openai-agents-js/guides/mcp/">
   Review hosted MCP tools, allowlists, and human approval in the official SDK guide.
 </Card>
+
+{/* BEGIN GENERATED TUTORIAL OPERATIONS */}
+## Troubleshooting
+
+| Symptom | Resolution |
+|---|---|
+| Package imports but nothing executes | Separate package contracts from the deployment or provider executor they describe. |
+| Agent selects the wrong tool | Shrink the allowlist and improve the specific tool description and task policy. |
+| Mutation repeats after timeout | Persist the exact input and idempotency key, then reconcile before a new call. |
+| Tool output changes agent intent | Treat tool content as untrusted data and preserve the original purpose and approval boundary. |
+
+## Best practices
+
+- Enable the smallest tool or source set needed for the workflow.
+- Require approval for mutations and independently for destructive actions.
+- Derive tenant, subject, purpose, and credential from trusted host context.
+- Bound tool inputs, output bytes, concurrent calls, retries, and total turn time.
+- Verify a run, event, trace, receipt, or source status independently of model prose.
+
+## Optimize for production
+
+- Reduce tool definitions and provider sources to the relevant set before each turn.
+- Use deterministic filtering and pagination before placing results in model context.
+- Cache only versioned, non-sensitive contracts and read-only metadata.
+- Measure tool-selection accuracy, approval rate, p50/p95 call latency, context bytes, retries, and verified completion.
+
+Optimize only after the correctness and isolation matrix passes. Lower latency or cost is not an improvement if verified outcomes, authority checks, or recovery rates regress.
+
+## Cleanup and next steps
+
+1. Revoke disposable delegated grants and remove test host configuration.
+2. Delete provider fixtures through the provider's own lifecycle when applicable.
+3. Disable mutation tools until their negative and approval tests pass again after upgrades.
+4. Retain only redacted tool, run, trace, and receipt identifiers needed for evaluation.
+
+After cleanup, run the [shared integration test matrix](/tutorials/test-your-integration) and record any environment-specific check that remains pending.
+
+## Frequently asked questions
+
+### What proves this tutorial works?
+
+The minimum observable result is that remote MCP and read-only session memory remain separate and both pass negative-boundary tests. A compile, package import, mocked response, or initial admission alone does not prove the complete workflow.
+
+### Can a browser, mobile app, or model prompt hold the credential?
+
+Only a trusted server or agent host may hold delegated Praxa or provider credentials. Never place them in model input or client bundles.
+
+### How should an ambiguous mutation be retried?
+
+Persist the exact logical input and idempotency key before the first attempt. Reconcile through authoritative readback or replay the exact request with that same key before creating new work.
+
+### What should we monitor after release?
+
+Monitor tool-selection accuracy, approval decisions, call latency, context size, retries, denials, and verified outcomes. Alert on authorization bypass, cross-tenant disclosure, repeated conflicts, or cleanup failure.
+
+{/* END GENERATED TUTORIAL OPERATIONS */}

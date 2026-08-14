@@ -1,0 +1,110 @@
+---
+title: "Use Praxa documentation with LLMs and AI search"
+sidebarTitle: "AI and LLM access"
+description: "Give ChatGPT, Claude, Gemini, Perplexity, coding agents, and retrieval systems complete, version-aware access to Praxa documentation in Markdown."
+keywords: ["Use Praxa documentation with LLMs and AI search","Praxa developer platform","Praxa documentation","AI agent platform"]
+---
+
+Praxa publishes a site-wide LLM index, a combined full-text export, and a
+Markdown representation of every navigable documentation page. AI tools should
+start with `llms.txt`, select the smallest relevant page, and verify the page's
+availability and API plane before generating code.
+
+## Machine-readable documentation endpoints
+
+| Resource | URL | Use it for |
+|---|---|---|
+| Documentation index | `https://docs.praxa.io/llms.txt` | Titles, descriptions, page discovery, and OpenAPI links |
+| Well-known index | `https://docs.praxa.io/.well-known/llms.txt` | Clients that discover LLM indexes through `.well-known` |
+| Complete corpus | `https://docs.praxa.io/llms-full.txt` | Offline search, broad retrieval, and corpus analysis |
+| Well-known complete corpus | `https://docs.praxa.io/.well-known/llms-full.txt` | Well-known full-corpus discovery |
+| Individual page | `https://docs.praxa.io/<route>.md` | Focused Markdown for one guide or reference page |
+| Search sitemap | `https://docs.praxa.io/sitemap.xml` | Search-engine URL discovery and freshness |
+| Crawler policy | `https://docs.praxa.io/robots.txt` | Search and AI crawler permissions |
+
+For example, retrieve the SDK quickstart without page chrome:
+
+~~~bash
+curl --fail-with-body https://docs.praxa.io/llms.txt
+curl --fail-with-body https://docs.praxa.io/sdk/quickstart.md
+~~~
+
+## Retrieval workflow for an AI agent
+
+<Steps>
+  <Step title="Discover pages">
+    Fetch `/llms.txt` and match the user intent against page titles and
+    descriptions. Do not guess routes.
+  </Step>
+  <Step title="Fetch focused Markdown">
+    Retrieve only the relevant `/<route>.md` pages first. Use
+    `/llms-full.txt` only when the question truly spans the corpus.
+  </Step>
+  <Step title="Identify the API plane">
+    Distinguish Execution Fabric `/v1`, deployment-specific Integration
+    Gateway `/v8`, remote MCP, and read-only memory federation before choosing
+    authentication or code examples.
+  </Step>
+  <Step title="Respect availability">
+    Preserve labels such as live package, partner preview, deployment-specific,
+    qualification preview, and pending. Source examples do not activate a route.
+  </Step>
+  <Step title="Prefer exact contracts">
+    Use the linked OpenAPI documents and published package versions for fields,
+    scopes, identifiers, and schemas. Never infer an undocumented endpoint.
+  </Step>
+  <Step title="Return citations and proof limits">
+    Link the exact pages used and separate package tests, mocked tests,
+    authenticated runtime checks, deployment, and user verification.
+  </Step>
+</Steps>
+
+~~~mermaid
+flowchart LR
+  Question["Developer question"] --> Index["llms.txt"]
+  Index --> Pages["Focused page.md files"]
+  Pages --> Contract["OpenAPI or package contract"]
+  Contract --> Answer["Versioned answer and examples"]
+  Answer --> Verify["Tests, runtime readback, and citations"]
+~~~
+
+## Guidance for retrieval systems
+
+- Chunk by heading while retaining the page title, route, description, and nearest parent headings.
+- Store the source URL and last-modified value with every chunk.
+- Keep code fences, tables, warnings, and availability notes attached to their explanatory text.
+- Rank exact product terms and error codes above generic semantic similarity.
+- Do not combine credentials or instructions across API planes.
+- Refresh when package versions, OpenAPI versions, or page timestamps change.
+- Delete stale chunks rather than serving two conflicting revisions.
+
+## Test LLM access
+
+Run `npm run docs:live:llms` from the documentation repository after a release.
+The checker requires both site-wide files, the well-known aliases, crawler and
+sitemap discovery, inclusion of every navigable page in `llms.txt`, and a
+successful Markdown response for every individual page.
+
+## Frequently asked questions
+
+### Does each page need its own `llms.txt` file?
+
+No. The standard site-wide `llms.txt` links to a Markdown endpoint for each
+page. Fetch `/<route>.md` for the individual page and `/llms-full.txt` for the
+combined corpus.
+
+### Should an AI tool use `/llms-full.txt` for every question?
+
+No. Focused page retrieval reduces stale or irrelevant context. Use the full
+corpus for cross-cutting audits, indexing, or offline search.
+
+### Are Markdown routes intended for search indexing?
+
+The canonical HTML page remains the search result. Markdown routes are a
+machine-readable representation and advertise the site-wide documentation
+index in their response content.
+
+### Does an example prove the service is live?
+
+No. Read [service status and proof boundaries](/overview/service-status) and
+verify the intended authenticated environment before using customer data.

@@ -2,6 +2,7 @@
 title: "Praxa SDK Error Handling — PraxaClientError Reference"
 sidebarTitle: "Error Handling"
 description: "PraxaClientError carries an HTTP status code and RFC 9457 problem details. Learn to catch, inspect, and respond to Praxa SDK errors in TypeScript."
+keywords: ["Praxa SDK Error Handling — PraxaClientError Reference","Praxa TypeScript SDK","AI agent SDK","Praxa SDK"]
 ---
 
 `PraxaClient` throws a `PraxaClientError` for every HTTP error response it receives from the gateway. This is the only error type the SDK itself raises for API failures — all other thrown values (such as `TypeError` for network connectivity issues or `DOMException` for aborted requests) originate from the underlying `fetch` implementation. Because `PraxaClientError` extends the native `Error` class, you can use a standard `instanceof` check in any `catch` block to distinguish API errors from unexpected exceptions.

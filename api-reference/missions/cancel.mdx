@@ -2,6 +2,7 @@
 title: "POST /v8/missions/{runId}/cancel — Cancel a Mission"
 sidebarTitle: "Cancel Mission"
 description: "POST /v8/missions/{runId}/cancel requests cancellation of a running Praxa mission. The status transitions to cancelled after the current step finishes."
+keywords: ["Praxa POST /v8/missions/{runId}/cancel — Cancel a Mission","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The `POST /v8/missions/{runId}/cancel` endpoint requests graceful cancellation of a mission that is currently running or waiting. The gateway propagates the cancellation request to the Control Plane, which signals the agent to stop after finishing its current step. The mission status transitions to `cancelled` and the [event stream](/api-reference/missions/events) emits a final `mission.cancelled` event before closing. Cancellation is cooperative — the agent completes whatever atomic step it is currently executing before stopping, so there is a brief window between your request and the final status transition.
@@ -12,7 +13,7 @@ The `POST /v8/missions/{runId}/cancel` endpoint requests graceful cancellation o
 
 ## Endpoint
 
-```
+```http
 POST /v8/missions/{runId}/cancel
 ```
 

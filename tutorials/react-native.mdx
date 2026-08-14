@@ -2,6 +2,7 @@
 title: "Use Praxa from React Native and Expo"
 sidebarTitle: "React Native & Expo"
 description: "Call a trusted Praxa backend from React Native or Expo without embedding API keys, and test loading, retry, offline, cancellation, and secure-session behavior."
+keywords: ["Use Praxa from React Native and Expo","Praxa tutorials","AI integration guide","developer tutorial"]
 ---
 
 React Native provides `fetch`, but a mobile bundle cannot safely hold a Praxa
@@ -16,6 +17,17 @@ flowchart LR
   BFF -->|"bounded app response"| App
 ~~~
 
+{/* BEGIN GENERATED TUTORIAL PREREQUISITES */}
+## Prerequisites
+
+Before you begin, prepare:
+
+- an authenticated application backend that owns the Praxa credential;
+- a reviewed mobile session mechanism and an app-facing bounded API contract;
+- a simulator or emulator plus at least one physical-device test plan;
+- synthetic data and a persisted local request identifier for lifecycle recovery;
+- an acceptance assertion that proves the app never receives a Praxa key and recovers the same request after backgrounding.
+{/* END GENERATED TUTORIAL PREREQUISITES */}
 ## 1. Define the app contract
 
 Your backend should expose a product-specific route such as:
@@ -152,3 +164,42 @@ app, and reconcile the run through your backend.
     protects server API keys.
   </Card>
 </CardGroup>
+
+{/* BEGIN GENERATED TUTORIAL OPERATIONS */}
+## Optimize for production
+
+- Debounce repeated UI actions while preserving the same logical request ID.
+- Return small app-facing projections and paginate history instead of copying upstream payloads.
+- Reconcile on foreground with one bounded read rather than restarting the operation.
+- Measure device-to-backend latency, resume success, duplicate prevention, payload size, and energy impact.
+
+Optimize only after the correctness and isolation matrix passes. Lower latency or cost is not an improvement if verified outcomes, authority checks, or recovery rates regress.
+
+## Cleanup and next steps
+
+1. Revoke disposable backend credentials and test application sessions.
+2. Delete synthetic server records and clear test-only secure-storage entries.
+3. Remove captured screenshots, logs, and crash reports containing synthetic payloads.
+4. Record physical-device, background, and recovery checks separately from unit tests.
+
+After cleanup, run the [shared integration test matrix](/tutorials/test-your-integration) and record any environment-specific check that remains pending.
+
+## Frequently asked questions
+
+### What proves this tutorial works?
+
+The minimum observable result is that the app never receives a Praxa key and recovers the same request after backgrounding. A compile, package import, mocked response, or initial admission alone does not prove the complete workflow.
+
+### Can a browser, mobile app, or model prompt hold the credential?
+
+No. The application calls its own authenticated backend; the backend owns every Praxa and provider credential.
+
+### How should an ambiguous mutation be retried?
+
+Persist the exact logical input and idempotency key before the first attempt. Reconcile through authoritative readback or replay the exact request with that same key before creating new work.
+
+### What should we monitor after release?
+
+Monitor mobile request latency, background/resume recovery, duplicate suppression, app-facing errors, and terminal readback. Alert on authorization bypass, cross-tenant disclosure, repeated conflicts, or cleanup failure.
+
+{/* END GENERATED TUTORIAL OPERATIONS */}

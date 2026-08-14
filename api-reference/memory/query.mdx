@@ -2,6 +2,7 @@
 title: "POST /v8/memory/query — Query Persistent Mission Memory"
 sidebarTitle: "Query Memory"
 description: "POST /v8/memory/query retrieves relevant entries from persistent mission memory using a natural language query. Requires memory:read scope."
+keywords: ["Praxa POST /v8/memory/query — Query Persistent Mission Memory","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The `POST /v8/memory/query` endpoint retrieves entries from the persistent memory store associated with your Praxa deployment. Memory entries are purpose-scoped and compartment-scoped — you specify both when querying so that the gateway returns only entries your principal is permitted to read for your stated purpose. You query using natural language text, and the gateway performs semantic retrieval against the stored entries. This is useful for grounding a new mission with relevant history, surfacing prior results, or carrying context across multiple mission runs.
@@ -19,7 +20,7 @@ The `POST /v8/memory/query` endpoint retrieves entries from the persistent memor
 
 ## Endpoint
 
-```
+```http
 POST /v8/memory/query
 ```
 

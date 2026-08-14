@@ -1,7 +1,8 @@
 ---
 title: "List webhook endpoints"
 sidebarTitle: "List webhook endpoints"
-description: "Production partner preview. The gateway and backend both require runs:read. Signing secrets are never returned by this operation."
+description: "List tenant-owned Praxa webhook endpoint metadata without exposing any endpoint signing secret."
+keywords: ["Praxa List webhook endpoints","Praxa API Playground","Praxa API examples","API authentication"]
 api: "GET /v1/webhooks"
 authMethod: "bearer"
 playground: "interactive"
@@ -9,17 +10,64 @@ playground: "interactive"
 
 {/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
 
-Production partner preview. The gateway and backend both require runs:read. Signing secrets are never returned by this operation.
+List tenant-owned Praxa webhook endpoint metadata without exposing any endpoint signing secret.
 
 <Info>
   **Availability:** Partner preview. **Required scope:** `runs:read`.
 </Info>
 
-Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+## Authenticate safely
+
+Create a disposable **personal workspace** API key with exactly `runs:read`. Send it as `Authorization: Bearer $PRAXA_API_KEY`. A Gateway OAuth token, Supabase JWT, provider credential, or organization memory key is not interchangeable with this key.
+
+The hosted playground sends the credential from your browser session to the documented API through the configured playground proxy. Use test data, never share the key, and revoke it when the check ends.
 
 ## Request fields
 
 This operation has no path, query, header, or JSON-body fields beyond bearer authentication.
+
+## Runnable request examples
+
+<CodeGroup>
+~~~bash cURL
+curl --fail-with-body -X GET 'https://api.praxa.io/v1/webhooks' \
+  -H "Authorization: Bearer $PRAXA_API_KEY"
+~~~
+~~~javascript Node.js
+const response = await fetch("https://api.praxa.io/v1/webhooks", {
+  "method": "GET",
+  "headers": {
+    "Authorization": `Bearer ${process.env.PRAXA_API_KEY}`
+  }
+});
+const text = await response.text();
+if (!response.ok) throw new Error(`${response.status}: ${text}`);
+console.log(text ? JSON.parse(text) : { status: response.status });
+~~~
+~~~python Python
+import json
+import os
+from urllib import error, request
+
+req = request.Request(
+    "https://api.praxa.io/v1/webhooks",
+    method="GET",
+    headers={
+      "Authorization": f"Bearer {os.environ['PRAXA_API_KEY']}"
+    },
+)
+try:
+    with request.urlopen(req, timeout=30) as response:
+        text = response.read().decode()
+        print(json.loads(text) if text else {"status": response.status})
+except error.HTTPError as exc:
+    raise RuntimeError(f"{exc.code}: {exc.read().decode()}") from exc
+~~~
+</CodeGroup>
+
+## What success means
+
+A `200` response returns only endpoint metadata for the authenticated tenant; signing secrets must be absent.
 
 ## Successful response
 
@@ -32,13 +80,6 @@ This operation has no path, query, header, or JSON-body fields beyond bearer aut
 <ResponseField name="data" type="array<object>" required>
   data response field.
 </ResponseField>
-
-<RequestExample>
-~~~bash cURL
-curl --fail-with-body -X GET 'https://api.praxa.io/v1/webhooks' \
-  -H "Authorization: Bearer $PRAXA_API_KEY"
-~~~
-</RequestExample>
 
 <ResponseExample>
 ~~~json 200
@@ -61,8 +102,38 @@ curl --fail-with-body -X GET 'https://api.praxa.io/v1/webhooks' \
 ~~~
 </ResponseExample>
 
-## Verify and recover
+## Handle failures
+
+| Response | Meaning | Safe action |
+|---|---|---|
+| `400 invalid_request` | The method, path, headers, query, or body failed strict validation. | Correct the request; do not retry unchanged input. |
+| `401 authentication_failed` | The bearer key is missing, malformed, expired, or revoked. | Stop and replace the key through the authenticated console. |
+| `403 authorization_failed` | The authenticated key lacks scope or tenant authority. | Request only the missing least-privilege scope; never substitute another tenant ID. |
+| `429 rate_limited` | The principal exceeded a bounded rate. | Honor `retryAfterMs` or `Retry-After`, add jitter, and cap attempts. |
+| retryable `5xx` | The server could not confirm a final response. | Reconcile reads or replay the exact keyed mutation before creating new work. |
+
+~~~json Example problem
+{
+  "type": "https://docs.praxa.io/problems/authorization-failed",
+  "title": "Authorization failed",
+  "status": 403,
+  "code": "authorization_failed",
+  "detail": "The API key does not grant the required scope.",
+  "retryable": false
+}
+~~~
+
+## Verify the result
+
+1. Confirm every endpoint belongs to the intended environment.
+2. Require signing secrets to be absent.
+3. Test with an under-scoped key.
+
+## Retry, cleanup, and production use
 
 - Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
 - For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
-- Revoke the disposable key and remove test data after validation.
+- Move the request into a trusted application backend before production; never ship the Praxa key in browser or mobile code.
+- Revoke the disposable key, disable test webhooks, and erase disposable candidate data after validation.
+
+Continue with [API authentication](/api-playground/authentication), the [failure and retry guide](/api-playground/errors), and the [end-to-end coverage matrix](/api-playground/coverage-and-testing).

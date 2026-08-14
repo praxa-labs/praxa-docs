@@ -2,6 +2,7 @@
 title: "Test a Praxa integration end to end"
 sidebarTitle: "Test your integration"
 description: "Use a repeatable acceptance matrix for package installation, authentication, idempotency, isolation, streaming, memory outages, webhooks, and deletion."
+keywords: ["Test a Praxa integration end to end","Praxa tutorials","AI integration guide","developer tutorial"]
 ---
 
 Tests pass at different evidence levels. A package import proves the artifact
@@ -9,6 +10,17 @@ can load. A mocked request proves client behavior. A live authenticated canary
 proves the deployed boundary. A user test proves the workflow is understandable
 and usable. Record each result separately.
 
+{/* BEGIN GENERATED TUTORIAL PREREQUISITES */}
+## Prerequisites
+
+Before you begin, prepare:
+
+- a written success criterion and proof boundary for the integration under test;
+- synthetic tenants, subjects, credentials, and lifecycle fixtures;
+- redacted observability fields and a secure location for test evidence;
+- an owner for rollback, cleanup, and unresolved qualification gaps;
+- an acceptance assertion that proves every required package, auth, isolation, replay, outage, lifecycle, and cleanup lane is recorded.
+{/* END GENERATED TUTORIAL PREREQUISITES */}
 ## 1. Record the test subject
 
 Before testing, capture:
@@ -152,3 +164,59 @@ Call an integration production-qualified only when the package, application,
 authenticated API, negative authorization, isolation, degraded-state, cleanup,
 and user-workflow lanes required by that integration have all passed. A green
 subset must stay labeled as that subset.
+
+{/* BEGIN GENERATED TUTORIAL OPERATIONS */}
+## Troubleshooting
+
+| Symptom | Resolution |
+|---|---|
+| Dashboard says success but outcome is unknown | Require terminal readback or an explicit incomplete verification state. |
+| Metrics cannot be correlated | Carry safe request, run, event, delivery, trace, and test identifiers across boundaries. |
+| Logs contain sensitive data | Stop collection, rotate exposed credentials, and replace raw payloads with bounded metadata. |
+| One green test is treated as production proof | Track package, mock, authenticated runtime, deployment, and user verification separately. |
+
+## Best practices
+
+- Define the expected observable result before running the test.
+- Separate positive, denial, isolation, replay, degraded-state, and cleanup lanes.
+- Use synthetic data and credential fingerprints rather than secrets.
+- Record unresolved checks as pending instead of inferring success.
+- Keep rollback and owner information beside the release evidence.
+
+## Optimize for production
+
+- Run cheap contract and fake tests before authenticated canaries.
+- Parallelize only independent test lanes and cap external side effects.
+- Sample high-volume telemetry while retaining every denial, conflict, and terminal failure.
+- Measure pass rate, p50/p95 latency, retry budget, isolation failures, cleanup completion, and time to diagnose.
+
+Optimize only after the correctness and isolation matrix passes. Lower latency or cost is not an improvement if verified outcomes, authority checks, or recovery rates regress.
+
+## Cleanup and next steps
+
+1. Revoke every disposable key and OAuth grant.
+2. Remove test endpoints, provider records, candidates, and local artifacts.
+3. Close or explicitly record unresolved runs and verification gaps.
+4. Publish only redacted results, exact versions, timestamps, and rollback instructions.
+
+After cleanup, run the [shared integration test matrix](/tutorials/test-your-integration) and record any environment-specific check that remains pending.
+
+## Frequently asked questions
+
+### What proves this tutorial works?
+
+The minimum observable result is that every required package, auth, isolation, replay, outage, lifecycle, and cleanup lane is recorded. A compile, package import, mocked response, or initial admission alone does not prove the complete workflow.
+
+### Can a browser, mobile app, or model prompt hold the credential?
+
+No. Evidence contains credential fingerprints and safe identifiers, never live credentials or raw sensitive payloads.
+
+### How should an ambiguous mutation be retried?
+
+Persist the exact logical input and idempotency key before the first attempt. Reconcile through authoritative readback or replay the exact request with that same key before creating new work.
+
+### What should we monitor after release?
+
+Monitor test pass rate, p50/p95 latency, authorization denials, replay conflicts, isolation failures, cleanup completion, and diagnosis time. Alert on authorization bypass, cross-tenant disclosure, repeated conflicts, or cleanup failure.
+
+{/* END GENERATED TUTORIAL OPERATIONS */}

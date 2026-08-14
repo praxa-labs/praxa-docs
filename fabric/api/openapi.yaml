@@ -459,6 +459,52 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+          examples:
+            authentication_failed:
+              summary: Missing, malformed, expired, or revoked API key
+              value:
+                type: https://docs.praxa.io/problems/authentication-failed
+                title: Authentication failed
+                status: 401
+                code: authentication_failed
+                retryable: false
+            authorization_failed:
+              summary: The key lacks the required tenant authority or scope
+              value:
+                type: https://docs.praxa.io/problems/authorization-failed
+                title: Authorization failed
+                status: 403
+                code: authorization_failed
+                retryable: false
+            invalid_request:
+              summary: Strict request validation failed
+              value:
+                type: https://docs.praxa.io/problems/invalid-request
+                title: Invalid request
+                status: 400
+                code: invalid_request
+                retryable: false
+                fieldErrors:
+                  - path: task.input
+                    code: too_small
+                    message: Input must not be empty.
+            conflict:
+              summary: Idempotency or resource state conflicts with the request
+              value:
+                type: https://docs.praxa.io/problems/conflict
+                title: Conflict
+                status: 409
+                code: conflict
+                retryable: false
+            rate_limited:
+              summary: Bounded request rate exceeded
+              value:
+                type: https://docs.praxa.io/problems/rate-limited
+                title: Rate limited
+                status: 429
+                code: rate_limited
+                retryable: true
+                retryAfterMs: 1000
   schemas:
     PlatformScope:
       type: string

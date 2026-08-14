@@ -1,7 +1,8 @@
 ---
 title: "MCP compatibility"
 sidebarTitle: "Compatibility"
-description: "Keep Praxa MCP protocol revisions, server version, wire identifiers, schema draft, and host adapters compatible."
+description: "Upgrade Praxa MCP protocol revisions, package versions, tool identifiers, JSON Schema adapters, transports, and hosts without breaking integrations."
+keywords: ["Praxa MCP compatibility","Praxa MCP","Model Context Protocol","AI agent tools"]
 ---
 
 | Contract | Published value |
@@ -20,3 +21,38 @@ library-specific schema wrapper.
 
 See [Version compatibility](/releases/compatibility) before upgrading the
 package or protocol implementation.
+
+## Compatibility rules
+
+1. Negotiate protocol version during initialization; never use package version as protocol version.
+2. Send `MCP-Protocol-Version` on later Streamable HTTP requests when required by the negotiated lifecycle.
+3. Preserve a server-issued `MCP-Session-Id` on later requests and start a new initialization after a session-scoped `404`.
+4. Preserve all `aura_*` names, field names, bounds, `additionalProperties`, annotations, scopes, and idempotency modes.
+5. Adapt schemas at the host boundary without weakening validation.
+6. Treat host, contracts package, Gateway, and deployment versions as separate upgrade lanes.
+7. Re-run discovery, negative authorization, approval, replay, and readback tests after any lane changes.
+
+## Upgrade matrix
+
+| Change | Minimum regression tests |
+|---|---|
+| MCP host update | Tool discovery, schema adapter, approval rendering, OAuth refresh |
+| `@praxa/mcp-contracts` update | Export snapshot, tool diff, schema diff, annotations, package integrity |
+| Gateway deployment update | Safe read, wrong scope, mutation replay, trace/run readback |
+| Protocol revision update | Initialize negotiation, headers, transport, errors, session reconnect |
+| OAuth provider update | Discovery, PKCE, audience, expiry, revocation, redirect validation |
+
+## Unsupported assumptions
+
+- The contracts package does not start a server.
+- `praxa_*` tool names are not aliases for the stable wire identifiers.
+- MCP `2024-11-05` HTTP+SSE is not one of the two published Praxa contract revisions.
+- A host accepting raw JSON Schema does not prove that it enforces every bound.
+- A discovered tool does not prove that the caller is authorized to execute it.
+
+## Rollback
+
+Keep the previous lockfile, host configuration, and deployment version until
+the new combination passes. To roll back, disable newly enabled tools first,
+restore the previous package/host pair, revoke test grants, and repeat one
+read-only canary. Never rename wire tools as a rollback shortcut.

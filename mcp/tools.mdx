@@ -2,6 +2,7 @@
 title: "Praxa MCP Tools: Reference for All 12 Tool Definitions"
 sidebarTitle: "MCP Tools"
 description: "Reference for all 12 Praxa MCP tools: input schemas, OAuth scopes, HTTP paths, and idempotency behavior for the Praxa Integration Gateway."
+keywords: ["Praxa MCP Tools: Reference for All 12 Tool Definitions","Praxa MCP","Model Context Protocol","AI agent tools"]
 ---
 
 `PRAXA_MCP_TOOLS` is the complete, authoritative list of MCP tools exposed by the Praxa Integration Gateway. You import this array from `@praxa/mcp-contracts` and register its entries with your MCP host — no manual schema authoring required. Every tool definition includes a `name`, human-readable `description`, `inputSchema` (JSON Schema draft 2020-12), MCP `annotations`, the gateway `operationId`, HTTP `method` and `path`, a `requiredScope` for OAuth authorization, and an `idempotency` field indicating whether the tool mutates state.
@@ -126,6 +127,37 @@ function handleMessage(message: JsonRpcRequest): JsonRpcResponse {
 
 Use these types when building the request/response handling layer of your own MCP server implementation on top of these contracts.
 
+## Choose the smallest tool set
+
+<Tabs>
+  <Tab title="Read-only incident review">
+    Enable `aura_get_mission`, `aura_get_trace`, `aura_get_skill`, and
+    `aura_get_coverage`. Require the answer to cite returned run, trace, skill,
+    and coverage identifiers. Keep every mutation disabled.
+  </Tab>
+  <Tab title="Governed mission creation">
+    Enable `aura_search_capabilities`, `aura_submit_intent`,
+    `aura_create_mission`, and `aura_get_mission`. Require host approval and
+    one stable idempotency key for each mutation.
+  </Tab>
+  <Tab title="Purpose-filtered context">
+    Enable `aura_query_memory` and optionally `aura_list_goals`. Derive the
+    allowed compartment and purpose in trusted application code; never let the
+    model broaden them.
+  </Tab>
+</Tabs>
+
+## Map tool failures correctly
+
+Return invalid model-correctable arguments as a bounded tool error so the host
+can repair them. Stop immediately on missing auth, wrong scope, foreign tenant,
+revocation, or destructive-action denial. For an ambiguous mutation timeout,
+reconcile with exact replay or authoritative mission readback before allowing a
+new call.
+
 <Note>
 Any tool with `idempotency: "required"` — `aura_submit_intent`, `aura_create_mission`, `aura_signal_mission`, and `aura_cancel_mission` — must receive a 16–128 character `idempotencyKey` matching `^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$`. Create one key per logical mutation and reuse it for retries of that same mutation. A UUID v4 is a valid choice, but it is not the only accepted form. Never reuse a key for a different mutation.
 </Note>
+
+See [MCP use cases](/mcp/use-cases) for workflow patterns and
+[security and testing](/mcp/security-and-testing) for the release matrix.

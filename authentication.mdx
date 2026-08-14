@@ -2,6 +2,7 @@
 title: "Authenticate with the Praxa Integration Gateway API"
 sidebarTitle: "Authentication"
 description: "Praxa uses short-lived OAuth Bearer tokens scoped per operation. Learn how to acquire a token, pass it to the SDK or CLI, and handle auth errors."
+keywords: ["Authenticate with the Praxa Integration Gateway API","Praxa developer platform","governed AI agents","Praxa documentation"]
 ---
 
 Praxa uses short-lived OAuth Bearer tokens to authenticate every request to the Integration Gateway. Tokens are delegated, meaning they are issued on behalf of a specific principal within your Praxa deployment, and scoped, meaning each token declares exactly which operations it may be used for. No provider API keys are ever passed to your application — authentication with the gateway is entirely separate from the server-side provider credentials Praxa manages on your behalf.
@@ -20,14 +21,17 @@ Contact your Praxa deployment administrator or refer to your gateway's own docum
 
 Pass your token through the `accessToken` option when constructing a `PraxaClient`. This option accepts a function that returns a string or a `Promise<string>`. Using an async function is strongly preferred in production because it lets your application refresh the token transparently without recreating the client.
 
-**For testing only — inline token function:**
+**Local smoke test — environment-backed token:**
 
 ```ts
 import { PraxaClient } from "@praxa/sdk";
 
+const accessToken = process.env.PRAXA_ACCESS_TOKEN;
+if (!accessToken) throw new Error("PRAXA_ACCESS_TOKEN is required");
+
 const client = new PraxaClient({
   baseUrl: "https://api.your-praxa-gateway.example",
-  accessToken: () => "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...", // not for production
+  accessToken: () => accessToken,
 });
 ```
 

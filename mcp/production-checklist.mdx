@@ -1,0 +1,70 @@
+---
+title: "Praxa MCP production readiness checklist"
+sidebarTitle: "Production checklist"
+description: "Qualify a Praxa MCP integration across contracts, transport, OAuth, approval, replay, isolation, observability, performance, and rollback."
+keywords: ["Praxa MCP production readiness checklist","Praxa MCP","Model Context Protocol","AI agent tools"]
+---
+
+Call a Praxa MCP integration production-ready only after the package, host,
+remote deployment, authorization, negative tests, lifecycle readback, and
+operator recovery paths all pass in the intended environment.
+
+## Contract and compatibility
+
+- [ ] Pin `@praxa/mcp-contracts` and verify release integrity in your lockfile.
+- [ ] Assert 12 exact `aura_*` tool names and `aura-agent-os`.
+- [ ] Negotiate `2025-11-25` or supported `2025-03-26` compatibility.
+- [ ] Preserve and isolate server-issued session IDs; reinitialize after session `404`.
+- [ ] Preserve draft 2020-12 schemas, bounds, required fields, and annotations.
+- [ ] Run contract tests whenever the package or host SDK changes.
+
+## Authentication and authorization
+
+- [ ] Use the canonical deployment-specific `/mcp` URL.
+- [ ] Complete OAuth Protected Resource Metadata discovery and audience binding.
+- [ ] Store tokens in the host's reviewed secure storage.
+- [ ] Request only the scopes needed by enabled tools.
+- [ ] Pass missing, malformed, expired, revoked, wrong-scope, and foreign-tenant tests.
+
+## Tool safety
+
+- [ ] Start with an allowlist of read-only tools.
+- [ ] Require approval for every mutation and destructive call.
+- [ ] Show the exact tool name and bounded arguments in approval UI.
+- [ ] Treat annotations as display and planning hints, not enforcement.
+- [ ] Validate output before adding it to model context.
+- [ ] Defend against prompt injection in tool content.
+
+## Replay and lifecycle
+
+- [ ] Persist one key and exact input per logical mutation.
+- [ ] Prove exact replay returns one logical mutation.
+- [ ] Prove changed input under an old key conflicts.
+- [ ] Reconcile timeouts through exact replay or authoritative mission readback.
+- [ ] Verify mission, trace, event, or receipt independently of model prose.
+
+## Reliability and performance
+
+- [ ] Set connect, request, tool, and total turn deadlines.
+- [ ] Bound concurrent tool calls and output size.
+- [ ] Respect server retry guidance with jitter and an attempt cap.
+- [ ] Test server restart, host reconnect, token refresh, and partial outage.
+- [ ] Track tool latency, error code, retry, approval, and token-refresh rates.
+
+## Privacy and operations
+
+- [ ] Redact authorization headers and sensitive input/output from logs.
+- [ ] Confirm data retention and residency for the host, model provider, and MCP deployment.
+- [ ] Correlate host, MCP, Gateway, mission, and trace identifiers.
+- [ ] Document token revocation, server disable, tool disable, and package rollback.
+- [ ] Run a user-observed workflow and operator recovery drill.
+
+## Release evidence
+
+Keep exact package/version, host/version, deployment environment, test tenant,
+enabled tools, scope list, negative-test results, performance measurements,
+cleanup result, rollback command, and reviewer sign-off. Never attach a live
+token or raw customer payload to the evidence record.
+
+Use the [MCP tutorial](/tutorials/mcp-tools) for implementation and
+[security tests](/mcp/security-and-testing) for the adversarial matrix.

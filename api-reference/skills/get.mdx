@@ -2,13 +2,14 @@
 title: "GET /v8/skills/{skillId} — Retrieve a Skill Definition"
 sidebarTitle: "Get Skill"
 description: "GET /v8/skills/{skillId} returns the definition and metadata for a specific skill available in the Praxa Integration Gateway. Requires skills:read scope."
+keywords: ["Praxa GET /v8/skills/{skillId} — Retrieve a Skill Definition","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The `GET /v8/skills/{skillId}` endpoint returns the versioned definition and current evidence state for a specific skill registered in your Praxa Integration Gateway. Skills are composed multi-step capabilities that an agent can invoke as a single unit — they encapsulate a reusable sequence of tool calls, sub-goals, or capability invocations. Retrieving a skill's definition lets you inspect its contract, understand its expected inputs and outputs, and verify its evidence state before referencing it in a mission goal specification. This endpoint is read-only and safe to call repeatedly.
 
 ## Endpoint
 
-```
+```http
 GET /v8/skills/{skillId}
 ```
 

@@ -1,0 +1,93 @@
+---
+title: "Authenticate Praxa API Playground requests"
+sidebarTitle: "Authentication"
+description: "Create a disposable personal Praxa API key, select least-privilege scopes, test authentication failures, and move requests into a trusted backend."
+keywords: ["Authenticate Praxa API Playground requests","Praxa API Playground","Praxa API examples","API authentication"]
+---
+
+The Praxa API Playground uses a personal workspace API key for the public
+`https://api.praxa.io/v1` endpoints. Create a disposable key for testing,
+select only the scopes required by the operation, and revoke it when the test
+ends. Integration Gateway OAuth tokens and provider credentials are different
+authorities and do not work as substitutes.
+
+## Choose the right credential
+
+| Surface | Credential | Where it belongs | Never place it in |
+|---|---|---|---|
+| Execution Fabric | Personal workspace key beginning with `praxa_sk_` | Secret manager or trusted application backend | Browser bundle, mobile app, URL, analytics, support ticket |
+| Hosted memory candidates | Personal workspace key with `memory:read` or `memory:write` | Secret manager or trusted application backend | Organization key, provider client, frontend application |
+| Integration Gateway `/v8` and remote MCP | Deployment-issued delegated OAuth token | Trusted host or server runtime for that deployment | Execution Fabric request, source repository, persistent logs |
+| Memory federation SDK adapters | Provider client created by your backend | Backend memory adapter | Praxa API request or browser bundle |
+
+<Warning>
+  The hosted playground is a debugging surface, not a production secret store.
+  Use a disposable key and synthetic data. Rotate the key immediately if it is
+  pasted into a screenshot, recording, chat, issue, or shared browser profile.
+</Warning>
+
+## Create a least-privilege key
+
+<Steps>
+  <Step title="Open your personal workspace">
+    Sign in to the [Praxa Developer Platform](https://platform.praxa.io/api-keys)
+    and confirm that the selected workspace is **Personal**. Hosted memory
+    scopes are not available to organization keys.
+  </Step>
+  <Step title="Select only the required scopes">
+    Use the operation page's **Required scopes** value. Webhook create, update,
+    delete, and replay currently require both `runs:read` and `runs:write` at
+    the backend boundary.
+  </Step>
+  <Step title="Copy the key once">
+    Store it in a local environment variable for the test. Do not commit an
+    `.env` file or print the key.
+  </Step>
+  <Step title="Send a synthetic request">
+    Use the interactive operation or one of its cURL, JavaScript, or Python
+    examples. Do not include production customer content.
+  </Step>
+  <Step title="Revoke and verify revocation">
+    Revoke the disposable key in the platform, then repeat one safe read and
+    require `401 authentication_failed`.
+  </Step>
+</Steps>
+
+~~~bash Create a local test variable
+read -s "PRAXA_API_KEY?Disposable Praxa key: "
+export PRAXA_API_KEY
+printf '\n'
+~~~
+
+## Test the authentication boundary
+
+Run these requests before a positive canary:
+
+1. Omit `Authorization` and require `401`.
+2. Send `Authorization: Bearer malformed` and require `401`.
+3. Use a valid key without the operation's scope and require a fail-closed response.
+4. Revoke a disposable key and require the next request to fail.
+5. Try a foreign resource identifier and require no cross-tenant disclosure.
+
+Do not distinguish “resource absent” from “resource belongs to another tenant”
+in customer-facing error copy unless the API contract explicitly does so.
+
+## Move from playground to production
+
+Your browser or mobile application should call an authenticated endpoint in
+your own backend. That backend derives the user and tenant, validates a bounded
+request, owns the Praxa key, generates or retrieves a stable idempotency key,
+and returns a customer-safe projection.
+
+~~~mermaid
+flowchart LR
+  UI["Browser or mobile UI"] -->|"application session"| Backend["Trusted application backend"]
+  Backend -->|"personal Praxa key"| API["api.praxa.io/v1"]
+  API --> Receipt["Run, event, usage, webhook, or memory receipt"]
+  Receipt --> Backend
+  Backend -->|"bounded projection"| UI
+~~~
+
+Continue with [failure handling](/api-playground/errors), the
+[coverage matrix](/api-playground/coverage-and-testing), and the
+[framework tutorials](/tutorials/framework-matrix).

@@ -2,13 +2,14 @@
 title: "GET /v8/missions/{runId} — Retrieve Mission Status"
 sidebarTitle: "Get Mission"
 description: "GET /v8/missions/{runId} fetches the current status and step history of a Praxa mission by its run ID. Requires missions:read scope."
+keywords: ["Praxa GET /v8/missions/{runId} — Retrieve Mission Status","Praxa API reference","Praxa Integration Gateway","OAuth API"]
 ---
 
 The `GET /v8/missions/{runId}` endpoint returns an authoritative projection of a mission at the moment you call it. You get the mission's current lifecycle status, the full ordered list of steps recorded so far, and a sequence number you can use to detect concurrent updates. This endpoint is safe to call repeatedly — it is read-only and idempotent. If you need real-time updates as the mission progresses, combine polling with the [Mission Events stream](/api-reference/missions/events) instead.
 
 ## Endpoint
 
-```
+```http
 GET /v8/missions/{runId}
 ```
 

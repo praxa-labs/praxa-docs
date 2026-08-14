@@ -2,6 +2,7 @@
 title: "Integrate an MCP host"
 sidebarTitle: "Host integration"
 description: "Register Praxa MCP contracts in an agent host while preserving wire names, annotations, JSON Schema, OAuth scopes, and runtime authority."
+keywords: ["Praxa Integrate an MCP host","Praxa MCP","Model Context Protocol","AI agent tools"]
 ---
 
 ~~~mermaid
@@ -58,3 +59,27 @@ for (const tool of PRAXA_MCP_TOOLS) {
 
 Do not rename the <code>aura_*</code> tool identifiers. They are stable wire
 values even when the host displays Praxa branding.
+
+## Preserve the executor boundary
+
+The registration callback should be the only layer that translates an MCP
+tool call into a Gateway request. It must:
+
+1. validate the tool input against the published schema;
+2. interpolate only the declared `pathArgument`;
+3. remove the path field from the JSON body when the route expects it in the URL;
+4. attach a short-lived delegated token with the exact `requiredScope`;
+5. preserve one idempotency key for an exact mutation replay;
+6. map bounded Gateway problems to `isError: true` tool results;
+7. return a redacted structured result that the host can verify.
+
+Never accept tenant, token, provider credential, or route override values from
+model-generated input.
+
+## Test the adapter itself
+
+Use a fake executor to assert all 12 registrations, exact names, annotations,
+schema identity, path interpolation, body projection, idempotency handling, and
+error mapping. Then run one read-only authenticated canary against the intended
+deployment. See [host-specific setup](/mcp/host-guides) and
+[MCP troubleshooting](/mcp/troubleshooting).

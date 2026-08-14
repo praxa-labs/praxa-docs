@@ -1,7 +1,8 @@
 ---
 title: "Export one subject's candidate and deletion history"
 sidebarTitle: "Export one subject's candidate and deletion history"
-description: "Requires a personal workspace key with memory:read. Returns NDJSON. Continue with X-Praxa-Next-Cursor when the response includes it."
+description: "Export one subject's Praxa memory candidates and content-free deletion history as cursor-paged NDJSON."
+keywords: ["Praxa Export one subject's candidate and deletion history","Praxa API Playground","Praxa API examples","API authentication"]
 api: "GET /v1/memory/export"
 authMethod: "bearer"
 playground: "interactive"
@@ -9,13 +10,17 @@ playground: "interactive"
 
 {/* Generated from the checked OpenAPI source. Run npm run docs:generate after changing the contract. */}
 
-Requires a personal workspace key with memory:read. Returns NDJSON. Continue with X-Praxa-Next-Cursor when the response includes it.
+Export one subject's Praxa memory candidates and content-free deletion history as cursor-paged NDJSON.
 
 <Info>
   **Availability:** Qualification preview. **Required scope:** `memory:read`.
 </Info>
 
-Use a disposable personal workspace key and verify the returned resource or receipt before treating the operation as complete.
+## Authenticate safely
+
+Create a disposable **personal workspace** API key with exactly `memory:read`. Send it as `Authorization: Bearer $PRAXA_API_KEY`. A Gateway OAuth token, Supabase JWT, provider credential, or organization memory key is not interchangeable with this key.
+
+The hosted playground sends the credential from your browser session to the documented API through the configured playground proxy. Use test data, never share the key, and revoke it when the check ends.
 
 ## Request fields
 
@@ -31,25 +36,92 @@ Use a disposable personal workspace key and verify the returned resource or rece
   cursor query parameter.
 </ParamField>
 
-## Successful response
+## Runnable request examples
 
-**200** — Newline-delimited candidate and content-free deletion events.
-
-<RequestExample>
+<CodeGroup>
 ~~~bash cURL
 curl --fail-with-body -X GET 'https://api.praxa.io/v1/memory/export?subject=customer-42' \
   -H "Authorization: Bearer $PRAXA_API_KEY"
 ~~~
-</RequestExample>
+~~~javascript Node.js
+const response = await fetch("https://api.praxa.io/v1/memory/export?subject=customer-42", {
+  "method": "GET",
+  "headers": {
+    "Authorization": `Bearer ${process.env.PRAXA_API_KEY}`
+  }
+});
+const text = await response.text();
+if (!response.ok) throw new Error(`${response.status}: ${text}`);
+console.log(text ? JSON.parse(text) : { status: response.status });
+~~~
+~~~python Python
+import json
+import os
+from urllib import error, request
+
+req = request.Request(
+    "https://api.praxa.io/v1/memory/export?subject=customer-42",
+    method="GET",
+    headers={
+      "Authorization": f"Bearer {os.environ['PRAXA_API_KEY']}"
+    },
+)
+try:
+    with request.urlopen(req, timeout=30) as response:
+        text = response.read().decode()
+        print(json.loads(text) if text else {"status": response.status})
+except error.HTTPError as exc:
+    raise RuntimeError(f"{exc.code}: {exc.read().decode()}") from exc
+~~~
+</CodeGroup>
+
+## What success means
+
+A `200` response streams one JSON object per line; `X-Praxa-Next-Cursor` indicates another page.
+
+## Successful response
+
+**200** — Newline-delimited candidate and content-free deletion events.
 
 <ResponseExample>
 ~~~jsonl 200
-{"type":"candidate","data":"value-demo-0001"}
+{"type":"candidate","record":{"id":"018f0000-0000-7000-8000-000000000002","subject":"customer-42"}}
+{"type":"deletion","receipt":{"recordId":"018f0000-0000-7000-8000-000000000002","erasedAt":"2026-08-13T12:05:00.000Z"}}
 ~~~
 </ResponseExample>
 
-## Verify and recover
+## Handle failures
+
+| Response | Meaning | Safe action |
+|---|---|---|
+| `400 invalid_request` | The method, path, headers, query, or body failed strict validation. | Correct the request; do not retry unchanged input. |
+| `401 authentication_failed` | The bearer key is missing, malformed, expired, or revoked. | Stop and replace the key through the authenticated console. |
+| `403 authorization_failed` | The authenticated key lacks scope or tenant authority. | Request only the missing least-privilege scope; never substitute another tenant ID. |
+| `429 rate_limited` | The principal exceeded a bounded rate. | Honor `retryAfterMs` or `Retry-After`, add jitter, and cap attempts. |
+| retryable `5xx` | The server could not confirm a final response. | Reconcile reads or replay the exact keyed mutation before creating new work. |
+
+~~~json Example problem
+{
+  "type": "https://docs.praxa.io/problems/authorization-failed",
+  "title": "Authorization failed",
+  "status": 403,
+  "code": "authorization_failed",
+  "detail": "The API key does not grant the required scope.",
+  "retryable": false
+}
+~~~
+
+## Verify the result
+
+1. Parse every non-empty line independently.
+2. Use the cursor exactly as returned.
+3. Require deletion entries to contain no erased content.
+
+## Retry, cleanup, and production use
 
 - Treat `401`, `403`, and `409` as authority or state signals, not generic retry prompts.
 - For `429` or retryable 5xx responses, follow server retry guidance and keep a bounded attempt budget.
-- Revoke the disposable key and remove test data after validation.
+- Move the request into a trusted application backend before production; never ship the Praxa key in browser or mobile code.
+- Revoke the disposable key, disable test webhooks, and erase disposable candidate data after validation.
+
+Continue with [API authentication](/api-playground/authentication), the [failure and retry guide](/api-playground/errors), and the [end-to-end coverage matrix](/api-playground/coverage-and-testing).
