@@ -1,0 +1,254 @@
+---
+title: "Run and verify a durable task"
+sidebarTitle: "Durable tasks"
+description: "Submit a Praxa Execution Fabric task, read its run, consume lifecycle events, and verify the result from multiple frameworks."
+---
+
+This tutorial uses the deployed Execution Fabric v1 task contract at
+`https://api.praxa.io`. It is a production partner preview for admitted
+personal tenants. Organization execution and request-level agent, tool,
+context, policy, and delivery overrides are not accepted.
+
+## Prerequisites
+
+- A personal workspace API key created in the [Developer Platform](https://platform.praxa.io/api-keys).
+- `execute:write` to submit a task.
+- `runs:read` to read or stream the run.
+- `runs:write` only if you will test cancellation.
+- A server runtime. Never expose the key in browser code.
+
+```bash
+export PRAXA_API_KEY="praxa_sk_<64-lowercase-hex-characters>"
+```
+
+## 1. Submit a task
+
+<Tabs>
+  <Tab title="cURL">
+    ```bash
+    export IDEMPOTENCY_KEY="tutorial-task-$(date +%s)"
+
+    curl --fail-with-body https://api.praxa.io/v1/execute \
+      -H "Authorization: Bearer $PRAXA_API_KEY" \
+      -H "Content-Type: application/json" \
+      -H "X-AI-Platform-Version: v1" \
+      -H "Idempotency-Key: $IDEMPOTENCY_KEY" \
+      -d "{
+        \"apiVersion\": \"v1\",
+        \"requestId\": \"$IDEMPOTENCY_KEY\",
+        \"mode\": \"task\",
+        \"task\": { \"input\": \"Summarize the incident and propose the next safe action.\" },
+        \"idempotencyKey\": \"$IDEMPOTENCY_KEY\"
+      }"
+    ```
+  </Tab>
+  <Tab title="JavaScript">
+    ```js durable-task.mjs
+    const idempotencyKey = `tutorial-task-${Date.now()}`;
+
+    const response = await fetch("https://api.praxa.io/v1/execute", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.PRAXA_API_KEY}`,
+        "content-type": "application/json",
+        "x-ai-platform-version": "v1",
+        "idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        apiVersion: "v1",
+        requestId: idempotencyKey,
+        mode: "task",
+        task: {
+          input: "Summarize the incident and propose the next safe action.",
+        },
+        idempotencyKey,
+      }),
+    });
+
+    if (!response.ok) throw new Error(await response.text());
+    const run = await response.json();
+    console.log(run.run_id, run.status, run.links.self);
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python durable_task.py
+    import os
+    import time
+    import requests
+
+    key = f"tutorial-task-{int(time.time())}"
+    response = requests.post(
+        "https://api.praxa.io/v1/execute",
+        headers={
+            "Authorization": f"Bearer {os.environ['PRAXA_API_KEY']}",
+            "Content-Type": "application/json",
+            "X-AI-Platform-Version": "v1",
+            "Idempotency-Key": key,
+        },
+        json={
+            "apiVersion": "v1",
+            "requestId": key,
+            "mode": "task",
+            "task": {
+                "input": "Summarize the incident and propose the next safe action."
+            },
+            "idempotencyKey": key,
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    run = response.json()
+    print(run["run_id"], run["status"], run["links"]["self"])
+    ```
+  </Tab>
+</Tabs>
+
+A successful request returns `202` with a `RunResource`. The status will be one
+of `queued`, `running`, `awaiting_approval`, `completed`, `failed`, or
+`cancelled`.
+
+## 2. Read until terminal
+
+```js
+const terminal = new Set(["completed", "failed", "cancelled"]);
+
+while (!terminal.has(run.status)) {
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+  const response = await fetch(
+    `https://api.praxa.io/v1/runs/${encodeURIComponent(run.run_id)}`,
+    { headers: { authorization: `Bearer ${process.env.PRAXA_API_KEY}` } },
+  );
+  if (!response.ok) throw new Error(await response.text());
+  Object.assign(run, await response.json());
+  console.log(run.status);
+}
+
+if (run.failure?.code === "run_outcome_unknown") {
+  throw new Error("Reconcile the external system before retrying this work");
+}
+```
+
+Do not automatically resubmit a run whose outcome is unknown. A committing
+action may have happened even though Praxa could not verify the final result.
+
+## 3. Stream instead of polling
+
+```bash
+curl --no-buffer \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Accept: text/event-stream" \
+  "https://api.praxa.io/v1/runs/$RUN_ID/events"
+```
+
+Persist the numeric event `id`. Reconnect with `Last-Event-ID` and require
+strictly increasing sequences. A terminal event closes the stream.
+
+## 4. Integrate a framework safely
+
+Have the client create one application request ID when the user starts the
+logical action, persist it until the request settles, and resend that same ID
+after a timeout. The backend should combine it with the authenticated user
+identity to derive a bounded Praxa idempotency key.
+
+<Tabs>
+  <Tab title="Next.js">
+    Put the task call in a Route Handler. The browser sends only your
+    application input to `/api/tasks`; the Praxa key stays on the server.
+
+    ```ts app/api/tasks/route.ts
+    import { NextResponse } from "next/server";
+
+    export async function POST(request: Request) {
+      const session = await requireSession();
+      const { input, requestId } = await request.json();
+      if (
+        typeof input !== "string" ||
+        input.length < 1 ||
+        input.length > 16_000 ||
+        typeof requestId !== "string"
+      ) {
+        return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+      }
+      const idempotencyKey = await idempotencyKeyFor(session.user.id, requestId);
+      const response = await fetch("https://api.praxa.io/v1/execute", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${process.env.PRAXA_API_KEY}`,
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          apiVersion: "v1",
+          requestId: idempotencyKey,
+          mode: "task",
+          task: { input },
+          idempotencyKey,
+        }),
+      });
+      return new NextResponse(response.body, {
+        status: response.status,
+        headers: { "content-type": response.headers.get("content-type") ?? "application/json" },
+      });
+    }
+    ```
+  </Tab>
+  <Tab title="Cloudflare Worker">
+    Store `PRAXA_API_KEY` as a Worker secret and forward only a validated task
+    input.
+
+    ```ts
+    export default {
+      async fetch(request: Request, env: { PRAXA_API_KEY: string }) {
+        if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+      const principal = await authenticateApplicationRequest(request, env);
+      if (!principal) return new Response("Unauthorized", { status: 401 });
+      const { input, requestId } = await request.json<{
+        input: string;
+        requestId: string;
+      }>();
+      if (!input || input.length > 16_000 || !requestId) {
+        return new Response("Invalid input", { status: 400 });
+      }
+      const key = await idempotencyKeyFor(principal.id, requestId);
+        return fetch("https://api.praxa.io/v1/execute", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${env.PRAXA_API_KEY}`,
+            "content-type": "application/json",
+            "idempotency-key": key,
+          },
+          body: JSON.stringify({
+            apiVersion: "v1",
+            requestId: key,
+            mode: "task",
+            task: { input },
+            idempotencyKey: key,
+          }),
+        });
+      },
+    };
+    ```
+  </Tab>
+</Tabs>
+
+`requireSession`, `authenticateApplicationRequest`, and `idempotencyKeyFor`
+represent your application-owned auth and deterministic key helpers. They must
+fail before the Praxa request if the user, input, or request ID is invalid.
+
+## 5. Verify end to end
+
+Run these checks with a disposable task and least-privilege keys:
+
+1. Submit once and require `202` plus a UUID `run_id`.
+2. Replay the exact body with the same idempotency key and require the same run.
+3. Change the body under that key and require `409`.
+4. Read the run with `runs:read` and require the same tenant-owned run ID.
+5. Attempt the read with a key that lacks `runs:read` and require a fail-closed response.
+6. Consume events until a terminal event or an explicitly documented timeout.
+7. If testing cancellation, send exactly `{}` and continue reading until the run actually becomes terminal.
+
+<Note>
+  A passing submission test proves admission only. Your end-to-end assertion
+  must observe a terminal run or an explicit non-terminal state that your
+  product knows how to handle.
+</Note>

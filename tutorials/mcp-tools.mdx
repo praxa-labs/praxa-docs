@@ -1,0 +1,170 @@
+---
+title: "Add Praxa tools to an agent"
+sidebarTitle: "MCP tools"
+description: "Register the published Praxa MCP contracts in Vercel AI SDK, OpenAI, or another MCP-compatible host and verify least-privilege execution."
+---
+
+Praxa publishes two complementary packages:
+
+- `@praxa/mcp-contracts` contains 12 protocol-only tool definitions.
+- `@praxa/sdk` contains `createPraxaAgentTools()`, which binds the same
+  operations to a `PraxaClient`.
+
+Both packages are version `0.3.0`. They contain no provider credential or
+server-side action authority.
+
+## 1. Install and create the client
+
+```bash
+npm install @praxa/sdk@0.3.0 @praxa/mcp-contracts@0.3.0
+```
+
+```ts
+import { createPraxaAgentTools, PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const definitions = createPraxaAgentTools(client);
+```
+
+Keep the client and token on a trusted server.
+
+## 2. Connect an agent framework
+
+<Tabs>
+  <Tab title="Vercel AI SDK">
+    The AI SDK accepts raw JSON Schema through `jsonSchema()`.
+
+    ```ts
+    import { jsonSchema, tool, ToolLoopAgent } from "ai";
+
+    const tools = Object.fromEntries(
+      definitions.map((definition) => [
+        definition.name,
+        tool({
+          description: definition.description,
+          inputSchema: jsonSchema(definition.inputSchema),
+          execute: definition.execute,
+          needsApproval: !definition.readOnly,
+        }),
+      ]),
+    );
+
+    const agent = new ToolLoopAgent({ model, tools });
+    const result = await agent.generate({ prompt: "Prepare the weekly review" });
+    console.log(result.text);
+    ```
+
+    Framework approval is defense in depth. Praxa still performs server-side
+    scope, tenant, policy, purpose, and revocation checks.
+  </Tab>
+  <Tab title="OpenAI remote MCP">
+    Use the deployment's `/mcp` endpoint when your OpenAI runtime supports
+    remote MCP. Keep approval enabled for remote calls.
+
+    ```ts
+    const response = await openai.responses.create({
+      model: "your-reviewed-model",
+      input: "Prepare the weekly review",
+      tools: [{
+        type: "mcp",
+        server_label: "praxa",
+        server_url: `${process.env.PRAXA_BASE_URL}/mcp`,
+        authorization: process.env.PRAXA_ACCESS_TOKEN,
+        require_approval: "always",
+      }],
+    });
+    ```
+  </Tab>
+  <Tab title="Framework-neutral host">
+    MCP libraries differ in how they accept raw JSON Schema. Adapt the schema,
+    but preserve the exported name, description, and annotations.
+
+    ```ts
+    import { PRAXA_MCP_TOOLS } from "@praxa/mcp-contracts";
+
+    for (const definition of PRAXA_MCP_TOOLS) {
+      host.registerJsonSchemaTool({
+        name: definition.name,
+        description: definition.description,
+        inputSchema: adaptJsonSchema(definition.inputSchema),
+        annotations: definition.annotations,
+      }, (args) => dispatchToPraxaClient(definition.operationId, args));
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## 3. Preserve the wire identifiers
+
+The packages use Praxa-branded exports, but compatibility wire values remain
+Aura-named:
+
+```ts
+import {
+  MCP_PROTOCOL_VERSION,
+  MCP_LEGACY_PROTOCOL_VERSION,
+  MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
+  PRAXA_MCP_TOOLS,
+} from "@praxa/mcp-contracts";
+
+console.log(MCP_PROTOCOL_VERSION);        // 2025-11-25
+console.log(MCP_LEGACY_PROTOCOL_VERSION); // 2025-03-26
+console.log(MCP_SERVER_NAME);             // aura-agent-os
+console.log(MCP_SERVER_VERSION);          // 0.3.0
+console.log(PRAXA_MCP_TOOLS[0].name);      // aura_submit_intent
+```
+
+Do not rename `aura_*` tools on the wire. A display label in your own UI may use
+Praxa branding, but discovery and invocation must use the exported value.
+
+## 4. Start with read-only tools
+
+```ts
+const readOnlyDefinitions = definitions.filter(
+  (definition) => definition.readOnly,
+);
+```
+
+Give the OAuth token only the corresponding read scopes. Add mutation tools
+after your application has an explicit approval and stable idempotency-key
+policy.
+
+## 5. Verify the integration
+
+```ts
+import { strict as assert } from "node:assert";
+import {
+  MCP_PROTOCOL_VERSION,
+  MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
+  PRAXA_MCP_TOOLS,
+} from "@praxa/mcp-contracts";
+
+assert.equal(PRAXA_MCP_TOOLS.length, 12);
+assert.equal(MCP_PROTOCOL_VERSION, "2025-11-25");
+assert.equal(MCP_SERVER_NAME, "aura-agent-os");
+assert.equal(MCP_SERVER_VERSION, "0.3.0");
+assert.ok(PRAXA_MCP_TOOLS.every((tool) => tool.name.startsWith("aura_")));
+assert.ok(PRAXA_MCP_TOOLS.every((tool) => tool.annotations));
+```
+
+Then run a disposable deployment canary:
+
+1. List tools and require all expected exported wire names.
+2. Invoke a safe read with the matching scope.
+3. Invoke that read without its scope and require `403`.
+4. Invoke a keyed mutation twice with the same body and require one logical mutation.
+5. Change the body while reusing the key and require a conflict.
+6. Revoke the token and require subsequent tool calls to fail closed.
+7. Confirm the framework never receives or logs a provider credential.
+
+<Note>
+  Import and schema tests prove the package. The disposable canary proves your
+  framework adapter, OAuth issuance, Gateway deployment, and server-side policy
+  boundary together.
+</Note>

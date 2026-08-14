@@ -12,7 +12,7 @@ credentials, copying a database, or changing which system is authoritative.
   **Current status:** the `@praxa/sdk/memory` adapters and CLI setup commands are published in
   `@praxa/sdk@0.3.0` and `@praxa/cli@0.3.0`. The hosted
   `/v1/memory/*` candidate plane is deployed from Praxa AI revision
-  `5cb3d80d92c4783120175aa8da39d896e60536a5` and its additive migration is proven live. Every
+  `8bc8705522462c41105917f4f8f97e6f4b69f1c1` and its additive migration is proven live. Every
   route fails closed at the unauthenticated gateway boundary, but authenticated tenant, scope,
   idempotency, and isolation canaries remain pending.
   The Developer Platform has no provider credential vault or connect, sync, import, mirror, or
@@ -66,6 +66,10 @@ Praxa personal memory
 4. Keep your existing provider authoritative while comparing source-labelled retrieval.
 5. Do not plan import, mirror, or cutover until the [candidate API](/memory-federation/api) passes
    its authenticated qualification and the required management authority exists.
+
+For runnable provider examples, continue with [Federate existing
+memory](/tutorials/memory-federation). To evaluate the separate hosted candidate
+plane, use [Test hosted memory candidates](/tutorials/hosted-memory-candidates).
 
 <Note>
   The signed-in Developer Platform page at `https://platform.praxa.io/memory` is a read-only setup

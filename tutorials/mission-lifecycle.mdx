@@ -1,0 +1,184 @@
+---
+title: "Run a governed mission lifecycle"
+sidebarTitle: "Mission lifecycle"
+description: "Use @praxa/sdk to submit intent, create a budgeted mission, stream events, send signals, cancel safely, and test a deployment-specific Integration Gateway."
+---
+
+This tutorial targets the versioned Integration Gateway in `@praxa/sdk@0.3.0`.
+It does not target `api.praxa.io/v1`. You need the HTTPS origin and short-lived
+OAuth issuance flow from your Praxa deployment operator.
+
+## Prerequisites
+
+```bash
+npm install @praxa/sdk@0.3.0
+export PRAXA_BASE_URL="https://your-gateway.example"
+export PRAXA_ACCESS_TOKEN="<short-lived-delegated-token>"
+```
+
+Request only the scopes you use. Creating, signaling, or cancelling a mission
+requires `missions:write`; reading or streaming it requires `missions:read`.
+
+## 1. Create the client
+
+```ts
+import { PraxaClient } from "@praxa/sdk";
+
+const client = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: async () => refreshPraxaTokenBeforeExpiry(),
+  maximumAttempts: 3,
+  retryBaseDelayMs: 100,
+});
+```
+
+Use a token function in production so each request can obtain a current token.
+The SDK retries safe reads and idempotency-keyed mutations only.
+
+## 2. Choose intent or mission intake
+
+<Tabs>
+  <Tab title="Natural-language intent">
+    Use `submitIntent` when the deployment owns deterministic compilation.
+
+    ```ts
+    const idempotencyKey = "weekly-review-2026-08-13";
+    const submission = await client.submitIntent(
+      "Prepare the weekly review",
+      idempotencyKey,
+    );
+
+    console.log(submission.submissionId, submission.disposition);
+    ```
+
+    Acceptance records intent. It does not start or prove a provider action.
+  </Tab>
+  <Tab title="Canonical goal spec">
+    Use `createMission` when your application already owns the accepted goal
+    specification and resource budget.
+
+    ```ts
+    const mission = await client.createMission(
+      {
+        goalSpec: { task: "Prepare the weekly review" },
+        resourceBudget: {
+          maximumSteps: 12,
+          maximumToolCalls: 8,
+          maximumElapsedMs: 120_000,
+          maximumParallelism: 2,
+        },
+      },
+      "weekly-review-2026-08-13",
+    );
+
+    console.log(mission.runId, mission.status);
+    ```
+  </Tab>
+</Tabs>
+
+Persist the idempotency key before the first request. Reuse it for retries of
+that exact logical mutation; generate a new key for different work.
+
+## 3. Consume resumable events
+
+```ts
+let lastEventId: string | undefined;
+
+for await (const event of client.missionEvents(mission.runId, { lastEventId })) {
+  lastEventId = event.id;
+  await saveCursor(mission.runId, event.id);
+  await projectEvent(event);
+}
+```
+
+On reconnect, load the saved cursor and pass it as `lastEventId`. Do not assume
+that receiving one event proves the mission completed.
+
+## 4. Signal or cancel deliberately
+
+```ts
+await client.signalMission(
+  mission.runId,
+  "review_ready",
+  { reviewer: "operations" },
+  "weekly-review-signal-2026-08-13",
+);
+
+await client.cancelMission(
+  mission.runId,
+  "Operator requested cancellation",
+  "weekly-review-cancel-2026-08-13",
+);
+```
+
+Cancellation is a durable request, not proof that an already committed effect
+was rolled back.
+
+## 5. Use the client from a framework
+
+<Tabs>
+  <Tab title="Next.js server action">
+    ```ts
+    "use server";
+
+    export async function createReviewMission(requestId: string) {
+      const session = await requireSession();
+      const idempotencyKey = await idempotencyKeyFor(session.user.id, requestId);
+      return client.createMission(
+        {
+          goalSpec: { task: "Prepare the weekly review" },
+          resourceBudget: {
+            maximumSteps: 12,
+            maximumToolCalls: 8,
+            maximumElapsedMs: 120_000,
+            maximumParallelism: 2,
+          },
+        },
+        idempotencyKey,
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Express">
+    ```ts
+    app.post("/missions", async (request, response, next) => {
+      try {
+        const idempotencyKey = request.get("Idempotency-Key");
+        if (!idempotencyKey) {
+          return response.status(400).json({ error: "Idempotency-Key is required" });
+        }
+        const missionInput = validateMissionInput(request.body);
+        const mission = await client.createMission(
+          missionInput,
+          idempotencyKey,
+        );
+        response.status(202).json(mission);
+      } catch (error) {
+        next(error);
+      }
+    });
+    ```
+  </Tab>
+</Tabs>
+
+Keep OAuth refresh and `PraxaClient` construction in trusted server code.
+Persist the application request ID before the first attempt; do not generate a
+new value inside a retrying server action. `validateMissionInput` and
+`idempotencyKeyFor` are application-owned fail-closed validation helpers.
+
+## 6. Verify end to end
+
+1. Require the exact Gateway origin, contract version, and token audience for your deployment.
+2. Create a token with `missions:write` and a second token with `missions:read` only.
+3. Create a mission and require a returned `runId`.
+4. Replay the exact keyed request and require the same durable mission.
+5. Stream at least one event, disconnect, reconnect with `Last-Event-ID`, and require no duplicate sequence.
+6. Read the mission with the read token and require the same run.
+7. Attempt a mutation with the read-only token and require `403`.
+8. Revoke a disposable token and require subsequent requests to fail closed.
+
+<Warning>
+  The public npm package proves client behavior. A successful end-to-end test
+  additionally requires your deployment's OAuth authority, Gateway, private
+  policy plane, and runtime to be configured and reachable.
+</Warning>

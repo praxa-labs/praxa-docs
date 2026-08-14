@@ -1,0 +1,290 @@
+---
+title: "Federate and test existing memory"
+sidebarTitle: "Memory federation"
+description: "Connect Mem0, LangGraph, Zep, Graphiti, Letta, OpenAI Agents sessions, or a custom store to Praxa and test namespace isolation, provenance, and provider outages."
+---
+
+This tutorial uses the public, dependency-free `@praxa/sdk/memory` entrypoint.
+The SDK is read-only. It receives provider clients your backend already owns,
+and it requires explicit tenant and subject namespace resolution.
+
+## 1. Install the package
+
+```bash
+npm install @praxa/sdk@0.3.0
+```
+
+The supported portable record kinds are `message`, `fact`, `summary`,
+`episode`, `pinned_context`, `document`, `entity`, and `edge`.
+
+## 2. Create a source
+
+<Tabs>
+  <Tab title="Mem0">
+    Mem0 namespace filters must use positive equality with current camel-case
+    keys: `userId`, `agentId`, `appId`, or `runId`.
+
+    ```ts
+    import { createMem0MemorySource } from "@praxa/sdk/memory";
+
+    const mem0Source = createMem0MemorySource({
+      client: mem0,
+      mapNamespace: ({ tenantId, subjectId }) => ({
+        userId: `${tenantId}:${subjectId}`,
+      }),
+      threshold: 0.6,
+      rerank: true,
+    });
+    ```
+  </Tab>
+  <Tab title="LangGraph">
+    Only long-term `BaseStore` items are adapted. Checkpoints are intentionally
+    excluded.
+
+    ```ts
+    import { createLangGraphMemorySource } from "@praxa/sdk/memory";
+
+    const langGraphSource = createLangGraphMemorySource({
+      store,
+      mapNamespace: ({ tenantId, subjectId }) => [
+        tenantId,
+        subjectId,
+        "memory",
+      ],
+      kind: "document",
+    });
+    ```
+  </Tab>
+  <Tab title="Zep">
+    Choose one graph scope. It maps to one portable kind: `edges` to `edge`,
+    `nodes` to `entity`, or `episodes` to `episode`.
+
+    ```ts
+    import { createZepMemorySource } from "@praxa/sdk/memory";
+
+    const zepSource = createZepMemorySource({
+      client: zep,
+      scope: "edges",
+      mapNamespace: ({ tenantId, subjectId }) => ({
+        graphId: `${tenantId}:${subjectId}`,
+      }),
+    });
+    ```
+  </Tab>
+  <Tab title="Graphiti">
+    Graphiti uses an injected transport so your application owns the exact
+    client version and result mapping.
+
+    ```ts
+    import { createGraphitiMemorySource } from "@praxa/sdk/memory";
+
+    const graphitiSource = createGraphitiMemorySource({
+      transport: {
+        async search({ query, namespace, limit, signal }) {
+          return graphitiSearch({ query, groupId: namespace, limit, signal });
+        },
+      },
+      mapNamespace: ({ tenantId, subjectId }) => `${tenantId}:${subjectId}`,
+      retrievalModes: ["graph"],
+      supportsAbort: true,
+    });
+    ```
+
+    Every returned transport record must already contain `sourceRecordId`, a
+    Graphiti-compatible `kind`, and non-empty `text`. Provenance is retained
+    when your transport supplies it.
+  </Tab>
+  <Tab title="Letta">
+    The adapter reads named blocks and recent messages. It does not expose a
+    general archival-memory search API.
+
+    ```ts
+    import { createLettaMemorySource } from "@praxa/sdk/memory";
+
+    const lettaSource = createLettaMemorySource({
+      client: letta,
+      include: "both",
+      mapNamespace: ({ tenantId, subjectId }) => ({
+        agentId: lookupLettaAgent(tenantId, subjectId),
+        blockLabels: ["persona", "human"],
+      }),
+    });
+    ```
+  </Tab>
+  <Tab title="OpenAI Agents">
+    The adapter reads official message items from the session resolved for the
+    subject. It ranks the recent window newest first.
+
+    ```ts
+    import { createOpenAIAgentsSessionSource } from "@praxa/sdk/memory";
+
+    const openaiSource = createOpenAIAgentsSessionSource({
+      sessionForNamespace: ({ tenantId, subjectId }) =>
+        sessions.get(`${tenantId}:${subjectId}`),
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## 3. Combine the sources
+
+```ts
+import { MemoryFederation } from "@praxa/sdk/memory";
+
+const memory = new MemoryFederation({
+  sources: [mem0Source, langGraphSource, zepSource],
+  maxConcurrency: 3,
+  maxSources: 8,
+  maxResultsPerSource: 50,
+  maxTotalResults: 100,
+  defaultTimeoutMs: 5_000,
+});
+
+const result = await memory.recall({
+  query: "What does this customer prefer?",
+  namespace: {
+    tenantId: "acme",
+    subjectId: "customer-42",
+    scope: ["support"],
+  },
+  limit: 10,
+});
+```
+
+Inspect both the aggregate and each source:
+
+```ts
+if (result.status === "failed") {
+  throw new Error(JSON.stringify(result.sources));
+}
+
+for (const source of result.sources) {
+  console.log(source.sourceId, source.status, source.durationMs, source.itemCount);
+}
+
+for (const item of result.items) {
+  console.log(item.kind, item.text, item.matches.map((match) => match.provider));
+}
+```
+
+## 4. Add a custom source
+
+```ts
+import type { MemorySource } from "@praxa/sdk/memory";
+
+const customSource: MemorySource = {
+  id: "customer-profile",
+  provider: "custom",
+  capabilities: {
+    retrievalModes: ["exact"],
+    recordKinds: ["fact"],
+    readOnly: true,
+    sourceLocalScores: true,
+    supportsAbort: true,
+    supportsFilter: false,
+  },
+  async recall({ query, namespace, signal }) {
+    signal.throwIfAborted();
+    const row = await profiles.find(namespace.tenantId, namespace.subjectId, query);
+    return row === null
+      ? []
+      : [{
+          sourceRecordId: row.id,
+          kind: "fact",
+          text: row.text,
+          provenance: {
+            origin: "explicit",
+            confidence: 1,
+            capturedAt: row.updatedAt,
+          },
+        }];
+  },
+};
+```
+
+If a custom source includes `provenance`, provide all required fields. Do not
+send a partial provenance object and invent missing confidence or timestamps.
+
+## 5. Test the federation engine
+
+This Vitest test proves success plus explicit partial degradation without
+calling a real provider:
+
+```ts memory.test.ts
+import { describe, expect, it } from "vitest";
+import {
+  MemoryFederation,
+  MemorySourceUnavailableError,
+  type MemorySource,
+} from "@praxa/sdk/memory";
+
+const capabilities = {
+  retrievalModes: ["exact"],
+  recordKinds: ["fact"],
+  readOnly: true,
+  sourceLocalScores: true,
+  supportsAbort: true,
+  supportsFilter: false,
+} as const;
+
+const profile: MemorySource = {
+  id: "profile",
+  provider: "custom",
+  capabilities,
+  async recall() {
+    return [{
+      sourceRecordId: "preference-1",
+      kind: "fact",
+      text: "Prefers concise answers",
+      provenance: {
+        origin: "explicit",
+        confidence: 1,
+        capturedAt: "2026-08-13T12:00:00.000Z",
+      },
+    }];
+  },
+};
+
+const archive: MemorySource = {
+  id: "archive",
+  provider: "custom",
+  capabilities,
+  async recall() {
+    throw new MemorySourceUnavailableError("Archive is offline");
+  },
+};
+
+describe("memory federation", () => {
+  it("returns partial context without hiding the outage", async () => {
+    const memory = new MemoryFederation({ sources: [profile, archive] });
+    const result = await memory.recall({
+      query: "answer style",
+      namespace: { tenantId: "acme", subjectId: "person-1" },
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.items[0]?.text).toBe("Prefers concise answers");
+    expect(result.sources.map(({ sourceId, status }) => ({ sourceId, status })))
+      .toEqual([
+        { sourceId: "profile", status: "ok" },
+        { sourceId: "archive", status: "unavailable" },
+      ]);
+  });
+});
+```
+
+## 6. Run provider-level canaries
+
+For each real provider, seed data through that provider's normal write API and
+then assert:
+
+1. Subject A retrieves its known record.
+2. Subject B in the same tenant does not retrieve it.
+3. The same subject ID in tenant B does not retrieve it.
+4. Disabling the provider produces the expected source status.
+5. Matching content from two sources retains both source matches.
+6. Contradictory content remains separate.
+7. An abort stops underlying work only when the adapter advertises `supportsAbort: true`.
+
+The SDK test proves federation behavior. Provider canaries prove that your
+namespace mapper, client permissions, and provider data layout are correct.

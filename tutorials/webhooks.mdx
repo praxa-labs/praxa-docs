@@ -1,0 +1,239 @@
+---
+title: "Receive and test signed webhooks"
+sidebarTitle: "Webhooks"
+description: "Create a Praxa webhook endpoint, verify the raw HMAC signature in Next.js, Express, or Cloudflare Workers, and test deduplication and replay."
+---
+
+Execution Fabric webhooks are a production partner preview for admitted
+personal tenants. Delivery is at least once and may arrive out of order. Your
+handler must verify the raw body, persist each `event_id` once, and order events
+within each `run_id` by `sequence`.
+
+## Prerequisites
+
+- A key with both `runs:read` and `runs:write` to create or change an endpoint.
+- A public HTTPS endpoint on the default port. Localhost, IP literals, private
+  networks, embedded credentials, and unsafe redirect targets are rejected.
+- A secret manager for the one-time `signing_secret`.
+
+## 1. Create an endpoint
+
+```bash
+curl --fail-with-body https://api.praxa.io/v1/webhooks \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://events.example.com/webhooks/praxa",
+    "event_types": ["run.completed", "run.failed"],
+    "description": "Production task outcomes"
+  }'
+```
+
+Store the returned `signing_secret` immediately. It is returned only when the
+endpoint is created.
+
+## 2. Verify the raw request
+
+Every delivery includes:
+
+```text
+Praxa-Webhook-Id: <event-id>
+Praxa-Webhook-Timestamp: <unix-seconds>
+Praxa-Webhook-Signature: v1=<64-lowercase-hex-characters>
+```
+
+Praxa signs this exact string with HMAC-SHA-256:
+
+```text
+<event-id>.<timestamp>.<raw-request-body>
+```
+
+Create a shared verifier:
+
+```ts lib/praxa-webhook.ts
+const MAX_AGE_SECONDS = 5 * 60;
+
+function decodeHex(value: string): Uint8Array | null {
+  if (!/^[a-f0-9]{64}$/.test(value)) return null;
+  return Uint8Array.from(value.match(/../g)!, (pair) => Number.parseInt(pair, 16));
+}
+
+export async function verifyPraxaWebhook(input: {
+  rawBody: string;
+  eventId: string | null;
+  timestamp: string | null;
+  signature: string | null;
+  secret: string;
+  nowSeconds?: number;
+}): Promise<boolean> {
+  const { rawBody, eventId, timestamp, signature, secret } = input;
+  if (!eventId || !timestamp || !signature || !secret) return false;
+
+  const seconds = Number(timestamp);
+  const now = input.nowSeconds ?? Math.floor(Date.now() / 1_000);
+  if (!Number.isSafeInteger(seconds) || Math.abs(now - seconds) > MAX_AGE_SECONDS) {
+    return false;
+  }
+
+  const digest = signature.startsWith("v1=")
+    ? decodeHex(signature.slice(3))
+    : null;
+  if (!digest) return false;
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const signed = `${eventId}.${timestamp}.${rawBody}`;
+  return crypto.subtle.verify(
+    "HMAC",
+    key,
+    digest,
+    new TextEncoder().encode(signed),
+  );
+}
+```
+
+## 3. Handle deliveries in your framework
+
+<Tabs>
+  <Tab title="Next.js">
+    ```ts app/api/webhooks/praxa/route.ts
+    import { verifyPraxaWebhook } from "@/lib/praxa-webhook";
+
+    export async function POST(request: Request) {
+      const rawBody = await request.text();
+      const eventId = request.headers.get("Praxa-Webhook-Id");
+      const valid = await verifyPraxaWebhook({
+        rawBody,
+        eventId,
+        timestamp: request.headers.get("Praxa-Webhook-Timestamp"),
+        signature: request.headers.get("Praxa-Webhook-Signature"),
+        secret: process.env.PRAXA_WEBHOOK_SECRET!,
+      });
+      if (!valid) return new Response("Invalid signature", { status: 401 });
+
+      const event = JSON.parse(rawBody);
+      if (event.apiVersion !== "v1" || event.event_id !== eventId) {
+        return new Response("Invalid event", { status: 400 });
+      }
+      await persistOnce(event.event_id, event.run_id, event.sequence, event);
+      return new Response(null, { status: 204 });
+    }
+    ```
+  </Tab>
+  <Tab title="Express">
+    Register a text parser on this route before any JSON parser so `request.body`
+    remains the signed string.
+
+    ```ts
+    app.post(
+      "/webhooks/praxa",
+      express.text({ type: "application/json", limit: "256kb" }),
+      async (request, response) => {
+        const rawBody = request.body;
+        const eventId = request.get("Praxa-Webhook-Id") ?? null;
+        const valid = await verifyPraxaWebhook({
+          rawBody,
+          eventId,
+          timestamp: request.get("Praxa-Webhook-Timestamp") ?? null,
+          signature: request.get("Praxa-Webhook-Signature") ?? null,
+          secret: process.env.PRAXA_WEBHOOK_SECRET!,
+        });
+        if (!valid) return response.status(401).send("Invalid signature");
+
+        const event = JSON.parse(rawBody);
+        await persistOnce(event.event_id, event.run_id, event.sequence, event);
+        return response.status(204).end();
+      },
+    );
+    ```
+  </Tab>
+  <Tab title="Cloudflare Worker">
+    ```ts
+    export default {
+      async fetch(request: Request, env: Env): Promise<Response> {
+        const rawBody = await request.text();
+        const eventId = request.headers.get("Praxa-Webhook-Id");
+        const valid = await verifyPraxaWebhook({
+          rawBody,
+          eventId,
+          timestamp: request.headers.get("Praxa-Webhook-Timestamp"),
+          signature: request.headers.get("Praxa-Webhook-Signature"),
+          secret: env.PRAXA_WEBHOOK_SECRET,
+        });
+        if (!valid) return new Response("Invalid signature", { status: 401 });
+
+        const event = JSON.parse(rawBody);
+        await persistOnce(env.DB, event.event_id, event.run_id, event.sequence, event);
+        return new Response(null, { status: 204 });
+      },
+    };
+    ```
+  </Tab>
+</Tabs>
+
+`persistOnce` must commit a unique `event_id` before returning 2xx. A duplicate
+event should return success without repeating its downstream effect.
+
+## 4. Test the signature locally
+
+```ts
+import { strict as assert } from "node:assert";
+import { verifyPraxaWebhook } from "./lib/praxa-webhook.js";
+
+const secret = "praxa_whsec_test_only";
+const eventId = "event-1";
+const timestamp = "1786651200";
+const rawBody = '{"apiVersion":"v1","event_id":"event-1"}';
+const key = await crypto.subtle.importKey(
+  "raw",
+  new TextEncoder().encode(secret),
+  { name: "HMAC", hash: "SHA-256" },
+  false,
+  ["sign"],
+);
+const bytes = await crypto.subtle.sign(
+  "HMAC",
+  key,
+  new TextEncoder().encode(`${eventId}.${timestamp}.${rawBody}`),
+);
+const signature = `v1=${[...new Uint8Array(bytes)]
+  .map((byte) => byte.toString(16).padStart(2, "0"))
+  .join("")}`;
+
+assert.equal(await verifyPraxaWebhook({
+  rawBody,
+  eventId,
+  timestamp,
+  signature,
+  secret,
+  nowSeconds: Number(timestamp),
+}), true);
+assert.equal(await verifyPraxaWebhook({
+  rawBody: `${rawBody} `,
+  eventId,
+  timestamp,
+  signature,
+  secret,
+  nowSeconds: Number(timestamp),
+}), false);
+```
+
+## 5. Verify production delivery
+
+1. Deploy the HTTPS endpoint and create it in Praxa.
+2. Trigger a disposable task whose event filter matches the endpoint.
+3. Require a valid signature and matching header/body `event_id`.
+4. Require the handler to persist the event before returning `204`.
+5. Send the same signed event twice in a controlled test and require one logical effect.
+6. Send an expired timestamp and a one-byte body change and require `401`.
+7. List deliveries with `GET /v1/webhook-deliveries` and require the expected endpoint and run IDs.
+8. Exercise replay only after correcting a failed endpoint; replay must remain idempotent.
+
+The initial production canary proved one signed raw-body delivery. Retry,
+dead-letter, and replay behavior still require separate qualification in your
+integration, so build for them even if your first delivery succeeds.

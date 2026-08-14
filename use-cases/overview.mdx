@@ -1,0 +1,144 @@
+---
+title: "Praxa use cases"
+sidebarTitle: "Use cases overview"
+description: "Choose the Praxa integration surface for durable tasks, governed missions, MCP tools, observability, webhooks, and federated memory."
+---
+
+Praxa exposes several deliberately separate developer surfaces. Start with the
+job you need to complete, then choose the contract whose authority and release
+status match that job.
+
+<Warning>
+  Do not mix credentials between surfaces. Execution Fabric uses personal
+  workspace API keys at `api.praxa.io`. The Integration Gateway uses
+  deployment-issued, short-lived OAuth tokens. Memory adapters receive clients
+  that your backend owns.
+</Warning>
+
+## Choose by job
+
+| You want to | Example | Use | Availability |
+|---|---|---|---|
+| Start one durable task and receive a run ID | Submit an incident summary for asynchronous processing | [`POST /v1/execute`](/fabric/api/execute) | Production partner preview; personal tenants |
+| Read, stream, or cancel a durable task | Reconnect an operations dashboard after a network interruption | [Runs](/fabric/api/runs) and [events](/fabric/api/events) | Production partner preview |
+| Receive run changes at your own HTTPS endpoint | Deliver `run.completed` to a Next.js or Cloudflare Worker webhook | [Webhooks](/fabric/api/webhooks) | Production partner preview |
+| Read tenant-scoped usage evidence | Show daily requests, tokens, model calls, and billable amount | [Usage](/fabric/api/usage) | Production partner preview |
+| Record natural-language intent for compilation | Ask a deployment to prepare a weekly review without claiming execution | [`PraxaClient.submitIntent`](/sdk/praxaclient#submitintent) | Requires an Integration Gateway deployment |
+| Create and supervise a governed mission | Supply a goal specification, resource budget, signals, and cancellation | [Multi-step workflows](/use-cases/multi-step-workflows) | Requires an Integration Gateway deployment |
+| Discover policy-eligible capabilities | Search for a calendar-read or code-execution capability before creating a mission | [Capability search](/api-reference/capabilities/search) | Requires an Integration Gateway deployment |
+| Add governed tools to an agent framework | Give an OpenAI, Vercel AI SDK, or LangChain agent the 12 Praxa MCP-compatible tools | [MCP integration](/use-cases/mcp-integration) | Public package; runtime calls require a Gateway deployment |
+| Inspect missions and governance evidence | Read mission events, redacted traces, skills, goals, certificates, and coverage | [Monitoring and observability](/use-cases/monitoring-and-observability) | Requires an Integration Gateway deployment |
+| Query an existing memory system without migrating it | Recall preferences from Mem0 and documents from LangGraph in one request | [Memory federation](/use-cases/memory-federation) | Public `@praxa/sdk/memory` package |
+| Recall graph entities and relationships | Retrieve Zep edges or Graphiti facts, entities, episodes, and edges | [Graph memory tutorial](/tutorials/memory-federation#add-a-graph-source) | Public `@praxa/sdk/memory` package |
+| Stage portable memory records in Praxa | Create, lexically query, export, and erase subject-scoped candidates | [Hosted memory API](/memory-federation/api) | Deployed qualification preview; authenticated canaries pending |
+| Evaluate Praxa evidence without treating it as production proof | Reproduce package checks or inspect the Terminal-Bench pilot protocol | [Benchmarks and research](/benchmarks/overview) | Public evidence artifacts |
+
+## Apply the contracts to a product
+
+| Product pattern | Concrete example | Build guide | End-to-end tutorial |
+|---|---|---|---|
+| Product backend | Submit support-incident analysis that survives a browser disconnect | [Agent builders](/fabric/use-cases/agent-builders) | [Durable tasks](/tutorials/durable-tasks) |
+| Coding or desktop handoff | Start a cloud-only migration checklist without implying local repository transfer | [Coding and desktop](/fabric/use-cases/coding-and-desktop) | [Framework backends](/tutorials/framework-backends) |
+| Business review workflow | Summarize an aging-report description before any committing outreach | [Business workflows](/fabric/use-cases/business-workflows) | [Durable tasks](/tutorials/durable-tasks) |
+| Scheduled or queue-driven work | Run one weekly report under a stable business idempotency key | [Task automation](/use-cases/task-automation) | [Mission lifecycle](/tutorials/mission-lifecycle) |
+| Supervised multi-step agent | Create a resource-bounded research mission, signal it, and resume its events | [Multi-step workflows](/use-cases/multi-step-workflows) | [Mission lifecycle](/tutorials/mission-lifecycle) |
+| Agent tool host | Register the 12 stable MCP wire contracts and keep approvals enabled | [MCP integration](/use-cases/mcp-integration) | [MCP tools](/tutorials/mcp-tools) |
+| Existing-memory agent | Merge Mem0 facts, LangGraph documents, and graph edges without a migration | [Memory federation](/use-cases/memory-federation) | [Memory federation](/tutorials/memory-federation) |
+| Operations dashboard | Reconnect SSE, correlate run state and usage, and inspect webhook deliveries | [Monitoring and observability](/use-cases/monitoring-and-observability) | [Observability](/tutorials/observability) |
+| Event-driven backend | Receive signed terminal run events without exposing an API key to a browser | [Webhooks](/fabric/api/webhooks) | [Signed webhooks](/tutorials/webhooks) |
+
+## Durable task automation
+
+Use Execution Fabric when your application needs a narrow, deployed task
+contract with a durable run resource.
+
+```bash
+curl https://api.praxa.io/v1/execute \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: weekly-review-2026-08-13" \
+  -d '{
+    "apiVersion": "v1",
+    "requestId": "weekly-review-2026-08-13",
+    "mode": "task",
+    "task": { "input": "Summarize this week and propose the next safe action." },
+    "idempotencyKey": "weekly-review-2026-08-13"
+  }'
+```
+
+The `202` response confirms admission or exact idempotent replay. It is not
+proof that a downstream effect occurred. Continue with the returned run URL or
+event stream.
+
+## Governed mission orchestration
+
+Use `@praxa/sdk` when your organization operates the versioned Integration
+Gateway and needs mission budgets, signals, resumable events, capability
+discovery, or governance readback.
+
+```ts
+import { PraxaClient } from "@praxa/sdk";
+
+const praxa = new PraxaClient({
+  baseUrl: process.env.PRAXA_BASE_URL!,
+  accessToken: () => process.env.PRAXA_ACCESS_TOKEN!,
+});
+
+const mission = await praxa.createMission(
+  {
+    goalSpec: { task: "Prepare the weekly review" },
+    resourceBudget: {
+      maximumSteps: 12,
+      maximumToolCalls: 8,
+      maximumElapsedMs: 120_000,
+      maximumParallelism: 2,
+    },
+  },
+  "weekly-review-2026-08-13",
+);
+```
+
+## Existing-memory compatibility
+
+Use `@praxa/sdk/memory` when memory already lives in Mem0, LangGraph, Zep,
+Graphiti, Letta, OpenAI Agents sessions, or another system. The federation
+engine is read-only and returns source-level success, timeout, unsupported, and
+failure states.
+
+```ts
+const result = await memory.recall({
+  query: "Which editor does this developer prefer?",
+  namespace: { tenantId: "acme", subjectId: "developer-123" },
+  limit: 10,
+});
+
+if (result.status === "failed") {
+  throw new Error("No memory source completed successfully");
+}
+```
+
+An `ok` result means every selected source succeeded. `partial` means at least
+one source succeeded and at least one did not. `failed` is returned normally
+when none succeeded; provider failures do not become an empty successful
+result.
+
+## Continue with a tutorial
+
+<CardGroup cols={2}>
+  <Card title="Run a durable task" icon="play" href="/tutorials/durable-tasks">
+    Integrate the v1 task contract with cURL, JavaScript, Python, Next.js, or a
+    Cloudflare Worker and verify it end to end.
+  </Card>
+  <Card title="Federate memory" icon="database" href="/tutorials/memory-federation">
+    Connect existing provider clients, preserve tenant boundaries, and test
+    partial degradation and provenance.
+  </Card>
+  <Card title="Use MCP tools" icon="plug" href="/tutorials/mcp-tools">
+    Register the published contracts in an agent host without renaming the
+    stable Aura wire identifiers.
+  </Card>
+  <Card title="Receive webhooks" icon="webhook" href="/tutorials/webhooks">
+    Create a signed endpoint, preserve the raw request body, and test replay
+    handling.
+  </Card>
+</CardGroup>

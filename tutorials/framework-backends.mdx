@@ -1,0 +1,231 @@
+---
+title: "Integrate Praxa from your backend framework"
+sidebarTitle: "Framework backends"
+description: "Keep Praxa credentials on the server while integrating Next.js, Express, Cloudflare Workers, FastAPI, React, Vue, and Svelte applications."
+---
+
+Praxa credentials belong in trusted server code. A browser should call an
+application-specific backend route that authenticates the user, derives the
+workspace, validates input, and then calls Praxa with a server-only credential.
+
+```text
+Browser or mobile client
+        |
+        | authenticated application request
+        v
+Your backend route or Worker
+        |
+        | server-only Praxa credential
+        v
+Praxa API or Integration Gateway
+```
+
+## Shared boundary requirements
+
+Every framework implementation should:
+
+1. Authenticate the application user before accepting work.
+2. Derive the tenant or workspace from the session, not the request body.
+3. Validate and bound user input before forwarding it.
+4. Create one stable idempotency key per logical mutation.
+5. Keep Praxa keys, OAuth tokens, provider clients, and webhook secrets server-only.
+6. Return only customer-safe Praxa projections to the browser.
+7. Rate limit by the authenticated principal and application use case.
+
+## Next.js App Router
+
+```ts app/api/tasks/route.ts
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  const session = await requireSession();
+  const body = await request.json();
+  if (typeof body.input !== "string" || body.input.length < 1 || body.input.length > 16_000) {
+    return NextResponse.json({ error: "Invalid task input" }, { status: 400 });
+  }
+
+  const idempotencyKey = await idempotencyKeyFor(session.user.id, body.requestId);
+  const response = await fetch("https://api.praxa.io/v1/execute", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.PRAXA_API_KEY}`,
+      "content-type": "application/json",
+      "idempotency-key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      apiVersion: "v1",
+      requestId: idempotencyKey,
+      mode: "task",
+      task: { input: body.input },
+      idempotencyKey,
+    }),
+  });
+
+  return new NextResponse(response.body, {
+    status: response.status,
+    headers: {
+      "content-type": response.headers.get("content-type") ?? "application/json",
+      "cache-control": "no-store",
+    },
+  });
+}
+```
+
+Do not prefix the key variable with `NEXT_PUBLIC_`. That would make it eligible
+for the client bundle.
+
+## Express
+
+```ts
+app.post("/api/tasks", requireSession, async (request, response, next) => {
+  try {
+    const input = request.body?.input;
+    if (typeof input !== "string" || input.length < 1 || input.length > 16_000) {
+      return response.status(400).json({ error: "Invalid task input" });
+    }
+
+    const idempotencyKey = await idempotencyKeyFor(
+      request.user.id,
+      request.body.requestId,
+    );
+    const upstream = await fetch("https://api.praxa.io/v1/execute", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.PRAXA_API_KEY}`,
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        apiVersion: "v1",
+        requestId: idempotencyKey,
+        mode: "task",
+        task: { input },
+        idempotencyKey,
+      }),
+    });
+    response.status(upstream.status).send(await upstream.text());
+  } catch (error) {
+    next(error);
+  }
+});
+```
+
+## Cloudflare Workers or Hono
+
+```ts
+type Env = { PRAXA_API_KEY: string };
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const principal = await authenticateApplicationRequest(request, env);
+    if (!principal) return new Response("Unauthorized", { status: 401 });
+
+    const { input, requestId } = await request.json<{
+      input: string;
+      requestId: string;
+    }>();
+    if (!input || input.length > 16_000) {
+      return new Response("Invalid input", { status: 400 });
+    }
+
+    const idempotencyKey = await idempotencyKeyFor(principal.id, requestId);
+    return fetch("https://api.praxa.io/v1/execute", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.PRAXA_API_KEY}`,
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        apiVersion: "v1",
+        requestId: idempotencyKey,
+        mode: "task",
+        task: { input },
+        idempotencyKey,
+      }),
+    });
+  },
+};
+```
+
+Store the key with `wrangler secret put PRAXA_API_KEY`, not in
+`wrangler.jsonc` or source control.
+
+## FastAPI
+
+```python
+import os
+import hashlib
+import httpx
+from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+
+class TaskInput(BaseModel):
+    input: str = Field(min_length=1, max_length=16_000)
+    request_id: str = Field(
+        alias="requestId",
+        min_length=16,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$",
+    )
+
+@app.post("/api/tasks")
+async def create_task(body: TaskInput, user=Depends(require_user)):
+    digest = hashlib.sha256(f"{user.id}\0{body.request_id}".encode()).hexdigest()
+    key = f"task:{digest}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            "https://api.praxa.io/v1/execute",
+            headers={
+                "Authorization": f"Bearer {os.environ['PRAXA_API_KEY']}",
+                "Idempotency-Key": key,
+            },
+            json={
+                "apiVersion": "v1",
+                "requestId": key,
+                "mode": "task",
+                "task": {"input": body.input},
+                "idempotencyKey": key,
+            },
+        )
+    if response.status_code >= 400:
+        raise HTTPException(response.status_code, response.text)
+    return response.json()
+```
+
+The FastAPI example hashes the authenticated user ID with the caller's stable
+application request ID. That makes retries deterministic without leaking user
+identifiers into the upstream key. Every idempotency key must satisfy the Praxa
+identifier grammar.
+
+## React, Vue, and Svelte clients
+
+Frontend frameworks use the same application backend boundary:
+
+```ts
+export async function startTask(input: string) {
+  const response = await fetch("/api/tasks", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ input, requestId: crypto.randomUUID() }),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+```
+
+React, Vue, and Svelte components may call this function. They should never
+call `api.praxa.io` with a server API key or receive provider credentials.
+
+## Verify the framework boundary
+
+1. Search the production client bundle for `praxa_sk_`, webhook secrets, and OAuth tokens; require zero matches.
+2. Call the route without an application session and require `401` before any Praxa request.
+3. Send an over-limit input and require `400` before any Praxa request.
+4. Submit valid input and require a customer-safe run projection.
+5. Retry with the same application request ID and require the same logical run.
+6. Attempt to supply a tenant or workspace ID in the browser body and require it to be ignored or rejected.
+7. Revoke the backend Praxa credential and require the route to return a safe, non-secret error.

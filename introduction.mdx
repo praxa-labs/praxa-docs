@@ -1,10 +1,17 @@
 ---
-title: "What is Praxa? The Credential-Free Mission Platform"
+title: "What is Praxa?"
 sidebarTitle: "Introduction"
-description: "Credential-free agentic mission platform. Learn how Praxa missions work, what the Integration Gateway does, and how provider keys stay out of your code."
+description: "Learn how Praxa separates durable tasks, governed missions, MCP tools, observability, webhooks, and memory federation into explicit developer contracts."
 ---
 
-Praxa is a governed agentic mission platform that lets your application submit AI agent missions through the Praxa Integration Gateway without embedding provider credentials in your code, your environment, or your infrastructure. You describe what you want accomplished and how much resource the mission may consume; Praxa enforces OAuth scopes and consent, then executes the mission entirely server-side using credentials that never leave the gateway. The result is a clean trust boundary between your application logic and the AI execution plane.
+Praxa is a governed agent platform with deliberately separate developer
+surfaces. You can submit a narrow durable task through Execution Fabric,
+operate a budgeted mission through a deployment-specific Integration Gateway,
+register MCP tool contracts, receive signed webhooks, or query an existing
+memory provider without migrating it first.
+
+Each surface has its own credential and authority. See the [complete use-case
+catalog](/use-cases/overview) before choosing an integration.
 
 ## How Praxa Works
 
@@ -17,17 +24,21 @@ You submit the mission through the Praxa Integration Gateway using a short-lived
 
 An accepted mission request is not proof that an external effect has occurred. The gateway records your intent durably and enforces policy independently.
 
-## Key Principles
+## Key principles
 
 **Credential separation.** Gateway mission calls never require provider API keys in your application. The optional `@praxa/sdk/memory` entrypoint exposes read-only adapters for clients your backend already owns; it discovers and stores no credential. The SDK, CLI, and MCP contracts contain no embedded secrets.
 
-**OAuth governance.** Every Praxa API operation requires a specific OAuth scope. Tokens are short-lived, delegated, and scoped to the minimum set of operations your integration needs. A scope grants access to gateway policy evaluation — it does not itself authorize a provider effect.
+**Explicit authentication.** Integration Gateway operations use short-lived,
+delegated OAuth tokens and operation-specific scopes. Execution Fabric uses
+personal-workspace API keys with a separate v1 scope vocabulary. A scope grants
+access to Praxa policy evaluation; it does not by itself prove that an external
+provider effect occurred.
 
 **Idempotency.** Every mutating operation requires a stable idempotency key. If you retry a `createMission` call with the same key, the gateway returns the existing mission rather than creating a duplicate. Safe read operations are also retried automatically by the SDK.
 
 **Resource budgets.** Missions cannot exceed the `resourceBudget` you declare at creation time. Setting explicit limits on steps, tool calls, elapsed time, and parallelism protects both your application and downstream provider resources.
 
-## What You Need
+## What you need for a mission integration
 
 To integrate with Praxa, you need three things:
 
@@ -36,10 +47,16 @@ To integrate with Praxa, you need three things:
 - **Node.js 20 or newer** — required by `@praxa/sdk` and `@praxa/cli`.
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Get your gateway connection configured and run your first mission in under 5 minutes.
+  <Card title="Mission SDK quickstart" icon="rocket" href="/quickstart">
+    Configure a deployment-specific Gateway connection and create a governed mission.
   </Card>
-  <Card title="Mission Concepts" icon="lightbulb" href="/concepts/missions">
+  <Card title="Choose another use case" icon="compass" href="/use-cases/overview">
+    Compare Execution Fabric, SDK, CLI, MCP, memory, webhooks, observability, and research.
+  </Card>
+  <Card title="Mission concepts" icon="lightbulb" href="/concepts/missions">
     A deeper look at goal specifications, resource budgets, idempotency, and the event stream lifecycle.
+  </Card>
+  <Card title="All tutorials" icon="graduation-cap" href="/tutorials/overview">
+    Build and verify an integration in your preferred backend framework.
   </Card>
 </CardGroup>

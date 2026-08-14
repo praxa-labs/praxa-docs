@@ -1,0 +1,81 @@
+---
+title: "Praxa API Playground"
+sidebarTitle: "Playground overview"
+description: "Send scoped requests to the concrete Praxa Execution Fabric and memory-candidate APIs with generated cURL, JavaScript, and Python examples."
+---
+
+The API Playground is generated from the same checked OpenAPI documents used by
+this reference. Choose an endpoint in the sidebar, enter a disposable bearer
+key, review the generated request, and send it to `https://api.praxa.io`.
+
+<Warning>
+  Use a disposable least-privilege key. Do not paste provider credentials,
+  Integration Gateway OAuth tokens, webhook signing secrets, production
+  customer content, or organization secrets into the playground.
+</Warning>
+
+## Available API planes
+
+| Group | What you can test | Required key | Status |
+|---|---|---|---|
+| Execution Fabric | Submit a task; read, stream, or cancel a run; read usage; manage webhooks and delivery replay | Personal workspace key with the endpoint's exact v1 scopes | Production partner preview |
+| Memory candidates | Create, lexically query, export, and erase isolated portable candidates | Personal workspace key with `memory:read` or `memory:write` | Deployed qualification preview; authenticated canaries pending |
+
+The deployment-specific OAuth Integration Gateway remains in
+[API Reference](/api-reference/overview). It is not included here because each
+deployment has its own HTTPS origin and token authority; executing those
+requests against `api.praxa.io` would teach the wrong contract.
+
+## Test an Execution Fabric request
+
+<Steps>
+  <Step title="Create a personal workspace key">
+    Open [API keys](https://platform.praxa.io/api-keys) and select only the
+    scopes required by the operation. For example, use `execute:write` for
+    `POST /v1/execute` and `runs:read` for a run read.
+  </Step>
+  <Step title="Open an endpoint">
+    Choose an operation under **Execution Fabric**. Required path, query,
+    header, and body fields are generated from the OpenAPI contract.
+  </Step>
+  <Step title="Review before sending">
+    For mutations, create one stable `Idempotency-Key` for the logical request.
+    Reuse it only for exact retries of that body.
+  </Step>
+  <Step title="Verify the outcome">
+    A `202` task response proves admission. Follow the returned run link or
+    event stream until you observe the state your integration requires.
+  </Step>
+</Steps>
+
+## Test a memory candidate
+
+Use only disposable content while the authenticated qualification matrix is
+pending.
+
+1. Create a portable envelope with a `memory:write` key and save its candidate ID.
+2. Query the exact subject with a `memory:read` key and require `retrievalMode: "lexical"`.
+3. Export the subject as NDJSON and preserve `X-Praxa-Next-Cursor` when present.
+4. Delete with a new stable idempotency key.
+5. Query again and confirm content is absent; export again and confirm a content-free deletion receipt exists.
+
+Deleting a candidate does not delete the original provider record.
+
+## Understand responses
+
+- `401` means the key is missing, malformed, revoked, or otherwise invalid.
+- `403` means the authenticated principal lacks authority or is outside the tenant boundary.
+- `409` means a state or idempotency conflict; never retry it blindly.
+- `429` and retryable 5xx responses may include retry guidance.
+- Every credential-bearing request should be treated as `no-store` by your application.
+
+<CardGroup cols={2}>
+  <Card title="Durable task tutorial" icon="play" href="/tutorials/durable-tasks">
+    Build the same request into Node.js, Python, Next.js, or a Cloudflare Worker
+    and verify the run end to end.
+  </Card>
+  <Card title="Memory candidate tutorial" icon="database" href="/tutorials/hosted-memory-candidates">
+    Run the complete create, query, export, deletion, scope, revocation, and
+    isolation matrix.
+  </Card>
+</CardGroup>

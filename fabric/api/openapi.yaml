@@ -65,6 +65,13 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ExecuteTaskRequest'
+            example:
+              apiVersion: v1
+              requestId: tutorial-task-2026-08-13
+              mode: task
+              task:
+                input: Summarize the incident and propose the next safe action.
+              idempotencyKey: tutorial-task-2026-08-13
       responses:
         '202':
           description: Durable task admitted or exact idempotent replay returned.
@@ -174,6 +181,7 @@ paths:
         never substitutes a generic summary.
       tags: [Approvals]
       x-activation-status: pending
+      x-hidden: true
       x-required-scopes: [runs:write]
       parameters:
         - $ref: '#/components/parameters/RunId'
@@ -574,6 +582,10 @@ components:
           minLength: 1
           maxLength: 256
       required: [url, event_types]
+      example:
+        url: https://events.example.com/webhooks/praxa
+        event_types: [run.completed, run.failed]
+        description: Production task outcomes
     UpdateWebhookEndpointInput:
       type: object
       additionalProperties: false

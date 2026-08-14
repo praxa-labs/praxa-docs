@@ -1,0 +1,129 @@
+---
+title: "Observe runs, usage, and governance evidence"
+sidebarTitle: "Observability"
+description: "Build a Praxa operations view from run projections, resumable events, usage evidence, webhook deliveries, traces, skills, and coverage."
+---
+
+Praxa has two observability planes. Execution Fabric exposes personal-tenant
+v1 run, event, usage, and webhook-delivery projections. A deployment-specific
+Integration Gateway exposes mission events, traces, skills, context, world
+certificates, and reference coverage through `@praxa/sdk`.
+
+## Execution Fabric dashboard
+
+### Read one run
+
+```js
+const response = await fetch(`https://api.praxa.io/v1/runs/${runId}`, {
+  headers: { authorization: `Bearer ${process.env.PRAXA_API_KEY}` },
+});
+if (!response.ok) throw new Error(await response.text());
+const run = await response.json();
+```
+
+Treat `queued`, `running`, and `awaiting_approval` as non-terminal. Treat only
+`completed`, `failed`, and `cancelled` as terminal.
+
+### Resume the event stream
+
+```js
+const response = await fetch(
+  `https://api.praxa.io/v1/runs/${runId}/events`,
+  {
+    headers: {
+      authorization: `Bearer ${process.env.PRAXA_API_KEY}`,
+      accept: "text/event-stream",
+      ...(lastEventId === undefined ? {} : { "last-event-id": lastEventId }),
+    },
+  },
+);
+
+if (!response.ok || !response.body) throw new Error(await response.text());
+// Parse SSE frames, require numeric increasing IDs, and persist each cursor.
+```
+
+Use a tested SSE parser rather than splitting arbitrary network chunks on
+newlines. One SSE frame may span chunks, and one chunk may contain several
+frames.
+
+### Read usage evidence
+
+```bash
+curl --get https://api.praxa.io/v1/usage \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  --data-urlencode "from=2026-08-01T00:00:00.000Z" \
+  --data-urlencode "to=2026-09-01T00:00:00.000Z" \
+  --data-urlencode "group_by=day"
+```
+
+Usage reports tenant-scoped requests, runs, tokens, model calls, tool calls,
+and billable amount. `toolCalls` remains zero until a trustworthy public
+per-task tool-call source exists.
+
+### Inspect webhook deliveries
+
+```bash
+curl --get https://api.praxa.io/v1/webhook-deliveries \
+  -H "Authorization: Bearer $PRAXA_API_KEY" \
+  --data-urlencode "run_id=$RUN_ID" \
+  --data-urlencode "limit=50"
+```
+
+Page with `nextCursor`. Delivery status is `pending`, `delivering`,
+`succeeded`, `retrying`, or `dead_letter`.
+
+## Integration Gateway diagnostics
+
+```ts
+const [mission, trace, skill, coverage] = await Promise.all([
+  client.getMission(runId),
+  client.getTrace(traceId),
+  client.getSkill(skillId),
+  client.getReferenceCoverage(),
+]);
+```
+
+Use the narrowest OAuth scopes:
+
+| Read | Scope |
+|---|---|
+| Mission and mission events | `missions:read` |
+| Redacted trace | `traces:read` |
+| Governed skill and evidence state | `skills:read` |
+| Context goals | `context:read` |
+| World-model certificates | `world:read` |
+| Reference coverage | `coverage:read` |
+
+Coverage describes registered reference behavior and evidence. It is not a
+production-readiness guarantee for your deployment.
+
+## Recommended data model
+
+Persist identifiers and immutable evidence, not credentials:
+
+```ts
+type ObservedRun = {
+  plane: "execution_fabric" | "integration_gateway";
+  tenantKey: string;
+  runId: string;
+  status: string;
+  lastEventId?: string;
+  lastSequence?: number;
+  updatedAt: string;
+  terminal: boolean;
+};
+```
+
+Keep tenant authority server-derived. Do not let a browser choose an arbitrary
+tenant ID for a backend read.
+
+## End-to-end checks
+
+1. Create a disposable run and save its returned identifier.
+2. Read that exact run and reject unknown or foreign IDs.
+3. Stream, persist a cursor, disconnect, and resume without regressing sequence.
+4. Require one terminal state or explicitly record a timed-out verification.
+5. Query a range containing the run and confirm usage remains tenant scoped.
+6. If using webhooks, correlate delivery `run_id` with the run and deduplicate by `event_id`.
+7. For the Integration Gateway, compare trace, skill, and coverage outputs only within their documented scope and deployment.
+8. Revoke the disposable credential and require all subsequent reads to fail closed.
